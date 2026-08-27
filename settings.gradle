@@ -1,4 +1,4 @@
-// settings.gradle — Multi-module Gradle project
+// settings.gradle — synced to D:\CLauncher\TclLauncher style
 pluginManagement {
     repositories {
         google()
