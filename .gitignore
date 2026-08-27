@@ -1,0 +1,20 @@
+# .gitignore — standard Android / Gradle
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# lib / demo build artifacts
+lib/build/
+demo/build/

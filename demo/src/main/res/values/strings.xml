@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AsyncAnimator</string>
+
+    <string name="demo1_title">Demo 1: MasterClock</string>
+    <string name="demo2_title">Demo 2: Holder Progress</string>
+    <string name="demo3_title">Demo 3: Async Cross-Thread</string>
+    <string name="demo4_title">Demo 4: Spring Transition</string>
+    <string name="demo5_title">Demo 5: Continuation</string>
+    <string name="demo6_title">Demo 6: State Machine</string>
+    <string name="demo7_title">Demo 7: SeqId Dedup</string>
+    <string name="demo8_title">Demo 8: Feature Flag</string>
+    <string name="demo9_title">Demo 9: AllApps Transition</string>
+</resources>

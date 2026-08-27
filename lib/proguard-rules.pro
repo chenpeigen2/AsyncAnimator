@@ -1,0 +1,1 @@
+# lib/proguard-rules.pro — empty (no shrinking for debug builds)
