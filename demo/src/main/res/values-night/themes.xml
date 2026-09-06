@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.AsyncAnimatorDemo" parent="Theme.MaterialComponents.DayNight.DarkActionBar" />
+    <style name="Theme.AsyncAnimatorDemo" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">#5B6CFF</item>
+        <item name="colorPrimaryVariant">#3D4BD1</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">#00C2A8</item>
+        <item name="colorSecondaryVariant">#009E89</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="android:statusBarColor">#F4F5FA</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:fitsSystemWindows">true</item>
+    </style>
 </resources>

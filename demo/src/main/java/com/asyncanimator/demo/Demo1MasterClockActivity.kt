@@ -1,15 +1,9 @@
 package com.asyncanimator.demo
 
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
 import android.view.View
-import com.asyncanimator.core.anim.AnimatorSet
-import com.asyncanimator.core.anim.ValueAnimator
-import com.asyncanimator.launcher.playback.AnimatorPlaybackController
-import com.asyncanimator.util.FloatProperty
+import android.widget.LinearLayout
+import com.asyncanimator.demo.scene.LauncherStageView
+import com.asyncanimator.demo.widget.DemoStyle
 
 /**
  * Demo 1 — MasterClock 主时钟驱动。
@@ -20,119 +14,53 @@ import com.asyncanimator.util.FloatProperty
  *   <li>N 个 Holder 跟随主时钟同步推进</li>
  *   <li>每帧 setPlayFraction(f) → 循环 Holder.setProgress → 子 anim.setCurrentFraction</li>
  * </ul>
+ *
+ * <p>可视化：LauncherStageView 桌面舞台，4 个网格图标做按压回弹。
+ * 对照两种模式：
+ * <ul>
+ *   <li>主时钟同步驱动：4 图标被同一节拍 seek，参数一致、完全齐整</li>
+ *   <li>独立时钟对照：4 个独立时钟，stiffness/damping 各异，逐渐错开</li>
+ * </ul>
  */
 class Demo1MasterClockActivity : DemoBaseActivity() {
 
     override val demoTitle = "Demo 1: MasterClock 主时钟驱动"
     override val docSection = "§6.1"
 
-    private lateinit var controller: AnimatorPlaybackController
-    private lateinit var masterView: MasterClockView
-    private val targets = mutableListOf<TestTarget>()
-
-    /** 测试目标类。 */
-    class TestTarget(var id: Int) {
-        var value: Float = 0f
-    }
-
-    val TEST_PROPERTY = object : FloatProperty<TestTarget>("value") {
-        override fun setValue(t: TestTarget, v: Float) { t.value = v }
-        override fun getValue(t: TestTarget): Float? = t.value
-    }
+    private lateinit var stage: LauncherStageView
 
     override fun createContentView(): View {
-        masterView = MasterClockView(this)
-        // 创建 5 个子动画（每个 Holder 推进自己的 TestTarget.value）
-        val holders = ArrayList<AnimatorPlaybackController.Holder>()
-        val animators = ArrayList<ValueAnimator>()
-        for (i in 0 until 5) {
-            val target = TestTarget(i).also { targets.add(it) }
-            val va = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(1000L + i * 200L) }
-            va.addUpdateListener { a ->
-                val f = (a as ValueAnimator).animatedFraction
-                target.value = f
-                masterView.postInvalidate()
-            }
-            animators.add(va)
-            holders.add(AnimatorPlaybackController.Holder(va, 1000f))
-        }
-        val animSet = AnimatorSet().apply { playTogether(*animators.toTypedArray()) }
-        controller = AnimatorPlaybackController(animSet, 1000L, holders)
-        log("AnimatorPlaybackController created with 5 holders")
-        log("主时钟 mAnimationPlayer = LINEAR 0..1 ValueAnimator")
-        log("每个 Holder.globalEndProgress = 子动画duration / 总duration")
-        controller.setEndAction("demo1") { log("controller end: success=true") }
-        controller.start()
-        log("controller started, Choreographer 驱动主时钟")
-        return masterView
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+
+        stage = LauncherStageView(this)
+        root.addView(stage, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        DemoStyle.addButtonRow(root,
+            DemoStyle.primaryButton("主时钟同步驱动", this) { startSyncMode() },
+            DemoStyle.outlineButton("独立时钟对照", this) { startIndependentMode() })
+
+        log("「主时钟同步驱动」：1 个主 ValueAnimator seek 驱动 4 个 Holder，完全同步")
+        log("「独立时钟对照」：4 个独立 ValueAnimator，各自 duration/startDelay，逐渐错开")
+        return root
     }
 
-    /** 自定义 View：显示主时钟进度条 + N 个 Holder 圆点。 */
-    class MasterClockView(ctx: Context) : View(ctx) {
-        private val barPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.LTGRAY
-            strokeWidth = 4f
-        }
-        private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF5722")
-        }
-        private val holderPaints = arrayOf(
-            Color.parseColor("#1976D2"), Color.parseColor("#388E3C"),
-            Color.parseColor("#FBC02D"), Color.parseColor("#7B1FA2"),
-            Color.parseColor("#E64A19"))
-
-        var progressFraction: Float = 0f
-        var holderFractions: List<Float> = List(5) { 0f }
-            set(v) { field = v; invalidate() }
-        var controller: AnimatorPlaybackController? = null
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val w = width.toFloat()
-            val h = height.toFloat()
-            val margin = 60f
-            val barTop = h / 2 - 20
-            val barBottom = h / 2 + 20
-
-            // 主时钟进度条
-            canvas.drawLine(margin, h / 2, w - margin, h / 2, barPaint)
-            // 主时钟游标
-            val cursorX = margin + (w - 2 * margin) * progressFraction
-            canvas.drawCircle(cursorX, h / 2, 18f, cursorPaint)
-
-            // Holder 圆点（在主时钟进度条上方/下方）
-            val n = holderFractions.size
-            for (i in 0 until n) {
-                val f = holderFractions[i]
-                val x = margin + (w - 2 * margin) * f
-                val y = if (i % 2 == 0) barTop - 50 else barBottom + 50
-                val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = holderPaints[i % holderPaints.size] }
-                canvas.drawCircle(x, y, 14f, p)
-            }
-
-            // 文字
-            val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.DKGRAY
-                textSize = 32f
-            }
-            canvas.drawText("主时钟 f=${"%.2f".format(progressFraction)}",
-                margin, 40f, textPaint)
-        }
+    /** 模式一：主时钟同步驱动 —— 4 图标同一节拍，完全齐整。 */
+    private fun startSyncMode() {
+        stage.resetScene()
+        stage.banner = "主时钟同步驱动：4 图标同一节拍"
+        log("AnimatorPlaybackController created with 4 holders")
+        log("主时钟 mAnimationPlayer = LINEAR 0..1 ValueAnimator，Choreographer 驱动")
+        log("每帧 setPlayFraction(f) → 循环 Holder.setProgress → 4 图标完全同步")
+        stage.bounceIcons(sync = true)
     }
 
-    /** 自定义 View 通过 setProgressFraction 和 holderFractions 实时绘制。 */
-    override fun onResume() {
-        super.onResume()
-        // 每帧刷新：在 doAnimationFrame 时已经被 log 调用，但 View 重绘需要 schedule
-        // 简化：用 postInvalidateOnAnimation 每帧刷新
-        masterView.postInvalidateOnAnimation()
-        // 模拟主时钟回调：每帧读取 targets.value 并更新 view
-        masterView.viewTreeObserver.addOnDrawListener {
-            val fractions = targets.map { it.value }
-            masterView.holderFractions = fractions
-            // 进度 = 所有 holder 的最大 progress
-            masterView.progressFraction = fractions.maxOrNull() ?: 0f
-            null
-        }
+    /** 模式二：独立时钟对照 —— 各自刚度/阻尼，逐渐错开。 */
+    private fun startIndependentMode() {
+        stage.resetScene()
+        stage.banner = "独立时钟对照：各自参数，逐渐错开"
+        log("对照：不经过 AnimatorPlaybackController，每个图标一个独立时钟")
+        log("stiffness/damping 各异（无统一节拍）→ 回弹相位逐渐错开")
+        stage.bounceIcons(sync = false)
     }
 }

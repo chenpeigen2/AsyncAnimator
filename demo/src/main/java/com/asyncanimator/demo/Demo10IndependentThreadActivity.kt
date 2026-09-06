@@ -1,17 +1,18 @@
 package com.asyncanimator.demo
 
-import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.Gravity
+import android.os.Handler
+import android.os.Looper
 import android.view.View
-import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.asyncanimator.core.anim.Animator
 import com.asyncanimator.core.anim.AnimationHandler
 import com.asyncanimator.core.anim.ValueAnimator
+import com.asyncanimator.demo.scene.LauncherStageView
+import com.asyncanimator.demo.widget.DemoStyle
+import com.asyncanimator.demo.widget.FrameGapHistogramView
 import com.asyncanimator.launcher.animthread.AnimExecutors
 import com.asyncanimator.launcher.animthread.AnimationControlThread
 import com.asyncanimator.launcher.animthread.HandlerTickScheduler
@@ -27,42 +28,44 @@ import java.util.concurrent.atomic.AtomicLong
  * - com/oplus/basecommon/thread/OplusExecutors.java:169 —— 线程 init：AnimationHandler.setProvider(
  *   SfVsyncFrameCallbackProvider()) + LauncherBooster.setUxThreadValue(myTid())
  * - com/android/launcher3/anim/AsyncAnimWrapper.java —— runOnAnimThread / runOnMainThread 骨架
- * - com/android/quickstep/util/OplusAsyncSpringAnimWrapper.java —— viewSupportAnimThread 开关模式
  * - com/android/quickstep/util/animation/CustomRectFSpringAnim.java:888 —— mStartAsync ?
  *   ANIM_EXECUTOR : MAIN_EXECUTOR，再判 looper.isCurrentThread()
- * - com/android/quickstep/util/animation/MultiDynamicAnimation.java:127 —— 帧回调注册到
- *   android.animation.AnimationHandler（平台隐藏类，ThreadLocal）
  *
- * <p>演示内容：两个球做同样的往复动画——
- * - 蓝球：动画在主线程计算（传统做法）；
- * - 绿球：AsyncValueAnimator.setExecutor(ANIM_CONTROL_EXECUTOR)，
- *   start 与帧推进都在 "Launcher Animation Control" 线程。
+ * <p>演示内容：同一舞台窗口做 0→1→0 往复转场，分两路分时驱动（进度逐帧写入窗口 leash）——
+ * - 主线程路：移植版 ValueAnimator，帧推进在主线程（传统做法）；
+ * - launcher.anim 路：AsyncValueAnimator.setExecutor(ANIM_CONTROL_EXECUTOR)，
+ *   start 与帧推进都在 "Launcher Animation Control" 线程（默认演示这路）。
  *
- * <p>点"主线程加压 800ms"后：蓝球的最大帧间隔飙升（动画计算被阻塞），
- * 绿球在动画线程上的计算帧间隔保持 ~16ms（仅 UI 文本刷新短暂滞后）——
+ * <p>点"主线程加压 800ms"后：主线程路窗口卡住、直方图飙出一根红柱；
+ * launcher.anim 路动画计算帧间隔保持 ~16ms，UI 恢复后可见窗口进度持续推进——
  * 这就是独立动画线程的核心收益。
+ *
+ * <p>可视化：LauncherStageView 舞台（setExternalDrive 外部逐帧驱动）+ 线程名统计文本
+ * + 帧间隔直方图（下=主线程路 上=launcher.anim 路），整体 ScrollView 防裁切。
  */
 class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
     override val demoTitle = "Demo 10: 独立动画线程 (launcher.anim)"
     override val docSection = "OplusExecutors.ANIM_EXECUTOR / AsyncAnimWrapper / CustomRectFSpringAnim"
 
+    private lateinit var stage: LauncherStageView
     private lateinit var mainStats: TextView
     private lateinit var asyncStats: TextView
-    private lateinit var mainBall: View
-    private lateinit var asyncBall: View
+    private lateinit var hist: FrameGapHistogramView
 
     private var mainAnim: ValueAnimator? = null
     private var asyncAnim: AsyncValueAnimator? = null
 
-    // 帧统计（在动画计算线程上采样， marshal 回 UI 更新）
+    // 帧统计（在动画计算线程上采样，marshal 回 UI 更新）
     private class FrameStats {
         val count = AtomicLong(0)
         val lastFrameMs = AtomicLong(0)
         val maxGapMs = AtomicLong(0)
         val sumGapMs = AtomicLong(0)
         @Volatile var displayThread = "-"
-        fun sample(frameMs: Long) {
+
+        /** 采样一帧，返回与上一帧的间隔 ms（首帧返回 0）。 */
+        fun sample(frameMs: Long): Long {
             displayThread = Thread.currentThread().name
             val last = lastFrameMs.getAndSet(frameMs)
             if (last > 0) {
@@ -70,9 +73,14 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
                 if (gap > maxGapMs.get()) maxGapMs.set(gap)
                 sumGapMs.addAndGet(gap)
                 count.incrementAndGet()
+                return gap
             }
+            return 0
         }
         fun avgGapMs(): Long = if (count.get() == 0L) 0 else sumGapMs.get() / count.get()
+        fun reset() {
+            count.set(0); lastFrameMs.set(0); maxGapMs.set(0); sumGapMs.set(0)
+        }
     }
 
     private val mainStatsData = FrameStats()
@@ -80,97 +88,113 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 把主线程的帧驱动也换成主线程 Looper 的 postDelayed（等价真机主线程
+        // 把主线程的帧驱动换成主线程 Looper 的 postDelayed（等价真机主线程
         // Choreographer 语义；移植框架默认用共享 JVM tick 线程，会使对照失真）。
         // 影响范围仅 demo 进程主线程的移植版动画。
         AnimationHandler.replaceThreadScheduler(
-                HandlerTickScheduler(android.os.Handler(android.os.Looper.getMainLooper())))
+                HandlerTickScheduler(Handler(Looper.getMainLooper())))
+        // 默认演示 launcher.anim 路：舞台一进来就在动
+        stage.post { startAnimThreadDrive() }
+    }
+
+    override fun onDestroy() {
+        stopDrivers()
+        super.onDestroy()
     }
 
     override fun createContentView(): View {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        // ── 仿桌面舞台（外部驱动模式：进度由动画线程逐帧写入）──
+        stage = LauncherStageView(this)
+        stage.setExternalDrive(true)
+        stage.banner = "待机 · 选择驱动线程"
+        root.addView(stage, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            DemoStyle.dp(this, 300f)))
+
+        // ── 统计文本（线程名 = 动画跑在哪个线程的关键证据）─────
         mainStats = TextView(this).apply {
-            textSize = 13f
-            setPadding(16, 8, 16, 8)
+            textSize = 12f
+            setTextColor(DemoStyle.MAIN_THREAD)
+            setPadding(0, DemoStyle.dp(this@Demo10IndependentThreadActivity, 6f), 0, 0)
         }
         asyncStats = TextView(this).apply {
-            textSize = 13f
-            setPadding(16, 8, 16, 8)
+            textSize = 12f
+            setTextColor(DemoStyle.ANIM_THREAD)
+            setPadding(0, DemoStyle.dp(this@Demo10IndependentThreadActivity, 2f), 0, 0)
         }
         root.addView(mainStats)
         root.addView(asyncStats)
 
-        // 动画轨道
-        val track = FrameLayout(this).apply { minimumHeight = 320 }
-        mainBall = makeBall(Color.parseColor("#3F7FE0"))
-        asyncBall = makeBall(Color.parseColor("#3EA65C"))
-        track.addView(mainBall, FrameLayout.LayoutParams(96, 96, Gravity.TOP or Gravity.START))
-        track.addView(asyncBall, FrameLayout.LayoutParams(96, 96, Gravity.TOP or Gravity.START).apply { topMargin = 160 })
-        root.addView(track)
+        // ── 帧间隔直方图（核心卖点：加压时主线程路飙红、anim 路平稳）──
+        root.addView(sectionLabel("帧间隔直方图：绿 ≤20ms　黄 ≤50ms　红 >50ms（下=主线程路 上=launcher.anim 路）"))
+        hist = FrameGapHistogramView(this).apply {
+            addChannel(DemoStyle.MAIN_THREAD) // 0 主线程路
+            addChannel(DemoStyle.ANIM_THREAD) // 1 launcher.anim 路
+        }
+        root.addView(hist, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT))
 
-        root.addView(Button(this).apply {
-            text = "同时启动两个动画"
-            setOnClickListener { startBoth() }
-        })
-        root.addView(Button(this).apply {
-            text = "主线程加压 800ms"
-            setOnClickListener { stressMainThread() }
-        })
-        root.addView(Button(this).apply {
-            text = "停止"
-            setOnClickListener { stopBoth() }
-        })
+        // ── 按钮 ────────────────────────────────────────
+        DemoStyle.addButtonRow(root,
+            DemoStyle.primaryButton("启动：launcher.anim 驱动", this) { startAnimThreadDrive() },
+            DemoStyle.outlineButton("启动：主线程驱动", this, DemoStyle.MAIN_THREAD) { startMainThreadDrive() })
+        DemoStyle.addButtonRow(root,
+            DemoStyle.dangerButton("主线程加压 800ms", this) { stressMainThread() },
+            DemoStyle.outlineButton("停止", this, DemoStyle.GRAY) { stopDrivers() })
 
         refreshStats()
-        return root
+        return ScrollView(this).apply { addView(root) }
     }
 
-    private fun makeBall(color: Int): View {
-        return View(this).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(color)
-            }
-        }
+    private fun sectionLabel(text: String): TextView = TextView(this).apply {
+        textSize = 11f
+        setTextColor(DemoStyle.GRAY)
+        this.text = text
+        setPadding(0, DemoStyle.dp(this@Demo10IndependentThreadActivity, 8f), 0,
+            DemoStyle.dp(this@Demo10IndependentThreadActivity, 2f))
     }
 
-    private fun startBoth() {
-        stopBoth()
-        mainStatsData.lastFrameMs.set(0); mainStatsData.count.set(0)
-        mainStatsData.maxGapMs.set(0); mainStatsData.sumGapMs.set(0)
-        asyncStatsData.lastFrameMs.set(0); asyncStatsData.count.set(0)
-        asyncStatsData.maxGapMs.set(0); asyncStatsData.sumGapMs.set(0)
+    // ── 主线程路：移植版 ValueAnimator，帧推进在主线程 ──────────
+    private fun startMainThreadDrive() {
+        stopDrivers()
+        mainStatsData.reset()
+        hist.clear()
+        stage.banner = "主线程驱动窗口动画 (0→1→0 往复)"
 
-        val trackWidth = contentContainer.width
-        if (trackWidth <= 0) {
-            log("布局未完成，请重试")
-            return
-        }
-        val distance = (trackWidth - 96).toFloat()
-
-        // ── 蓝球：主线程 ValueAnimator（传统做法）──────────────────────
         mainAnim = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 1200
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             addUpdateListener { anim ->
+                // 本回调在主线程执行
                 val v = anim.animatedValue as Float
-                mainStatsData.sample(System.currentTimeMillis())
+                val gap = mainStatsData.sample(System.currentTimeMillis())
+                stage.driveWindowProgress(v)
                 runOnUiThread {
-                    mainBall.translationX = v * distance
+                    if (gap > 0) hist.sample(0, gap.toFloat())
                     refreshStats()
                 }
             }
             addListener(object : NullableAnimatorListenerAdapter() {
                 override fun onAnimationStart(animator: Animator?) {
-                    log("[蓝球] onAnimationStart 线程 = ${Thread.currentThread().name}")
+                    log("[主线程路] onAnimationStart 线程 = ${Thread.currentThread().name}")
                 }
             })
             start() // 主线程启动，帧推进也在主线程
         }
+        log("主线程路启动：ValueAnimator + HandlerTickScheduler，帧推进在主线程")
+    }
 
-        // ── 绿球：AsyncValueAnimator + 独立动画线程 ────────────────────
+    // ── launcher.anim 路：AsyncValueAnimator + 独立动画线程 ─────
+    private fun startAnimThreadDrive() {
+        stopDrivers()
+        asyncStatsData.reset()
+        hist.clear()
+        stage.banner = "launcher.anim 线程驱动窗口动画 (0→1→0 往复)"
+
         asyncAnim = AsyncValueAnimator()
         asyncAnim!!.apply {
             setExecutor(AnimExecutors.ANIM_CONTROL_EXECUTOR) // start/帧推进 → "Launcher Animation Control"
@@ -179,41 +203,45 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             addUpdateListener { anim ->
+                // 本回调在独立动画线程执行：直接写舞台进度（内部 postInvalidate）
                 val v = anim.animatedValue as Float
-                asyncStatsData.sample(System.currentTimeMillis()) // 本回调在独立线程执行
+                val gap = asyncStatsData.sample(System.currentTimeMillis())
+                stage.driveWindowProgress(v)
                 runOnUiThread {
-                    asyncBall.translationX = v * distance
+                    if (gap > 0) hist.sample(1, gap.toFloat())
                     refreshStats()
                 }
             }
             getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
                 override fun onAnimationStart(animator: Animator?) {
-                    log("[绿球] onAnimationStart 线程 = ${Thread.currentThread().name}")
+                    log("[launcher.anim 路] onAnimationStart 线程 = ${Thread.currentThread().name}")
                 }
             })
             start() // 当前在主线程 → 自动 marshal 到独立线程
         }
-        log("已启动：蓝球=主线程，绿球=${AnimationControlThread.getThreadName()} 线程")
+        log("launcher.anim 路启动：AsyncValueAnimator → ${AnimationControlThread.getThreadName()} 线程")
+        log("→ 主线程被阻塞时，动画计算帧间隔仍 ~16ms（UI 恢复后可见进度持续推进）")
     }
 
     private fun stressMainThread() {
-        log(">>> 主线程 sleep(800)，观察两球帧间隔差异…")
+        log(">>> 主线程 sleep(800)：模拟重布局/重测量/GC，观察两路帧间隔差异…")
         mainStatsData.maxGapMs.set(0)
         asyncStatsData.maxGapMs.set(0)
-        Thread.sleep(800) // 故意阻塞主线程（模拟重布局/重测量/GC）
-        log("<<< 主线程恢复")
+        Thread.sleep(800) // 故意阻塞主线程
+        log("<<< 主线程恢复：主线程路应有一根 ~800ms 红柱；launcher.anim 路保持平稳绿柱")
     }
 
-    private fun stopBoth() {
+    private fun stopDrivers() {
         mainAnim?.cancel(); mainAnim = null
         asyncAnim?.cancel(); asyncAnim = null
+        if (::stage.isInitialized) stage.banner = "待机 · 选择驱动线程"
     }
 
     private fun refreshStats() {
-        mainStats.text = "蓝球(主线程)  线程=${shorten(mainStatsData.displayThread)}  " +
+        mainStats.text = "主线程路　线程=${shorten(mainStatsData.displayThread)}  " +
                 "帧数=${mainStatsData.count.get()}  平均间隔=${mainStatsData.avgGapMs()}ms  " +
                 "最大间隔=${mainStatsData.maxGapMs.get()}ms"
-        asyncStats.text = "绿球(独立线程) 线程=${shorten(asyncStatsData.displayThread)}  " +
+        asyncStats.text = "launcher.anim 路　线程=${shorten(asyncStatsData.displayThread)}  " +
                 "帧数=${asyncStatsData.count.get()}  平均间隔=${asyncStatsData.avgGapMs()}ms  " +
                 "最大间隔=${asyncStatsData.maxGapMs.get()}ms"
     }

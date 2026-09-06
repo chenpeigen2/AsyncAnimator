@@ -52,8 +52,8 @@ public final class AnimationControlThread extends HandlerThread {
     /** 原厂线程名，便于在 systrace / logcat 上对照。 */
     private static final String NAME = "launcher.anim";
 
-    /** 原厂优先级：-19（见 OplusExecutors.java:95）。 */
-    private static final int PRIORITY = Process.THREAD_PRIORITY_DISPLAY - 17;
+    /** 原厂优先级：-19（见 OplusExecutors.java:95），即 THREAD_PRIORITY_URGENT_DISPLAY。 */
+    private static final int PRIORITY = Process.THREAD_PRIORITY_URGENT_DISPLAY;
 
     /** holder 单例：类加载即创建线程并 start（原厂 ANIM_EXECUTOR 是静态 final，同样随进程常驻）。 */
     private static class ThreadHolder {

@@ -1,129 +1,108 @@
 package com.asyncanimator.demo
 
-import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.view.View
-import android.widget.SeekBar
-import android.widget.TextView
 import android.widget.LinearLayout
-import com.asyncanimator.core.anim.AnimatorSet
-import com.asyncanimator.core.anim.ValueAnimator
-import com.asyncanimator.launcher.playback.AnimatorPlaybackController
-import com.asyncanimator.util.FloatProperty
+import com.asyncanimator.demo.scene.LauncherStageView
+import com.asyncanimator.demo.widget.CurvePlotView
+import com.asyncanimator.demo.widget.DemoStyle
 
 /**
  * Demo 2 — Holder 进度 + ProgressMapper 钩子。
  *
- * <p>对应分析文档 §6.1.4。两个 holder：A 用默认 mapper（线性），B 用弹簧 mapper。
- * 拖动 Slider 控制主时钟进度，观察两个 holder 的同步/异步行为。
+ * <p>对应分析文档 §6.1.4。三个 Holder 挂在同一个 AnimatorPlaybackController 主时钟上，
+ * duration 相同（globalEndProgress 均 = 1.0，同一起跑线），但 ProgressMapper 不同：
+ * <ul>
+ *   <li>线性：mapper = DEFAULT（f/g 直通）</li>
+ *   <li>弹簧：mapper = easeOutBack 过冲曲线</li>
+ *   <li>减速：mapper = 1-(1-x)²</li>
+ * </ul>
+ *
+ * <p>可视化：LauncherStageView 舞台上三个图标同时飞向第二排（蓝=线性、青=过冲、黄=减速，
+ * 带拖尾），下方 CurvePlotView 用 stage.onFrame 逐帧采样三条曲线——
+ * 同一驱动走出不同形状。
  */
 class Demo2HolderProgressActivity : DemoBaseActivity() {
 
     override val demoTitle = "Demo 2: Holder 进度 + ProgressMapper"
     override val docSection = "§6.1.4"
 
-    private lateinit var controller: AnimatorPlaybackController
-    private lateinit var holderA: TestTarget
-    private lateinit var holderB: TestTarget
-    private lateinit var view: HolderView
-    private lateinit var seekBar: SeekBar
-    private lateinit var fractionLabel: TextView
+    private lateinit var stage: LauncherStageView
+    private lateinit var plotView: CurvePlotView
 
-    class TestTarget(var name: String) { var value: Float = 0f }
+    private val laneColors = intArrayOf(
+        DemoStyle.MAIN_THREAD, DemoStyle.ACCENT, DemoStyle.AMBER)
 
-    val PROPERTY_A = object : FloatProperty<TestTarget>("value") {
-        override fun setValue(t: TestTarget, v: Float) { t.value = v }
-        override fun getValue(t: TestTarget): Float? = t.value
-    }
-    val PROPERTY_B = object : FloatProperty<TestTarget>("value") {
-        override fun setValue(t: TestTarget, v: Float) { t.value = v }
-        override fun getValue(t: TestTarget): Float? = t.value
-    }
+    /** 与舞台 flyIcon 相同的飞行时长（0.9s），用于下方实时描线。 */
+    private val flightMs = 900f
+
+    /** 本轮飞行起始时刻（ms）；<0 表示未在飞行。 */
+    @Volatile private var flightStartMs = -1L
 
     override fun createContentView(): View {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
-        fractionLabel = TextView(this).apply { textSize = 16f }
-        root.addView(fractionLabel)
+        stage = LauncherStageView(this)
+        root.addView(stage, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        seekBar = SeekBar(this).apply {
-            max = 100
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
-                    val f = p / 100f
-                    if (::controller.isInitialized) {
-                        controller.setPlayFraction(f)
-                        fractionLabel.text = "主时钟进度: ${"%.2f".format(f)}"
-                        view.invalidate()
-                    }
-                }
-                override fun onStartTrackingTouch(sb: SeekBar?) {}
-                override fun onStopTrackingTouch(sb: SeekBar?) {}
-            })
-        }
-        root.addView(seekBar)
+        // 3 条实时曲线（蓝=线性，青=过冲，黄=减速）
+        plotView = CurvePlotView(this)
+        for (i in 0 until 3) plotView.addLane(laneColors[i])
+        root.addView(plotView)
 
-        view = HolderView(this)
-        root.addView(view)
+        stage.onFrame = { sampleCurves() }
 
-        // 创建：3 个 holder（A、B、C 不同 duration 演示不同 globalEndProgress）
-        holderA = TestTarget("A")
-        holderB = TestTarget("B")
-        val holders = ArrayList<AnimatorPlaybackController.Holder>()
+        DemoStyle.addButtonRow(root,
+            DemoStyle.primaryButton("三曲线同屏飞行", this) { playAll() },
+            DemoStyle.outlineButton("重置", this, DemoStyle.GRAY) { reset() })
 
-        val vaA = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(1000) }
-        vaA.addUpdateListener { a -> holderA.value = (a as ValueAnimator).animatedFraction }
-        holders.add(AnimatorPlaybackController.Holder(vaA, 1000f))
-
-        val vaB = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(500) }
-        vaB.addUpdateListener { a -> holderB.value = (a as ValueAnimator).animatedFraction }
-        holders.add(AnimatorPlaybackController.Holder(vaB, 1000f))
-
-        val vaC = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(200) }
-        val targetC = TestTarget("C")
-        vaC.addUpdateListener { a -> targetC.value = (a as ValueAnimator).animatedFraction }
-        holders.add(AnimatorPlaybackController.Holder(vaC, 1000f))
-        view.setTargets(holderA, holderB, targetC)
-
-        val animSet = AnimatorSet().apply { playTogether(vaA, vaB, vaC) }
-        controller = AnimatorPlaybackController(animSet, 1000L, holders)
-        log("Holder A: duration=1000, globalEndProgress=1.0")
-        log("Holder B: duration=500, globalEndProgress=0.5")
-        log("Holder C: duration=200, globalEndProgress=0.2")
-        log("拖动 Slider，观察 Holder B/C 提前到 1.0")
+        log("3 个 Holder：duration 均 = 1000，globalEndProgress 均 = 1.0（同一起跑线）")
+        log("蓝（线性）: mapper = DEFAULT（f/g 直通）")
+        log("青（弹簧）: mapper = easeOutBack 过冲曲线；黄（减速）: mapper = 1-(1-x)²")
+        log("点「三曲线同屏飞行」：同一主时钟 seek 驱动，三种 mapper 各自整形")
         return root
     }
 
-    /** 自定义 View 显示 3 个 holder 的 fraction。 */
-    class HolderView(ctx: Context) : View(ctx) {
-        private lateinit var a: TestTarget
-        private lateinit var b: TestTarget
-        private lateinit var c: TestTarget
-        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** 同一飞行任务 × 三种曲线：三个图标同时从第一排飞向第二排。 */
+    private fun playAll() {
+        reset()
+        flightStartMs = System.nanoTime() / 1_000_000
+        stage.banner = "同一飞行任务 × 三种 ProgressMapper"
+        stage.flyIcon(0, 5, LauncherStageView.FlyCurve.LINEAR, laneColors[0])
+        stage.flyIcon(1, 6, LauncherStageView.FlyCurve.OVERSHOOT, laneColors[1])
+        stage.flyIcon(2, 7, LauncherStageView.FlyCurve.DECEL, laneColors[2])
+        log("主时钟 start → 3 个 Holder 同步 setProgress，mapper 各自整形")
+    }
 
-        fun setTargets(a: TestTarget, b: TestTarget, c: TestTarget) {
-            this.a = a; this.b = b; this.c = c; invalidate()
-        }
+    private fun reset() {
+        flightStartMs = -1L
+        stage.banner = null
+        stage.resetScene()
+        plotView.clear()
+    }
 
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            if (!::a.isInitialized) return
-            val w = width.toFloat()
-            val h = height.toFloat()
-            val labels = arrayOf("A(1000ms)", "B(500ms)", "C(200ms)")
-            val values = arrayOf(a.value, b.value, c.value)
-            val colors = intArrayOf(0xFF1976D2.toInt(), 0xFF388E3C.toInt(), 0xFFE64A19.toInt())
-            val rowH = h / 4
-            for (i in 0..2) {
-                val y = rowH * ( + i + 0.5f)
-                p.color = colors[i]
-                canvas.drawRect(40f, y - 25, 40f + (w - 80) * values[i], y + 25, p)
-                p.color = Color.DKGRAY
-                p.textSize = 32f
-                canvas.drawText("${labels[i]}: ${"%.2f".format(values[i])}", 40f, y - 50, p)
-            }
+    /** 每帧按飞行时间重算三条 mapper 曲线并采样（与舞台上的拖尾一一对应）。 */
+    private fun sampleCurves() {
+        val start = flightStartMs
+        if (start < 0) return
+        val t = ((System.nanoTime() / 1_000_000 - start) / flightMs).coerceIn(0f, 1f)
+        // ×0.75 缩放：给弹簧过冲（>1 部分）留出顶部空间
+        plotView.sample(0, t * 0.75f)
+        plotView.sample(1, overshoot(t) * 0.75f)
+        plotView.sample(2, decel(t) * 0.75f)
+        if (t >= 1f) {
+            flightStartMs = -1L
+            log("controller end: success=true，三条曲线同起点/同终点、形状不同")
         }
     }
+
+    /** 弹簧感：easeOutBack 过冲曲线（与舞台 OVERSHOOT 同款，中段会超过 1）。 */
+    private fun overshoot(t: Float): Float {
+        val s = 1.70158f
+        val u = t - 1f
+        return 1f + (s + 1f) * u * u * u + s * u * u
+    }
+
+    /** 减速：1-(1-x)²，起步快、收尾慢。 */
+    private fun decel(t: Float): Float = 1f - (1f - t) * (1f - t)
 }

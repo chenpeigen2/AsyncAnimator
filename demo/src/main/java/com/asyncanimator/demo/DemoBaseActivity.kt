@@ -1,30 +1,29 @@
 package com.asyncanimator.demo
 
 import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
-import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.util.Trace
 
 /**
- * DemoBaseActivity — 所有 Demo Activity 的基类。
+ * DemoBaseActivity — 所有 Demo Activity 的基类（美化版）。
  *
- * <p>提供统一布局结构：
+ * <p>统一布局：
  * <pre>
  * ┌─────────────────────────────────────┐
- * │ 顶部：demo 标题 + 对应章节            │
+ * │ ▍标题（主色 accent 竖条）+ 章节       │
  * │ 中部：可视化区（子类填充）            │
- * │ 底部：日志区（实时 trace 输出）       │
+ * │ 底部：深色 TRACE 日志卡片             │
  * └─────────────────────────────────────┘
  * </pre>
- *
- * <p>日志区把 {@link com.asyncanimator.util.Trace} 的 stderr 输出重定向到 TextView。
  */
 abstract class DemoBaseActivity : AppCompatActivity() {
 
@@ -48,49 +47,88 @@ abstract class DemoBaseActivity : AppCompatActivity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 16, 16, 16)
+            setBackgroundColor(DemoStyle.BG_PAGE)
+            setPadding(DemoStyle.dp(this@DemoBaseActivity, 12f),
+                DemoStyle.dp(this@DemoBaseActivity, 10f),
+                DemoStyle.dp(this@DemoBaseActivity, 12f),
+                DemoStyle.dp(this@DemoBaseActivity, 10f))
         }
 
-        // 顶部：标题 + 章节
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // ── 顶部：返回箭头 + 标题 + 章节（NoActionBar 自绘头部）─────────
+        val backView = TextView(this).apply {
+            text = "←"
+            textSize = 22f
+            setTextColor(DemoStyle.PRIMARY)
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(DemoStyle.dp(this@DemoBaseActivity, 4f),
+                DemoStyle.dp(this@DemoBaseActivity, 8f),
+                DemoStyle.dp(this@DemoBaseActivity, 14f),
+                DemoStyle.dp(this@DemoBaseActivity, 8f))
+            setOnClickListener { finish() }
         }
         titleView = TextView(this).apply {
-            textSize = 18f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            textSize = 17f
+            setTextColor(DemoStyle.INK)
+            setTypeface(typeface, Typeface.BOLD)
             text = demoTitle
         }
         sectionView = TextView(this).apply {
-            textSize = 12f
-            setTextColor(Color.GRAY)
+            textSize = 11f
+            setTextColor(DemoStyle.GRAY)
             text = "对应分析文档：$docSection"
+            setPadding(0, DemoStyle.dp(this@DemoBaseActivity, 2f), 0, 0)
         }
-        header.addView(titleView)
-        header.addView(sectionView)
+        val titleCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(titleView)
+            addView(sectionView)
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(backView)
+            addView(titleCol)
+            setPadding(0, 0, 0, DemoStyle.dp(this@DemoBaseActivity, 8f))
+        }
         root.addView(header)
 
-        // 中部：可视化区
+        // ── 底部：日志区（先构造——createContentView 里的 log() 依赖 logView 已初始化）──
+        logView = TextView(this).apply {
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            setTextColor(DemoStyle.LOG_TEXT)
+            movementMethod = ScrollingMovementMethod()
+            text = "Trace 日志区\n"
+            setPadding(DemoStyle.dp(this@DemoBaseActivity, 12f),
+                DemoStyle.dp(this@DemoBaseActivity, 8f),
+                DemoStyle.dp(this@DemoBaseActivity, 12f),
+                DemoStyle.dp(this@DemoBaseActivity, 8f))
+        }
+        scrollView = ScrollView(this).apply {
+            addView(logView)
+            background = DemoStyle.roundRect(DemoStyle.BG_LOG, 12f, this@DemoBaseActivity)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                DemoStyle.dp(this@DemoBaseActivity, 130f)
+            ).apply { topMargin = DemoStyle.dp(this@DemoBaseActivity, 8f) }
+        }
+
+        // ── 中部：可视化区（白卡片）─────────────────────────
         contentContainer = FrameLayout(this).apply {
+            background = DemoStyle.roundRect(DemoStyle.BG_CARD, 14f, this@DemoBaseActivity)
+            elevation = DemoStyle.dp(this@DemoBaseActivity, 1.5f).toFloat()
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
         val contentView = createContentView()
-        contentContainer.addView(contentView)
+        contentContainer.addView(contentView, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ).apply {
+            val m = DemoStyle.dp(this@DemoBaseActivity, 12f)
+            setMargins(m, m, m, m)
+        })
         root.addView(contentContainer)
 
-        // 底部：日志区
-        logView = TextView(this).apply {
-            textSize = 10f
-            setBackgroundColor(Color.parseColor("#F5F5F5"))
-            setTextColor(Color.parseColor("#333333"))
-            movementMethod = ScrollingMovementMethod()
-            text = "Trace 日志区\n"
-        }
-        scrollView = ScrollView(this).apply {
-            addView(logView)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 280)
-        }
         root.addView(scrollView)
 
         setContentView(root)

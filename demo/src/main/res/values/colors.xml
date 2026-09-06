@@ -8,4 +8,5 @@
     <color name="white">#FFFFFFFF</color>
     <color name="log_bg">#FFF5F5F5</color>
     <color name="log_text">#FF333333</color>
+    <color name="launcher_bg">#FF5B6CFF</color>
 </resources>
