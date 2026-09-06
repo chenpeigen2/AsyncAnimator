@@ -142,6 +142,24 @@ public abstract class Animator implements Cloneable {
 
     public abstract long getDuration();
 
+    /** AOSP 在 Animator 上声明 setDuration(long)（返回 Animator）；默认实现仅供 no-op 场景。 */
+    public Animator setDuration(long duration) {
+        return this;
+    }
+
+    /** AOSP 在 Animator 上声明 setInterpolator(TimeInterpolator)；基类 no-op，ValueAnimator 覆盖。 */
+    public void setInterpolator(Interpolator interpolator) {
+    }
+
+    /**
+     * AOSP 中 getAnimatedValue 位于 ValueAnimator；
+     * 本移植版上移到基类，便于 AnimatorUpdateListener 统一处理 Animator 参数
+     * （移植代码多处直接在 Animator 上调用）。基类默认返回 null。
+     */
+    public Object getAnimatedValue() {
+        return null;
+    }
+
     public long getTotalDuration() {
         long d = getDuration();
         return d == DURATION_INFINITE ? DURATION_INFINITE : d;

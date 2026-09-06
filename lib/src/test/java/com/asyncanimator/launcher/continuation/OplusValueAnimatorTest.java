@@ -57,6 +57,8 @@ public class OplusValueAnimatorTest {
     @Test
     public void testSetCurrentFractionUpdatesBothFields() {
         OplusValueAnimator<TestTarget> anim = new OplusValueAnimator<>();
+        // 默认插值器是 AccelerateDecelerate，为使断言确定化改用线性
+        anim.setInterpolator(f -> f);
         anim.setCurrentFraction(0.3f);
         assertEquals(0.3f, anim.getAnimatedFraction(), 0.001f);
         assertEquals(0.3f, anim.getParam().currentFraction, 0.001f);

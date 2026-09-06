@@ -33,6 +33,14 @@ public class AnimSeqTimeStamp {
         lastStartAppTime = 0;
     }
 
+    /** 测试辅助：复位全部时间戳（全局静态状态，测试间互相污染）。 */
+    public static void resetAllForTest() {
+        lastStartAppTime = 0;
+        lastRecentFinishTime = 0;
+        lastRecentStartTime = 0;
+        lastLaunchTaskTime = 0;
+    }
+
     public static long getTimeGapToLastStartAppTime() {
         return lastStartAppTime == 0 ? Long.MAX_VALUE : System.currentTimeMillis() - lastStartAppTime;
     }

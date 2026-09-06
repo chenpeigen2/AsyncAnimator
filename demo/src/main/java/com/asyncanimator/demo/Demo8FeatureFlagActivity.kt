@@ -76,8 +76,8 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
             text = "模拟远程下发：异步关 + 图标模糊关"
             setOnClickListener {
                 AnimationFeatureHelper.getInstance().simulateRemoteUpdate(
-                    async = 0, rtUnlock = 0, multiApp = 0, iconBlur = 0,
-                    threshold = 0.5f, limtSize = 100
+                    0, 0, 0, 0,
+                    0.5f, 100
                 )
                 log("simulateRemoteUpdate 已下发")
                 log("mAsyncEnable = 0, mIconBlurEnable = 0")

@@ -11,7 +11,6 @@ import android.widget.LinearLayout
 import com.asyncanimator.core.anim.AnimatorSet
 import com.asyncanimator.core.anim.ValueAnimator
 import com.asyncanimator.launcher.playback.AnimatorPlaybackController
-import com.asyncanimator.launcher.playback.Holder
 import com.asyncanimator.util.FloatProperty
 
 /**
@@ -72,20 +71,20 @@ class Demo2HolderProgressActivity : DemoBaseActivity() {
         // 创建：3 个 holder（A、B、C 不同 duration 演示不同 globalEndProgress）
         holderA = TestTarget("A")
         holderB = TestTarget("B")
-        val holders = ArrayList<Holder>()
+        val holders = ArrayList<AnimatorPlaybackController.Holder>()
 
         val vaA = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(1000) }
-        vaA.addUpdateListener { a -> holderA.value = a.animatedFraction }
-        holders.add(Holder(vaA, 1000L))
+        vaA.addUpdateListener { a -> holderA.value = (a as ValueAnimator).animatedFraction }
+        holders.add(AnimatorPlaybackController.Holder(vaA, 1000f))
 
         val vaB = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(500) }
-        vaB.addUpdateListener { a -> holderB.value = a.animatedFraction }
-        holders.add(Holder(vaB, 1000L))
+        vaB.addUpdateListener { a -> holderB.value = (a as ValueAnimator).animatedFraction }
+        holders.add(AnimatorPlaybackController.Holder(vaB, 1000f))
 
         val vaC = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(200) }
         val targetC = TestTarget("C")
-        vaC.addUpdateListener { a -> targetC.value = a.animatedFraction }
-        holders.add(Holder(vaC, 1000L))
+        vaC.addUpdateListener { a -> targetC.value = (a as ValueAnimator).animatedFraction }
+        holders.add(AnimatorPlaybackController.Holder(vaC, 1000f))
         view.setTargets(holderA, holderB, targetC)
 
         val animSet = AnimatorSet().apply { playTogether(vaA, vaB, vaC) }

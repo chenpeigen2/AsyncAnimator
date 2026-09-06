@@ -19,15 +19,16 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".demo.Demo1MasterClockActivity" android:label="@string/demo1_title" />
-        <activity android:name=".demo.Demo2HolderProgressActivity" android:label="@string/demo2_title" />
-        <activity android:name=".demo.Demo3AsyncCrossThreadActivity" android:label="@string/demo3_title" />
-        <activity android:name=".demo.Demo4SpringTransitionActivity" android:label="@string/demo4_title" />
-        <activity android:name=".demo.Demo5ContinuationActivity" android:label="@string/demo5_title" />
-        <activity android:name=".demo.Demo6StateMachineActivity" android:label="@string/demo6_title" />
-        <activity android:name=".demo.Demo7SeqIdDedupActivity" android:label="@string/demo7_title" />
-        <activity android:name=".demo.Demo8FeatureFlagActivity" android:label="@string/demo8_title" />
-        <activity android:name=".demo.Demo9AllAppsTransitionActivity" android:label="@string/demo9_title" />
+        <activity android:name=".Demo1MasterClockActivity" android:label="@string/demo1_title" />
+        <activity android:name=".Demo2HolderProgressActivity" android:label="@string/demo2_title" />
+        <activity android:name=".Demo3AsyncCrossThreadActivity" android:label="@string/demo3_title" />
+        <activity android:name=".Demo4SpringTransitionActivity" android:label="@string/demo4_title" />
+        <activity android:name=".Demo5ContinuationActivity" android:label="@string/demo5_title" />
+        <activity android:name=".Demo6StateMachineActivity" android:label="@string/demo6_title" />
+        <activity android:name=".Demo7SeqIdDedupActivity" android:label="@string/demo7_title" />
+        <activity android:name=".Demo8FeatureFlagActivity" android:label="@string/demo8_title" />
+        <activity android:name=".Demo9AllAppsTransitionActivity" android:label="@string/demo9_title" />
+        <activity android:name=".Demo10IndependentThreadActivity" android:label="@string/demo10_title" />
 
     </application>
 

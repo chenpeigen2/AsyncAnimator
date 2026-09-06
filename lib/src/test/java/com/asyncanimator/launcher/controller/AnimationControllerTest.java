@@ -23,7 +23,9 @@ public class AnimationControllerTest {
 
     @Test
     public void testAnimationStateEnumCount() {
-        assertEquals(11, AnimationState.values().length);
+        // 12 个状态：11 个基础状态 + SWIPE_UP_TO_CAPSULE / SWIPE_UP_TO_SPLIT_OR_FLOATING
+        // 中额外的 SWIPE_UP_TO_CAPSULE（胶囊返回），以 AnimationState.java 实际定义为准
+        assertEquals(12, AnimationState.values().length);
     }
 
     @Test

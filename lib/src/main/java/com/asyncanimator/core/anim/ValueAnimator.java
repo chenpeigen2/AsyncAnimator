@@ -3,6 +3,8 @@ package com.asyncanimator.core.anim;
 import com.asyncanimator.core.scheduler.ScheduledTickScheduler;
 import com.asyncanimator.core.scheduler.TickScheduler;
 
+import java.util.ArrayList;
+
 /**
  * ValueAnimator — 时序动画基类。
  *
@@ -114,9 +116,11 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
         return mInterpolator;
     }
 
-    public void setDuration(long duration) {
+    /** 返回 this 以对齐 AOSP builder 风格（ValueAnimator.setDuration 返回 ValueAnimator）。 */
+    public ValueAnimator setDuration(long duration) {
         if (duration < 0) throw new IllegalArgumentException("duration < 0");
         mDuration = duration;
+        return this;
     }
 
     @Override
@@ -181,6 +185,8 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
         fraction = clampFraction(fraction);
         mOverallFraction = fraction;
         mSeekFraction = fraction;
+        // AOSP 语义：seek 立即求值——经插值器更新 mCurrentFraction、计算属性值并派发 update listener
+        animateValue(getCurrentIterationFraction(fraction, mReversing));
     }
 
     public void setCurrentPlayTime(long playTime) {
@@ -253,11 +259,11 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
     }
 
     private void addAnimationCallback() {
-        if (mSelfPulse) AnimationHandler.addAnimationCallback(this);
+        if (mSelfPulse) Animator.addAnimationCallback(this);
     }
 
     private void removeAnimationCallback() {
-        if (mSelfPulse) AnimationHandler.removeAnimationCallback(this);
+        if (mSelfPulse) Animator.removeAnimationCallback(this);
     }
 
     // ──── 帧回调 ────────────────────────────────────────────────
@@ -331,6 +337,9 @@ public class ValueAnimator extends Animator implements AnimationHandler.Animatio
 
     private float getCurrentIterationFraction(float fraction, boolean reversing) {
         float clamped = clampFraction(fraction);
+        // 精确到达结束边界（fraction == mRepeatCount + 1）视为完成态返回 1.0，
+        // 避免 floor 折返到 0 —— 否则 seek(1.0) 的表现是"回到起点"
+        if (mRepeatCount != INFINITE && clamped >= mRepeatCount + 1) return 1f;
         int iter = (int) Math.floor(clamped);
         float sub = clamped - iter;
         // REVERSE 模式下奇数迭代反向

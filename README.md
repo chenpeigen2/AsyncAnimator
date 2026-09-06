@@ -91,7 +91,10 @@ adb shell am start -n com.asyncanimator.demo/.LauncherEntryActivity
 
 ## 文档
 
-完整 OPPO Launcher 动画线程分析：[docs/animation-thread-analysis.md](docs/animation-thread-analysis.md)（2460 行）。
+- **最新版（推荐）**：[docs/animation-thread-analysis-v4.md](docs/animation-thread-analysis-v4.md) — v4 设计重分析（6 路独立取证 + 人工复核），**修正了 v3 的核心线程模型结论**：存在真实的 `launcher.anim` 专用动画线程（SF-vsync 帧源），窗口弹簧动画默认跑在该线程。
+- **trace 实证**：[docs/animation-trace-validation.md](docs/animation-trace-validation.md) — 用真机 Perfetto trace（OPEN_FROM_HOME 启动）验证 v4：launcher.anim 77 帧逐帧 `animation` + binder 直发 SurfaceFlinger、主线程并行自由均被证实；但 SF-vsync 帧源在该 trace 设备上未体现（两线程同对齐 VSYNC-app），差异原因见该文 §5。
+- 旧版：[docs/animation-thread-analysis.md](docs/animation-thread-analysis.md)（v3）—— 其 §7/TL;DR 的"全部在主线程"结论已被 v4 证伪，其余章节（状态机/续行/防抖）仍有效。
+- 跨线程细节：[docs/sub-thread-ui-update.md](docs/sub-thread-ui-update.md)。
 
 ## 已知限制 / 简化
 

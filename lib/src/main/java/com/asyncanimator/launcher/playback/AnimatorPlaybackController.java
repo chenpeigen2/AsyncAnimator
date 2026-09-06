@@ -1,7 +1,6 @@
 package com.asyncanimator.launcher.playback;
 
 import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListener;
 import com.asyncanimator.core.anim.AnimatorListenerAdapter;
 import com.asyncanimator.core.anim.ValueAnimator;
 
@@ -68,7 +67,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
         public final float globalEndProgress;
         public final com.asyncanimator.core.anim.Interpolator interpolator;
         public ProgressMapper mapper = ProgressMapper.DEFAULT;
-        public final Object springProperty; // 保留字段（弹簧场景用，本 demo 简化）
+        public final Object springProperty = null; // 保留字段（弹簧场景用，本 demo 简化）
 
         public Holder(Animator animator, float totalDuration) {
             ValueAnimator va = (ValueAnimator) animator;
@@ -98,8 +97,8 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
     // ──── 帧回调 ────────────────────────────────
 
     @Override
-    public void onAnimationUpdate(ValueAnimator valueAnimator) {
-        Float v = (Float) valueAnimator.getAnimatedValue();
+    public void onAnimationUpdate(Animator animator) {
+        Float v = (Float) ((ValueAnimator) animator).getAnimatedValue();
         if (v != null) setPlayFraction(v.floatValue());
     }
 
@@ -176,7 +175,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
 
     public AnimatorPlaybackController dispatchOnStart() {
         for (Animator a : mAnim) {
-            for (AnimatorListener l : a.getListeners()) {
+            for (Animator.AnimatorListener l : a.getListeners()) {
                 if (l != null) l.onAnimationStart(a);
             }
         }
@@ -186,7 +185,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
 
     public AnimatorPlaybackController dispatchOnEnd() {
         for (Animator a : mAnim) {
-            for (AnimatorListener l : a.getListeners()) {
+            for (Animator.AnimatorListener l : a.getListeners()) {
                 if (l != null) l.onAnimationEnd(a);
             }
         }
@@ -195,7 +194,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
 
     public AnimatorPlaybackController dispatchOnCancel() {
         for (Animator a : mAnim) {
-            for (AnimatorListener l : a.getListeners()) {
+            for (Animator.AnimatorListener l : a.getListeners()) {
                 if (l != null) l.onAnimationCancel(a);
             }
         }

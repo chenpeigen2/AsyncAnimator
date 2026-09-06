@@ -33,15 +33,23 @@ public class AnimationSeqHelper extends DefaultAnimationSeqHelper {
 
     private long seqId = 0;
     private Runnable delayRunnable;
-    private final Handler handler = new Handler(Looper.getMainLooper(), msg -> {
-        if (msg.what == MSG_EXC_RUNNABLE) {
-            Trace.traceBegin(8L, "exc delayRunnable");
-            if (delayRunnable != null) delayRunnable.run();
-            delayRunnable = null;
-            Trace.traceEnd(8L);
+    /** 懒创建：JVM 单测环境没有主 Looper，构造期不触碰 android.os.Handler。 */
+    private Handler handler;
+
+    private Handler getOrCreateHandler() {
+        if (handler == null) {
+            handler = new Handler(Looper.getMainLooper(), msg -> {
+                if (msg.what == MSG_EXC_RUNNABLE) {
+                    Trace.traceBegin(8L, "exc delayRunnable");
+                    if (delayRunnable != null) delayRunnable.run();
+                    delayRunnable = null;
+                    Trace.traceEnd(8L);
+                }
+                return true;
+            });
         }
-        return true;
-    });
+        return handler;
+    }
 
     /** (controller, seqId) Pair，记录当前 recents controller 对应的 seqId。 */
     private Object nextFinishSeqId;
@@ -77,14 +85,14 @@ public class AnimationSeqHelper extends DefaultAnimationSeqHelper {
         clearFinishRecentsRunnable();
         delayRunnable = r;
         long delay = MAX_DELAY_TIME - AnimSeqTimeStamp.getTimeGapToLastRecentFinishTime();
-        handler.sendEmptyMessageDelayed(MSG_EXC_RUNNABLE, Math.max(0L, delay));
+        getOrCreateHandler().sendEmptyMessageDelayed(MSG_EXC_RUNNABLE, Math.max(0L, delay));
         Trace.traceEnd(8L);
         return true;
     }
 
     @Override
     public void clearFinishRecentsRunnable() {
-        handler.removeMessages(MSG_EXC_RUNNABLE);
+        if (handler != null) handler.removeMessages(MSG_EXC_RUNNABLE);
         delayRunnable = null;
     }
 

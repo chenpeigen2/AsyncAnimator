@@ -37,10 +37,10 @@ class Demo4SpringTransitionActivity : DemoBaseActivity() {
             setOnClickListener {
                 anim = OplusSpringObjectAnimator(
                     target, PROP,
-                    minChange = 1f,
-                    dampingRatio = 0.5f,
-                    stiffness = SpringForce.STIFFNESS_MEDIUM,
-                    values = floatArrayOf(0f, 100f)
+                    1f,                        // minChange
+                    0.5f,                      // dampingRatio
+                    SpringForce.STIFFNESS_MEDIUM,
+                    0f, 100f                   // values
                 ).also { it.duration = 1000 }
                 log("OplusSpringObjectAnimator created")
                 log("内部：mObjectAnimator (ValueAnimator) + mSpring (SpringAnimation)")
@@ -60,7 +60,8 @@ class Demo4SpringTransitionActivity : DemoBaseActivity() {
         root.addView(Button(this).apply {
             text = "3. switchToSpring (startSpring)"
             setOnClickListener {
-                anim?.startSpring(startFraction = 0f, velocity = 200f, null)
+                // Java 方法不支持 Kotlin 命名参数，按位置传参；endListener 可为 null
+                anim?.startSpring(0f, 200f, null)
                 log("startSpring() → mProperty.switchToSpring() = true")
                 log("后续 setValue → spring.animateToFinalPosition(v)")
                 log("两套 AnimationHandler 并存：core 跑 mObjectAnimator，dyn 跑 mSpring")

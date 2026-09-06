@@ -7,7 +7,6 @@ import android.widget.TextView
 import com.asyncanimator.core.anim.AnimatorSet
 import com.asyncanimator.core.anim.ValueAnimator
 import com.asyncanimator.launcher.playback.AnimatorPlaybackController
-import com.asyncanimator.launcher.playback.Holder
 import com.asyncanimator.util.FloatProperty
 
 /**
@@ -33,19 +32,19 @@ class Demo9AllAppsTransitionActivity : DemoBaseActivity() {
         val buildButton = Button(this).apply {
             text = "1. 构建转场 (PendingAnimation + APC)"
             setOnClickListener {
-                val holders = mutableListOf<Holder>()
+                val holders = arrayListOf<AnimatorPlaybackController.Holder>()
 
                 // AllApps 容器高度动画
                 val vaHeight = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(250) }
-                holders.add(Holder(vaHeight, 250L))
+                holders.add(AnimatorPlaybackController.Holder(vaHeight, 250f))
 
                 // Workspace alpha 动画
                 val vaAlpha = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(200) }
-                holders.add(Holder(vaAlpha, 250L))
+                holders.add(AnimatorPlaybackController.Holder(vaAlpha, 250f))
 
                 // Icon 缩放动画
                 val vaScale = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(180) }
-                holders.add(Holder(vaScale, 250L))
+                holders.add(AnimatorPlaybackController.Holder(vaScale, 250f))
 
                 val animSet = AnimatorSet().apply { playTogether(vaHeight, vaAlpha, vaScale) }
                 controller = AnimatorPlaybackController(animSet, 250L, holders)

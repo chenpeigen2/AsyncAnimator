@@ -15,13 +15,13 @@ import com.asyncanimator.core.anim.Animator;
 public abstract class AnimationSuccessListener extends ActualEndAnimListener {
 
     @Override
-    public final void onAnimationCancel(Animator animator) {
+    public void onAnimationCancel(Animator animator) {
         super.onAnimationCancel(animator);
         mCancelled = true;
     }
 
     @Override
-    public final void onAnimationEnd(Animator animator) {
+    public void onAnimationEnd(Animator animator) {
         if (mCancelled) return;
         onAnimationSuccess(animator);
     }

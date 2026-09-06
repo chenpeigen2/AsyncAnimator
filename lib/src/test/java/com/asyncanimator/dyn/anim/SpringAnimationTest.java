@@ -34,8 +34,9 @@ public class SpringAnimationTest {
 
     @Test
     public void testSpringForceUpdateValuesUnderDamped() {
-        // 欠阻尼
-        SpringForce sf = new SpringForce(100f, 0.5f);  // 0.5 damping
+        // 欠阻尼：finalPosition=100, ζ=0.5
+        // 注意：两参构造是 (stiffness, dampingRatio)，此处必须用单参构造 + setDampingRatio
+        SpringForce sf = new SpringForce(100f).setDampingRatio(0.5f);
         sf.setStiffness(SpringForce.STIFFNESS_MEDIUM);
         SpringForce.MassState s = sf.updateValues(0, 0, 16);  // 16ms
         // 16ms 后应该有非零位置（往 100 移动）
@@ -46,7 +47,7 @@ public class SpringAnimationTest {
     @Test
     public void testSpringForceUpdateValuesCriticallyDamped() {
         // 临界阻尼 ζ=1
-        SpringForce sf = new SpringForce(100f, 1.0f);
+        SpringForce sf = new SpringForce(100f).setDampingRatio(1.0f);
         sf.setStiffness(SpringForce.STIFFNESS_MEDIUM);
         SpringForce.MassState s = sf.updateValues(0, 0, 16);
         assertTrue("value should move toward 100", s.mValue > 0);
@@ -55,7 +56,7 @@ public class SpringAnimationTest {
     @Test
     public void testSpringForceUpdateValuesOverDamped() {
         // 过阻尼 ζ>1
-        SpringForce sf = new SpringForce(100f, 2.0f);
+        SpringForce sf = new SpringForce(100f).setDampingRatio(2.0f);
         sf.setStiffness(SpringForce.STIFFNESS_MEDIUM);
         SpringForce.MassState s = sf.updateValues(0, 0, 16);
         assertTrue("value should move toward 100", s.mValue > 0);
@@ -64,13 +65,13 @@ public class SpringAnimationTest {
     @Test
     public void testIsAtEquilibrium() {
         SpringForce sf = new SpringForce(100f);
-        sf.setValueThreshold(0.5f);
+        sf.setValueThreshold(0.5f); // valueThreshold=0.5 → velocityThreshold=0.5*62.5=31.25
         // 在 finalPosition 附近 + 速度 ≈ 0 → 平衡
         assertTrue(sf.isAtEquilibrium(100.001f, 0.001f));
         // 远离 finalPosition → 不平衡
         assertFalse(sf.isAtEquilibrium(50f, 0.001f));
-        // finalPosition 附近但速度大 → 不平衡
-        assertFalse(sf.isAtEquilibrium(100.001f, 5f));
+        // finalPosition 附近但速度大（>31.25）→ 不平衡
+        assertFalse(sf.isAtEquilibrium(100.001f, 100f));
     }
 
     @Test

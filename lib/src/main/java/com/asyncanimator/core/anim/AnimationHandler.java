@@ -29,8 +29,8 @@ public class AnimationHandler {
         boolean doAnimationFrame(long frameTimeMs);
     }
 
-    /** TickScheduler 持有者（懒构造）。 */
-    private final TickSchedulerHolder schedulerHolder;
+    /** TickScheduler 持有者（懒构造）。可被 replaceThreadScheduler 替换。 */
+    private TickSchedulerHolder schedulerHolder;
 
     /** 当前线程上活跃的 animation callbacks。懒删除（null 槽）。 */
     private final ArrayList<AnimationFrameCallback> mAnimationCallbacks = new ArrayList<>();
@@ -77,6 +77,45 @@ public class AnimationHandler {
 
     public static void setTestHandler(AnimationHandler handler) {
         sTestHandler = handler;
+    }
+
+    /**
+     * 为当前线程安装自定义 TickScheduler。
+     *
+     * <p>对应"独立动画线程"方案：独立线程在 onLooperPrepared() 时调用，
+     * 让该线程的 AnimationHandler（ThreadLocal 单例）用绑定本线程 Looper 的帧调度器，
+     * 而不是默认的 ScheduledTickScheduler（共享 JVM 调度线程）。
+     *
+     * <p>必须在该线程首次 {@link #getInstance()} 之前调用；若已被创建则不生效。
+     */
+    public static void installThreadScheduler(TickScheduler scheduler) {
+        if (sTestHandler != null) return;
+        if (scheduler == null) return;
+        if (sAnimationHandler.get() == null) {
+            sAnimationHandler.set(new AnimationHandler(scheduler));
+        }
+    }
+
+    /**
+     * 强制替换当前线程 AnimationHandler 的 TickScheduler（demo / 实验用）。
+     *
+     * <p>与 {@link #installThreadScheduler} 的区别：本方法在线程的 handler 已存在时也生效。
+     * 行为：停掉旧 scheduler 的脉冲 → 换新 → 若仍有活跃动画则在新 scheduler 上重建回路。
+     */
+    public static void replaceThreadScheduler(TickScheduler scheduler) {
+        if (sTestHandler != null) return;
+        if (scheduler == null) return;
+        getInstance().swapScheduler(scheduler);
+    }
+
+    private synchronized void swapScheduler(TickScheduler s) {
+        TickScheduler old = schedulerHolder.get();
+        if (old != null) old.stop();
+        schedulerHolder = new TickSchedulerHolder(s);
+        if (getCallbackSize() > 0) {
+            s.start();
+            s.postFrameCallback(this::onTick);
+        }
     }
 
     // ──── 注册/取消 ────────────────────────────────────────────────

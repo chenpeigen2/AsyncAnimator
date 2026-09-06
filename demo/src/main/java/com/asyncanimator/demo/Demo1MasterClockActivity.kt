@@ -9,7 +9,6 @@ import android.view.View
 import com.asyncanimator.core.anim.AnimatorSet
 import com.asyncanimator.core.anim.ValueAnimator
 import com.asyncanimator.launcher.playback.AnimatorPlaybackController
-import com.asyncanimator.launcher.playback.Holder
 import com.asyncanimator.util.FloatProperty
 
 /**
@@ -44,27 +43,25 @@ class Demo1MasterClockActivity : DemoBaseActivity() {
     override fun createContentView(): View {
         masterView = MasterClockView(this)
         // 创建 5 个子动画（每个 Holder 推进自己的 TestTarget.value）
-        val holders = ArrayList<Holder>()
+        val holders = ArrayList<AnimatorPlaybackController.Holder>()
         val animators = ArrayList<ValueAnimator>()
         for (i in 0 until 5) {
             val target = TestTarget(i).also { targets.add(it) }
             val va = ValueAnimator.ofFloat(0f, 1f).apply { setDuration(1000L + i * 200L) }
             va.addUpdateListener { a ->
-                val f = a.animatedFraction
+                val f = (a as ValueAnimator).animatedFraction
                 target.value = f
                 masterView.postInvalidate()
             }
             animators.add(va)
-            holders.add(Holder(va, 1000L))
+            holders.add(AnimatorPlaybackController.Holder(va, 1000f))
         }
         val animSet = AnimatorSet().apply { playTogether(*animators.toTypedArray()) }
         controller = AnimatorPlaybackController(animSet, 1000L, holders)
         log("AnimatorPlaybackController created with 5 holders")
         log("主时钟 mAnimationPlayer = LINEAR 0..1 ValueAnimator")
         log("每个 Holder.globalEndProgress = 子动画duration / 总duration")
-        controller.addEndListener { success ->
-            log("controller end: success=$success")
-        }
+        controller.setEndAction("demo1") { log("controller end: success=true") }
         controller.start()
         log("controller started, Choreographer 驱动主时钟")
         return masterView
@@ -85,7 +82,7 @@ class Demo1MasterClockActivity : DemoBaseActivity() {
             Color.parseColor("#E64A19"))
 
         var progressFraction: Float = 0f
-        var holderFractions: Float =List(5) { 0f }
+        var holderFractions: List<Float> = List(5) { 0f }
             set(v) { field = v; invalidate() }
         var controller: AnimatorPlaybackController? = null
 

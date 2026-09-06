@@ -73,10 +73,8 @@ public class OplusValueAnimator<T> extends ValueAnimator {
         mTimeController = timeController;
         if (mParam.interpolator != null) super.setInterpolator(mParam.interpolator);
         // 自监听帧更新，把值应用到 target
-        addUpdateListener(new AnimatorListenerAdapter() {
-            @Override public void onAnimationUpdate(Animator a) {
-                if (mParam.applicator != null) mParam.applicator.applyValue(a.getAnimatedValue());
-            }
+        addUpdateListener(a -> {
+            if (mParam.applicator != null) mParam.applicator.applyValue(a.getAnimatedValue());
         });
     }
 

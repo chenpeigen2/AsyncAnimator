@@ -11,4 +11,5 @@
     <string name="demo7_title">Demo 7: SeqId Dedup</string>
     <string name="demo8_title">Demo 8: Feature Flag</string>
     <string name="demo9_title">Demo 9: AllApps Transition</string>
+    <string name="demo10_title">Demo 10: Independent Animation Thread</string>
 </resources>

@@ -53,7 +53,10 @@ class LauncherEntryActivity : AppCompatActivity() {
                 Demo8FeatureFlagActivity::class.java),
             DemoInfo("Demo 9: 完整 AllApps ↔ Workspace 转场",
                 "§7.1 — 端到端演示：StateManager → PendingAnimation → APC → Choreographer",
-                Demo9AllAppsTransitionActivity::class.java)
+                Demo9AllAppsTransitionActivity::class.java),
+            DemoInfo("Demo 10: 独立动画线程",
+                "OplusZoomAnimationControlThread — 主线程加压时独立线程动画不掉帧",
+                Demo10IndependentThreadActivity::class.java)
         )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)

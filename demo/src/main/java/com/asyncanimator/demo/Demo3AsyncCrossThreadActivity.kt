@@ -50,7 +50,8 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
     private fun startFromMain() {
         log("=== 主线程 start() ===")
         log("主线程 = ${Thread.currentThread().name}")
-        val anim = AsyncValueAnimator.ofFloat(false, 0f, 1f) as AsyncValueAnimator
+        val anim = AsyncValueAnimator()
+        anim.setFloatValues(0f, 1f)
         anim.setExecutor(Executors.MAIN_EXECUTOR)
         anim.duration = 500
         anim.getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
@@ -69,7 +70,8 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
         log("=== worker 线程 start() ===")
         Thread {
             log("worker thread = ${Thread.currentThread().name}")
-            val anim = AsyncValueAnimator.ofFloat(false, 0f, 1f) as AsyncValueAnimator
+            val anim = AsyncValueAnimator()
+            anim.setFloatValues(0f, 1f)
             anim.setExecutor(Executors.MAIN_EXECUTOR)
             anim.duration = 500
             anim.getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {

@@ -44,7 +44,8 @@ class Demo5ContinuationActivity : DemoBaseActivity() {
                     .setApplicator { v -> target.value = v as Float }
                 val anim = OplusValueAnimator<Target>("drag", param, null)
                 anim.setCurrentFraction(0.6f)
-                rec.inputed = 0.6f
+                // setCurrentFraction → animateValue → rec.getInterpolation(0.6f)
+                // → RecordInputInterpolator 自动记录 inputed（无需手动赋值）
                 currentAnim = anim
                 log("手势拖动：target.value 累积到 0.6")
                 log("RecordInputInterpolator.inputed = 0.6")
@@ -55,7 +56,7 @@ class Demo5ContinuationActivity : DemoBaseActivity() {
         root.addView(Button(this).apply {
             text = "2. 松手 → generateContinuationAnim"
             setOnClickListener {
-                val src = currentAnim ?: return@SetListener
+                val src = currentAnim ?: return@setOnClickListener
                 val newAnim = OplusValueAnimator.generateContinuationAnim(src, 500)
                 if (newAnim == null) {
                     log("generateContinuationAnim 失败（fraction 非法）")

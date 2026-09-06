@@ -115,7 +115,7 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         sb.append("mSpecialSceneExit: ").append(if (controller.getSpecialSceneExitTimeOutListener() != null) "✓" else "✗").append("\n")
         sb.append("mTransitionFinish: ").append(if (controller.getTransitionFinishTimeOutListener() != null) "✓" else "✗").append("\n")
         sb.append("mOverviewContinuation: ").append(if (controller.getOverviewContinuationTimeOutListener() != null) "✓" else "✗")
-        return sb
+        return sb.toString()
     }
 
     private fun refreshUI() {

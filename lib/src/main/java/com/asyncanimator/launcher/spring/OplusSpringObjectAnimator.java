@@ -26,7 +26,7 @@ public class OplusSpringObjectAnimator<T> extends ValueAnimator {
 
     private final SpringProperty<T> mProperty;
     private final SpringAnimation mSpring;
-    private final ValueAnimator mObjectAnimator;
+    private final ObjectAnimator mObjectAnimator;
     private final T mTarget;
     private final float[] mValues;
     private final String mName;
@@ -57,9 +57,9 @@ public class OplusSpringObjectAnimator<T> extends ValueAnimator {
         mObjectAnimator = oa;
     }
 
-    public OplusSpringObjectAnimator<T> setInterpolator(Interpolator ip) {
+    /** 装饰器转发：插值器作用于内部 ObjectAnimator（返回 void 以对齐 core 签名）。 */
+    public void setInterpolator(Interpolator ip) {
         mObjectAnimator.setInterpolator(ip);
-        return this;
     }
 
     @Override
@@ -154,7 +154,7 @@ public class OplusSpringObjectAnimator<T> extends ValueAnimator {
 
         public void start() {
             va.addUpdateListener(a -> {
-                Float f = (Float) a.getAnimatedValue();
+                Float f = (Float) ((ValueAnimator) a).getAnimatedValue();
                 if (f != null && property != null) {
                     float v = from + (to - from) * f;
                     property.setValue((Object) target, v);
