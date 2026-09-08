@@ -203,7 +203,7 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         seqHandler.postDelayed({
             stage.banner = null
             seqRunning = false
-            log("═══ 序列结束（controller 停留在 ${controller.getAnimState()}，点「重置」归位 NONE）═══")
+            log("═══ 序列结束（controller 停留在 ${controller.animState}，点「重置」归位 NONE）═══")
         }, 5200L)
     }
 
@@ -268,17 +268,17 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
     /** 直接调用已注册 listener 的 onTimeOut，演示超时兜底路径。 */
     private fun simulateTimeout() {
         var fired = false
-        controller.getSpecialSceneExitTimeOutListener()?.let {
+        controller.specialSceneExitTimeOutListener?.let {
             it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, 1500L)
             showTimeout("ON_LAND_SCAPE_SCENE_EXIT")
             fired = true
         }
-        controller.getTransitionFinishTimeOutListener()?.let {
+        controller.transitionFinishTimeOutListener?.let {
             it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 1500L)
             showTimeout("ON_TRANSITION_FINISH")
             fired = true
         }
-        controller.getOverviewContinuationTimeOutListener()?.let {
+        controller.overviewContinuationTimeOutListener?.let {
             it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 100L)
             showTimeout("ON_APP_TO_OVERVIEW_CONTINUATION")
             fired = true
@@ -306,14 +306,14 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
 
     private fun buildListenerStatus(): String {
         val sb = StringBuilder()
-        sb.append("mSpecialSceneExit: ").append(if (controller.getSpecialSceneExitTimeOutListener() != null) "✓" else "✗").append("   ")
-        sb.append("mTransitionFinish: ").append(if (controller.getTransitionFinishTimeOutListener() != null) "✓" else "✗").append("   ")
-        sb.append("mOverviewContinuation: ").append(if (controller.getOverviewContinuationTimeOutListener() != null) "✓" else "✗")
+        sb.append("mSpecialSceneExit: ").append(if (controller.specialSceneExitTimeOutListener != null) "✓" else "✗").append("   ")
+        sb.append("mTransitionFinish: ").append(if (controller.transitionFinishTimeOutListener != null) "✓" else "✗").append("   ")
+        sb.append("mOverviewContinuation: ").append(if (controller.overviewContinuationTimeOutListener != null) "✓" else "✗")
         return sb.toString()
     }
 
     private fun refreshUI() {
         listenerLabel.text = buildListenerStatus()
-        log("状态机更新: ${controller.getAnimState()}")
+        log("状态机更新: ${controller.animState}")
     }
 }

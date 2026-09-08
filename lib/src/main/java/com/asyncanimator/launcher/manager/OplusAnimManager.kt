@@ -1,0 +1,63 @@
+package com.asyncanimator.launcher.manager
+
+import com.asyncanimator.launcher.controller.AnimationController
+import com.asyncanimator.launcher.controller.DefaultAnimationController
+import com.asyncanimator.launcher.feature.AnimationFeatureHelper
+import com.asyncanimator.launcher.seq.AnimationSeqHelper
+import com.asyncanimator.launcher.seq.DefaultAnimationSeqHelper
+
+/**
+ * OplusAnimManager — feature flag 驱动的工厂单例。
+ *
+ * 对应分析文档 §6.10。默认所有 helper 返回 `Default*BaseClass`（no-op），
+ * 当 [supportInterruption] 为 true 时切换到 `Impl`。
+ *
+ * 业务统一通过 `OplusAnimManager.animController` 等获取实例，
+ * 不需要知道当前返回的是 Default 还是 Impl。
+ */
+object OplusAnimManager {
+
+    // 简化版：直接 lazy 创建（生产环境应该是 t4.b 类型懒加载）
+    private var animationControllerImpl: AnimationController? = null
+    private var animationSeqHelperImpl: AnimationSeqHelper? = null
+
+    init {
+        if (supportInterruption()) {
+            animationControllerImpl = AnimationController()
+            animationSeqHelperImpl = AnimationSeqHelper()
+        }
+    }
+
+    /**
+     * feature 开关。简化：默认 true。
+     * 生产代码会检查 LauncherAnimConfig / TaskAnimationManager.ENABLE_SHELL_TRANSITIONS
+     * 等多个条件。
+     */
+    fun supportInterruption(): Boolean = true
+
+    val animController: DefaultAnimationController
+        get() = animationControllerImpl ?: DefaultAnimationController()
+
+    val animationSeqHelper: DefaultAnimationSeqHelper
+        get() = animationSeqHelperImpl ?: DefaultAnimationSeqHelper()
+
+    val featureHelper: AnimationFeatureHelper
+        get() = AnimationFeatureHelper
+
+    fun cleanUpRecentsAnimation() {
+        animationControllerImpl?.cleanUpRecentsAnim()
+    }
+
+    /** 重置为 no-op（feature toggle 关闭）。demo 用来演示降级。 */
+    var interruptionEnabled: Boolean
+        get() = animationControllerImpl != null
+        set(enabled) {
+            if (enabled) {
+                if (animationControllerImpl == null) animationControllerImpl = AnimationController()
+                if (animationSeqHelperImpl == null) animationSeqHelperImpl = AnimationSeqHelper()
+            } else {
+                animationControllerImpl = null
+                animationSeqHelperImpl = null
+            }
+        }
+}

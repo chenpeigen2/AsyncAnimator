@@ -64,9 +64,9 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
         ).apply { topMargin = DemoStyle.dp(this@Demo8FeatureFlagActivity, 2f) })
 
         // 初始日志（沿用原有查询逻辑）
-        val mgr = OplusAnimManager.getInstance()
+        val mgr = OplusAnimManager
         log("supportInterruption = ${mgr.supportInterruption()}")
-        log("getAnimController() = ${mgr.getAnimController().javaClass.simpleName}")
+        log("animController = ${mgr.animController.javaClass.simpleName}")
 
         // ── 舞台：同一 openApp，两种实现的直观对比 ──
         stage = LauncherStageView(this).apply {
@@ -85,9 +85,9 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
                 playOpenApp()
             },
             DemoStyle.outlineButton("查询当前实现", this) {
-                val m = OplusAnimManager.getInstance()
+                val m = OplusAnimManager
                 log("supportInterruption = ${m.supportInterruption()}")
-                log("getAnimController() = ${m.getAnimController().javaClass.simpleName}")
+                log("animController = ${m.animController.javaClass.simpleName}")
             }
         )
 
@@ -103,7 +103,7 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
 
         DemoStyle.addButtonRow(content,
             DemoStyle.outlineButton("模拟远程下发", this, DemoStyle.AMBER) {
-                AnimationFeatureHelper.getInstance().simulateRemoteUpdate(
+                AnimationFeatureHelper.simulateRemoteUpdate(
                     0, 0, 0, 0,
                     0.5f, 100
                 )
@@ -123,11 +123,11 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
     // ── Feature 开关 ────────────────────────────────────────
 
     private fun onFeatureToggled(checked: Boolean) {
-        OplusAnimManager.getInstance().setInterruptionEnabled(checked)
-        val mgr = OplusAnimManager.getInstance()
-        log("setInterruptionEnabled($checked)")
+        OplusAnimManager.interruptionEnabled = checked
+        val mgr = OplusAnimManager
+        log("interruptionEnabled = $checked")
         log("supportInterruption = ${mgr.supportInterruption()}")
-        log("getAnimController() = ${mgr.getAnimController().javaClass.simpleName}")
+        log("animController = ${mgr.animController.javaClass.simpleName}")
         log(if (checked) "→ AnimationController (Impl)" else "→ DefaultAnimationController (no-op)")
         implLabel.text = currentImplText()
         implLabel.setTextColor(currentImplColor())
@@ -136,7 +136,7 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
     }
 
     private fun isImplActive(): Boolean =
-        OplusAnimManager.getInstance().getAnimController() is AnimationController
+        OplusAnimManager.animController is AnimationController
 
     private fun currentImplText(): String =
         "当前生效实现: " + if (isImplActive()) "AnimationController (Impl)"
@@ -151,9 +151,9 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
         // 舞台复位，保证每次从桌面出发
         if (stage.windowProgress > 0.005f || stage.isAppOpen) stage.resetScene()
 
-        val mgr = OplusAnimManager.getInstance()
-        val implActive = mgr.getAnimController() is AnimationController
-        log("播放 openApp → 当前实现 = ${mgr.getAnimController().javaClass.simpleName}")
+        val mgr = OplusAnimManager
+        val implActive = mgr.animController is AnimationController
+        log("播放 openApp → 当前实现 = ${mgr.animController.javaClass.simpleName}")
 
         if (implActive) {
             // Impl：窗口 leash 走舞台弹簧，图标→全屏逐帧推进（真 60fps）
@@ -174,29 +174,29 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
     // ── 远程灰度配置 ────────────────────────────────────────
 
     private fun renderConfigs(): String {
-        val fh = AnimationFeatureHelper.getInstance()
+        val fh = AnimationFeatureHelper
         return buildString {
-            append("mAsyncEnable         = ${fh.getAsyncEnable()}\n")
-            append("mRTUnlockEnable      = ${fh.getRTUnlockEnable()}\n")
-            append("mMultiAppBlockEnable = ${fh.getMultiAppBlockEnable()}\n")
-            append("mIconBlurEnable      = ${fh.getIconBlurEnable()}\n")
-            append("m1pxEnable           = ${fh.get1pxEnable()}\n")
-            append("mInterruptThreshold  = ${fh.getInterruptThreshold()}\n")
-            append("mLimtSize            = ${fh.getLimtSize()}\n")
-            append("m1pxPkgDisableList   = ${fh.get1pxPkgDisableList().size} 项\n")
-            append("m1pxCardDisableList  = ${fh.get1pxCardDisableList().size} 项")
+            append("mAsyncEnable         = ${fh.asyncEnable}\n")
+            append("mRTUnlockEnable      = ${fh.rtUnlockEnable}\n")
+            append("mMultiAppBlockEnable = ${fh.multiAppBlockEnable}\n")
+            append("mIconBlurEnable      = ${fh.iconBlurEnable}\n")
+            append("m1pxEnable           = ${fh.onePxEnable}\n")
+            append("mInterruptThreshold  = ${fh.interruptThreshold}\n")
+            append("mLimtSize            = ${fh.limtSize}\n")
+            append("m1pxPkgDisableList   = ${fh.onePxPkgDisableList.size} 项\n")
+            append("m1pxCardDisableList  = ${fh.onePxCardDisableList.size} 项")
         }
     }
 
     private fun logConfigs() {
-        val fh = AnimationFeatureHelper.getInstance()
-        log("mAsyncEnable = ${fh.getAsyncEnable()}")
-        log("mRTUnlockEnable = ${fh.getRTUnlockEnable()}")
-        log("mMultiAppBlockEnable = ${fh.getMultiAppBlockEnable()}")
-        log("mIconBlurEnable = ${fh.getIconBlurEnable()}")
-        log("m1pxEnable = ${fh.get1pxEnable()}")
-        log("mInterruptThreshold = ${fh.getInterruptThreshold()}")
-        log("mLimtSize = ${fh.getLimtSize()}")
+        val fh = AnimationFeatureHelper
+        log("mAsyncEnable = ${fh.asyncEnable}")
+        log("mRTUnlockEnable = ${fh.rtUnlockEnable}")
+        log("mMultiAppBlockEnable = ${fh.multiAppBlockEnable}")
+        log("mIconBlurEnable = ${fh.iconBlurEnable}")
+        log("m1pxEnable = ${fh.onePxEnable}")
+        log("mInterruptThreshold = ${fh.interruptThreshold}")
+        log("mLimtSize = ${fh.limtSize}")
     }
 
     private fun sectionCaption(text: String): TextView = TextView(this).apply {

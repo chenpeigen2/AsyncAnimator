@@ -66,9 +66,9 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
     private fun buildAnim(): AsyncValueAnimator {
         val anim = AsyncValueAnimator()
         anim.setFloatValues(0f, 1f)
-        anim.setExecutor(Executors.MAIN_EXECUTOR)
+        anim.executor = Executors.MAIN_EXECUTOR
         anim.duration = 500
-        anim.getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
+        anim.asyncAnimCallbacks.addListener(object : NullableAnimatorListenerAdapter() {
             override fun onAnimationStart(animator: Animator) {
                 log("onAnimationStart on ${Thread.currentThread().name}  (main=${Thread.currentThread() == android.os.Looper.getMainLooper().thread})")
                 runOnUiThread {

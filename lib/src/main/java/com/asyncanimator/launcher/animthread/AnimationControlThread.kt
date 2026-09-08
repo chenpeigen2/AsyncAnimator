@@ -1,0 +1,85 @@
+package com.asyncanimator.launcher.animthread
+
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Process
+import com.asyncanimator.core.anim.AnimationHandler
+
+/**
+ * AnimationControlThread — 独立动画线程（"launcher.anim"）。
+ *
+ * 还原自 OPPO Launcher 15.8.24（ColorOS 15）反编译源码的**手势/转场动画主链**：
+ * ```
+ *   com/oplus/basecommon/thread/OplusExecutors.java:95
+ *     ANIM_EXECUTOR = new OplusLooperExecutor(
+ *         Executors.createAndStartNewLooper("launcher.anim", -19,
+ *             LauncherBooster.LAUNCHER_STATIC_LAUNCHER_ANIM),
+ *         new f(1));            // ← 线程 init 回调，见 ANIM_EXECUTOR$lambda$0
+ *
+ *   com/oplus/basecommon/thread/OplusExecutors.java:169
+ *     private static void ANIM_EXECUTOR$lambda$0() {
+ *         AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider());
+ *         LauncherBooster.getCpu().setUxThreadValue(Process.myTid());
+ *     }
+ * ```
+ *
+ * 两个要点必须一起看，这才是方案能成立的原因：
+ *
+ *  1. **线程**：优先级 -19（`THREAD_PRIORITY_DISPLAY - 17`，比 URGENT_DISPLAY 更激进），
+ *     并通过 LauncherBooster 注册为 UX 线程（提权 / 绑大核，OPPO 私有）；
+ *  2. **帧源**：在该线程的 `android.animation.AnimationHandler`（平台隐藏类，ThreadLocal）
+ *     上装 `SfVsyncFrameCallbackProvider` —— 直接吃 SurfaceFlinger 的 VSYNC，
+ *     而不是 UI 线程 Choreographer。这样动画帧不排在主线程 traversal 后面。
+ *
+ * 移植取舍（AOSP 无对应公开 API）：
+ *
+ *  - `SfVsyncFrameCallbackProvider`、`AnimationHandler.setProvider`、`LauncherBooster`
+ *    都是 hidden/私有，这里用 [HandlerTickScheduler]（绑本线程 Looper 的 postDelayed 帧循环）
+ *    等价替代，并保留 [onLooperPrepared] 作为"线程 init 回调"的落点；
+ *  - 优先级用 [Process.THREAD_PRIORITY_DISPLAY] - 17 还原 -19 这个数值。
+ *
+ * 线程安全模型（对齐原厂）：动画参数 volatile/Atomic；View 与 listener 回主线程
+ * （`AsyncAnimWrapper.runOnMainThread` / AsyncAnimCallbacks）；
+ * start/cancel/end 按"当前线程 vs 目标 Looper"自动 marshal
+ * （见 CustomRectFSpringAnim.start()：先取 executor 再判 `looper.isCurrentThread`）。
+ */
+class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, PRIORITY) {
+
+    init {
+        start()
+    }
+
+    /**
+     * 等价于原厂 `ANIM_EXECUTOR$lambda$0()`：在**本线程内**完成两件事——
+     * 装帧源、把自己注册成 UX 线程。
+     *
+     * 本方法由 HandlerThread 在新线程上、Looper 就绪后调用，
+     * 所以此处 `AnimationHandler.instance`（ThreadLocal）拿到的正是本线程那一份，
+     * 与原厂 `setProvider` 的作用域完全一致。
+     */
+    override fun onLooperPrepared() {
+        // ① 帧源：原厂 setProvider(SfVsyncFrameCallbackProvider())，移植为绑本线程 Looper 的帧循环
+        AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))
+        // ② UX 线程提权：原厂 LauncherBooster.getCpu().setUxThreadValue(Process.myTid())，
+        //    AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
+        try {
+            Process.setThreadPriority(Process.myTid(), PRIORITY)
+        } catch (ignored: RuntimeException) {
+            // 某些设备不允许设置该优先级，忽略即可（不影响动画正确性，仅影响调度优先级）
+        }
+    }
+
+    companion object {
+
+        /** 原厂线程名，便于在 systrace / logcat 上对照。 */
+        const val THREAD_NAME = "launcher.anim"
+
+        /** 原厂优先级：-19（见 OplusExecutors.java:95），即 THREAD_PRIORITY_URGENT_DISPLAY。 */
+        private val PRIORITY = Process.THREAD_PRIORITY_URGENT_DISPLAY
+
+        /** 单例：类加载即创建线程并 start（原厂 ANIM_EXECUTOR 是静态 final，同样随进程常驻）。 */
+        val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+            AnimationControlThread()
+        }
+    }
+}

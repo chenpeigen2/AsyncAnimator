@@ -188,7 +188,7 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
         asyncAnim = AsyncValueAnimator()
         asyncAnim!!.apply {
-            setExecutor(AnimExecutors.ANIM_CONTROL_EXECUTOR) // start/帧推进 → "Launcher Animation Control"
+            executor = AnimExecutors.ANIM_CONTROL_EXECUTOR // start/帧推进 → "Launcher Animation Control"
             setFloatValues(0f, 1f)
             duration = 1200
             repeatCount = ValueAnimator.INFINITE
@@ -203,14 +203,14 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
                     refreshStats()
                 }
             }
-            getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
+            asyncAnimCallbacks.addListener(object : NullableAnimatorListenerAdapter() {
                 override fun onAnimationStart(animator: Animator) {
                     log("[launcher.anim 路] onAnimationStart 线程 = ${Thread.currentThread().name}")
                 }
             })
             start() // 当前在主线程 → 自动 marshal 到独立线程
         }
-        log("launcher.anim 路启动：AsyncValueAnimator → ${AnimationControlThread.getThreadName()} 线程")
+        log("launcher.anim 路启动：AsyncValueAnimator → ${AnimationControlThread.THREAD_NAME} 线程")
         log("→ 主线程被阻塞时，动画计算帧间隔仍 ~16ms（UI 恢复后可见进度持续推进）")
     }
 
