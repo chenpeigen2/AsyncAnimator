@@ -19,7 +19,7 @@ import com.asyncanimator.core.scheduler.TickScheduler
  * 这是和原 AndroidX 实现的细微差异——原版用 FrameCallbackProvider14/16 包装 Choreographer，
  * 这里用统一的 TickScheduler（统一抽象）。
  */
-class AnimationHandler(scheduler: TickScheduler? = null) {
+internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     /** 每帧回调契约：返回 true 表示本动画已结束，Handler 据此调度续帧。 */
     fun interface AnimationFrameCallback {

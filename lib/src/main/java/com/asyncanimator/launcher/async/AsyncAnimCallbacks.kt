@@ -20,21 +20,21 @@ class AsyncAnimCallbacks {
 
     private val animListeners = ArrayList<NullableAnimatorListener?>()
 
-    var animationId = -1
+    internal var animationId = -1
 
     fun addListener(l: NullableAnimatorListener?) {
         if (l == null || animListeners.contains(l)) return
         animListeners.add(l)
     }
 
-    fun removeListener(l: NullableAnimatorListener?) {
+    internal fun removeListener(l: NullableAnimatorListener?) {
         val idx = animListeners.indexOf(l)
         if (idx >= 0) animListeners[idx] = null
     }
 
-    fun clearListeners() = animListeners.clear()
+    internal fun clearListeners() = animListeners.clear()
 
-    fun onAnimationStart(animator: Animator) {
+    internal fun onAnimationStart(animator: Animator) {
         Trace.traceBegin(8L, "AsyncAnimStart-$animationId")
         runOnMainThread {
             for (l in animListeners) {
@@ -46,7 +46,7 @@ class AsyncAnimCallbacks {
         Trace.traceEnd(8L)
     }
 
-    fun onAnimationEnd(animator: Animator) {
+    internal fun onAnimationEnd(animator: Animator) {
         Trace.traceBegin(8L, "AsyncAnimEnd-$animationId")
         runOnMainThread {
             for (l in animListeners) {
@@ -58,7 +58,7 @@ class AsyncAnimCallbacks {
         Trace.traceEnd(8L)
     }
 
-    fun onAnimationCancel(animator: Animator) {
+    internal fun onAnimationCancel(animator: Animator) {
         Trace.traceBegin(8L, "AsyncAnimCancel-$animationId")
         runOnMainThread {
             for (l in animListeners) {

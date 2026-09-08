@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong
  *  - 异常隔离：单个 callback 抛异常不影响其他 callback
  *  - 可调帧率：[frameIntervalMs] 可以任意调整（demo 用 16ms=60Hz，单元测试可降到 100ms）
  */
-class ScheduledTickScheduler(
+internal class ScheduledTickScheduler(
     override val frameIntervalMs: Long = 16 // 默认 60Hz
 ) : TickScheduler {
 

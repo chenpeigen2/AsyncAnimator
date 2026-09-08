@@ -7,6 +7,7 @@ plugins {
 android {
     namespace = "com.asyncanimator"
     compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         minSdk = 36

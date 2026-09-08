@@ -10,7 +10,7 @@ import android.util.FloatProperty
  * PendingAnimation 实现这个接口（每个 setFloat/setViewAlpha 调用包成 ObjectAnimator）；
  * NO_ANIM_PROPERTY_SETTER 是 no-op 实现（直接 setValue，不动画）。
  */
-interface PropertySetter {
+internal interface PropertySetter {
 
     fun <T> setFloat(target: T, property: FloatProperty<T>, value: Float)
 

@@ -17,7 +17,7 @@ import com.asyncanimator.util.Trace
  * 续行动画 API：[generateContinuationAnim] 从已有 anim 拿 RecordInputInterpolator.inputed
  * 作起点，新对象 timeController 从该 fraction 跑到 1.0。
  */
-class OplusValueAnimator<T>(
+internal class OplusValueAnimator<T>(
     val param: AnimParam,
     private val timeController: TimeControllerObjectAnimator?
 ) : ValueAnimator() {

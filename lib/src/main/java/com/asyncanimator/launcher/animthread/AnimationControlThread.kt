@@ -78,7 +78,7 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
         private val PRIORITY = Process.THREAD_PRIORITY_URGENT_DISPLAY
 
         /** 单例：类加载即创建线程并 start（原厂 ANIM_EXECUTOR 是静态 final，同样随进程常驻）。 */
-        val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        internal val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
             AnimationControlThread()
         }
     }

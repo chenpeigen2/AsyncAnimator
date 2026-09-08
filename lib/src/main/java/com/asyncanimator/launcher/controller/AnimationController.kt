@@ -210,11 +210,11 @@ class AnimationController : DefaultAnimationController() {
         get() = isBetweenTransitionEndAndFinish
 
     companion object {
-        const val APP_TO_OVERVIEW_CONTINUATION_TIME_OUT_DURATION = 100L
-        const val LAND_SPACE_RECENT_ANIM_TIME_OUT_DURATION = 2500L
-        const val RECENT_ANIM_FINISH_TIME_OUT_DURATION = 1500L
-        const val REMOTE_ANIM_CONFIG_CHANGE_TIME_OUT_DURATION = 1500L
-        const val SPLIT_SCREEN_RECENT_ANIM_TIME_OUT_DURATION = 1500L
-        const val RELEASE_TOUCH_DELAY = 600L
+        internal const val APP_TO_OVERVIEW_CONTINUATION_TIME_OUT_DURATION = 100L
+        internal const val LAND_SPACE_RECENT_ANIM_TIME_OUT_DURATION = 2500L
+        internal const val RECENT_ANIM_FINISH_TIME_OUT_DURATION = 1500L
+        internal const val REMOTE_ANIM_CONFIG_CHANGE_TIME_OUT_DURATION = 1500L
+        internal const val SPLIT_SCREEN_RECENT_ANIM_TIME_OUT_DURATION = 1500L
+        internal const val RELEASE_TOUCH_DELAY = 600L
     }
 }

@@ -89,9 +89,9 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
     }
 
     companion object {
-        const val MAX_DELAY_TIME = 500L
-        const val MAX_GO_NORMAL_DELAY_TIME = 200L
-        const val MAX_INTERCEPT_GESTURE_DELAY_TIME = 300L
+        internal const val MAX_DELAY_TIME = 500L
+        internal const val MAX_GO_NORMAL_DELAY_TIME = 200L
+        internal const val MAX_INTERCEPT_GESTURE_DELAY_TIME = 300L
 
         private const val MSG_EXC_RUNNABLE = 1
         private const val KEY_INTERRUPT_TRANSITION_START_ACTIVITY_SEQ_ID =

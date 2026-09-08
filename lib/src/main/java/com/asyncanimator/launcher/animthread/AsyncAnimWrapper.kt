@@ -33,7 +33,7 @@ import com.asyncanimator.launcher.async.Executors
  * 注意 `execute()` 的语义（见 [com.asyncanimator.launcher.async.LooperExecutor]）：
  * 当前线程已是目标线程时直接 run，否则 post —— 所以"已在动画线程上"不会多跳一帧。
  */
-open class AsyncAnimWrapper {
+internal open class AsyncAnimWrapper {
 
     /** 投递到独立动画线程（"launcher.anim"）执行。 */
     fun runOnAnimThread(task: Runnable?) {

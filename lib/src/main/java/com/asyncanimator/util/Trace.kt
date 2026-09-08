@@ -12,22 +12,22 @@ object Trace {
 
     private val STACK: java.util.Deque<String> = java.util.ArrayDeque()
 
-    fun traceBegin(tag: Long, name: String) {
+    internal fun traceBegin(tag: Long, name: String) {
         val tagStr = "[$tag] $name"
         STACK.push(tagStr)
         log(">>> $tagStr")
     }
 
-    fun traceEnd(tag: Long) {
+    internal fun traceEnd(tag: Long) {
         if (STACK.isNotEmpty()) {
             val name = STACK.pop()
             log("<<< $name")
         }
     }
 
-    val depth: Int get() = STACK.size
+    internal val depth: Int get() = STACK.size
 
-    fun clear() = STACK.clear()
+    internal fun clear() = STACK.clear()
 
     private fun log(msg: String) {
         // 测试时可重定向 System.err

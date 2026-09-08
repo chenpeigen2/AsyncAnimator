@@ -11,7 +11,7 @@ import android.animation.Animator
  *  - end 路径上若 cancelled=true 则不触发 onAnimationSuccess
  *  - 业务只 override [onAnimationSuccess]
  */
-abstract class AnimationSuccessListener : ActualEndAnimListener() {
+internal abstract class AnimationSuccessListener : ActualEndAnimListener() {
 
     override fun onAnimationCancel(animator: Animator) {
         super.onAnimationCancel(animator)

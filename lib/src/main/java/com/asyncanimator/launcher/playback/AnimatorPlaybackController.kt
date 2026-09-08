@@ -19,7 +19,7 @@ import com.asyncanimator.launcher.pending.AnimationSuccessListener
  *  - reverse / setPlayFraction 只需修改主时钟
  *  - [ProgressMapper] 提供"全局进度→子动画进度"的策略钩子
  */
-class AnimatorPlaybackController(
+internal class AnimatorPlaybackController(
     anim: Animator,
     private val duration: Long,
     holders: List<Holder>

@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong
  * Choreographer 无订阅者时不再订阅 VSYNC），下次 `addAnimationFrameCallback`
  * 会重新 start。
  */
-class HandlerTickScheduler(
+internal class HandlerTickScheduler(
     private val handler: Handler?,
     override val frameIntervalMs: Long = 16 // 默认 60Hz
 ) : TickScheduler {

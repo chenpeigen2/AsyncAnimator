@@ -22,7 +22,7 @@ import java.util.function.Consumer
  *  - `progressAnimator` 是辅助 ValueAnimator，挂 onEndListener / onFrameListener
  *  - [buildAnim] 把 progressAnimator 合并到顶层 AnimatorSet，[createPlaybackController] 包装成 APC
  */
-class PendingAnimation(duration: Long) : PropertySetter {
+internal class PendingAnimation(duration: Long) : PropertySetter {
 
     private val anim = AnimatorSet()
     private val animHolders = ArrayList<AnimatorPlaybackController.Holder>()

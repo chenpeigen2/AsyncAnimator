@@ -13,7 +13,7 @@ import java.util.function.Consumer
  *  - [forEndCallback]（Consumer）— 区分 success (true) / cancel (false)
  *  - [forSuccessCallback] — 仅 success 触发
  */
-object AnimatorListeners {
+internal object AnimatorListeners {
 
     fun forEndCallback(r: Runnable?): Animator.AnimatorListener =
         object : AnimatorListenerAdapter() {

@@ -20,7 +20,7 @@ object AnimSeqTimeStamp {
     @Volatile
     private var lastLaunchTaskTime = 0L
 
-    fun updateLastStartAppTime() {
+    internal fun updateLastStartAppTime() {
         lastStartAppTime = System.currentTimeMillis()
     }
 
@@ -28,35 +28,35 @@ object AnimSeqTimeStamp {
         lastRecentFinishTime = System.currentTimeMillis()
     }
 
-    fun updateLastRecentStartTime() {
+    internal fun updateLastRecentStartTime() {
         lastRecentStartTime = System.currentTimeMillis()
     }
 
-    fun updateLastLaunchTaskTime() {
+    internal fun updateLastLaunchTaskTime() {
         lastLaunchTaskTime = System.currentTimeMillis()
     }
 
-    fun resetLastStartAppTime() {
+    internal fun resetLastStartAppTime() {
         lastStartAppTime = 0
     }
 
     /** 测试辅助：复位全部时间戳（全局静态状态，测试间互相污染）。 */
-    fun resetAllForTest() {
+    internal fun resetAllForTest() {
         lastStartAppTime = 0
         lastRecentFinishTime = 0
         lastRecentStartTime = 0
         lastLaunchTaskTime = 0
     }
 
-    val timeGapToLastStartAppTime: Long
+    internal val timeGapToLastStartAppTime: Long
         get() = if (lastStartAppTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastStartAppTime
 
-    val timeGapToLastRecentFinishTime: Long
+    internal val timeGapToLastRecentFinishTime: Long
         get() = if (lastRecentFinishTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastRecentFinishTime
 
-    val timeGapToLastRecentStartTime: Long
+    internal val timeGapToLastRecentStartTime: Long
         get() = if (lastRecentStartTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastRecentStartTime
 
-    val timeGapToLastLaunchTaskTime: Long
+    internal val timeGapToLastLaunchTaskTime: Long
         get() = if (lastLaunchTaskTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastLaunchTaskTime
 }

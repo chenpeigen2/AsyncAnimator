@@ -38,13 +38,13 @@ object OplusAnimManager {
     val animController: DefaultAnimationController
         get() = animationControllerImpl ?: DefaultAnimationController()
 
-    val animationSeqHelper: DefaultAnimationSeqHelper
+    internal val animationSeqHelper: DefaultAnimationSeqHelper
         get() = animationSeqHelperImpl ?: DefaultAnimationSeqHelper()
 
-    val featureHelper: AnimationFeatureHelper
+    internal val featureHelper: AnimationFeatureHelper
         get() = AnimationFeatureHelper
 
-    fun cleanUpRecentsAnimation() {
+    internal fun cleanUpRecentsAnimation() {
         animationControllerImpl?.cleanUpRecentsAnim()
     }
 

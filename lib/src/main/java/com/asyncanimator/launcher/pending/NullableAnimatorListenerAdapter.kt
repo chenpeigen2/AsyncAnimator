@@ -14,7 +14,7 @@ open class NullableAnimatorListenerAdapter : AnimatorListenerAdapter(), Nullable
     /** cancel 路径置位，end 时据此区分 success/cancel（见 [AnimationSuccessListener]）。 */
     protected var cancelled = false
 
-    var animationId = -1
+    internal var animationId = -1
 
     override fun onAnimationCancel(animator: Animator) {
         cancelled = true

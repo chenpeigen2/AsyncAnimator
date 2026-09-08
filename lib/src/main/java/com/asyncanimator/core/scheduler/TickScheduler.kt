@@ -13,7 +13,7 @@ package com.asyncanimator.core.scheduler
  *  - [ScheduledTickScheduler] — JVM 实现，用 ScheduledExecutorService 驱动帧
  *  - [com.asyncanimator.launcher.animthread.HandlerTickScheduler] — 绑定 Looper 的实现
  */
-interface TickScheduler {
+internal interface TickScheduler {
 
     /** 注册帧回调。下一次 tick 时 callback.doFrame(frameTimeNanos) 会被调用。 */
     fun postFrameCallback(callback: FrameCallback?)

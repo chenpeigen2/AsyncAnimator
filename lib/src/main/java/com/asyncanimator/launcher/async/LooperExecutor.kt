@@ -13,7 +13,7 @@ package com.asyncanimator.launcher.async
  *    `AnimExecutors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler；
  *    仅 JVM 单测兜底为就地执行）
  */
-class LooperExecutor(val handler: Handler?) {
+class LooperExecutor(private val handler: Handler?) {
 
     /** 简化版 Handler 契约。 */
     interface Handler {
@@ -27,14 +27,14 @@ class LooperExecutor(val handler: Handler?) {
         fun thread(): Thread
     }
 
-    val looper: Looper? get() = handler?.looper
+    internal val looper: Looper? get() = handler?.looper
 
-    val thread: Thread? get() = handler?.looper?.thread()
+    internal val thread: Thread? get() = handler?.looper?.thread()
 
-    val isCurrentThread: Boolean
+    internal val isCurrentThread: Boolean
         get() = looper?.let { it.thread() === Thread.currentThread() } ?: false
 
-    fun execute(runnable: Runnable?) {
+    internal fun execute(runnable: Runnable?) {
         if (runnable == null) return
         if (isCurrentThread) {
             runnable.run()
@@ -43,11 +43,11 @@ class LooperExecutor(val handler: Handler?) {
         }
     }
 
-    fun post(runnable: Runnable) {
+    internal fun post(runnable: Runnable) {
         handler?.post(runnable)
     }
 
-    fun postDelayed(runnable: Runnable, delayMs: Long) {
+    internal fun postDelayed(runnable: Runnable, delayMs: Long) {
         handler?.postDelayed(runnable, delayMs)
     }
 }
