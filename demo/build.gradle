@@ -6,13 +6,12 @@ plugins {
 
 android {
     namespace 'com.asyncanimator.demo'
-    compileSdk 36
-    buildToolsVersion '36.0.0'
+    compileSdk 37
 
     defaultConfig {
         applicationId 'com.asyncanimator.demo'
-        minSdk 26
-        targetSdk 36
+        minSdk 36
+        targetSdk 37
         versionCode 1
         versionName '1.0'
     }

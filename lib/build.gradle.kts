@@ -6,12 +6,10 @@ plugins {
 
 android {
     namespace = "com.asyncanimator"
-    compileSdk = 36
-    buildToolsVersion = "36.0.0"
+    compileSdk = 37
 
     defaultConfig {
-        minSdk = 26
-        targetSdk = 36
+        minSdk = 36
         consumerProguardFiles("consumer-rules.pro")
     }
 
