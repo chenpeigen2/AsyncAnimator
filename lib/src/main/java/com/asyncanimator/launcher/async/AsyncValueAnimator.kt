@@ -26,37 +26,29 @@ class AsyncValueAnimator : ValueAnimator() {
     init {
         addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationCancel(a: Animator) {
-                if (isEnd.get()) return
-                asyncAnimCallbacks.onAnimationCancel(a)
+                if (!isEnd.get()) asyncAnimCallbacks.onAnimationCancel(a)
             }
 
             override fun onAnimationEnd(a: Animator) {
-                if (isEnd.compareAndSet(false, true)) {
-                    asyncAnimCallbacks.onAnimationEnd(a)
-                }
+                if (isEnd.compareAndSet(false, true)) asyncAnimCallbacks.onAnimationEnd(a)
             }
 
             override fun onAnimationStart(a: Animator) {
-                if (isEnd.get()) return
-                asyncAnimCallbacks.onAnimationStart(a)
+                if (!isEnd.get()) asyncAnimCallbacks.onAnimationStart(a)
             }
         })
     }
 
     private val isCurrentExecutor: Boolean get() = executor.isCurrentThread
 
-    override fun start() {
-        if (isCurrentExecutor) super.start()
-        else executor.execute { super@AsyncValueAnimator.start() }
+    /** 当前线程已在目标 Looper 上就直接执行，否则 marshal 过去。 */
+    private inline fun marshal(crossinline action: () -> Unit) {
+        if (isCurrentExecutor) action() else executor.execute { action() }
     }
 
-    override fun cancel() {
-        if (isCurrentExecutor) super.cancel()
-        else executor.execute { super@AsyncValueAnimator.cancel() }
-    }
+    override fun start() = marshal { super@AsyncValueAnimator.start() }
 
-    override fun end() {
-        if (isCurrentExecutor) super.end()
-        else executor.execute { super@AsyncValueAnimator.end() }
-    }
+    override fun cancel() = marshal { super@AsyncValueAnimator.cancel() }
+
+    override fun end() = marshal { super@AsyncValueAnimator.end() }
 }

@@ -84,12 +84,9 @@ internal class HandlerTickScheduler(
         val count = frameCountAtomic.incrementAndGet()
         val t = SystemClock.uptimeNanos()
         frameTimeNanosAtomic.set(t)
+        // runCatching 做异常隔离（对齐 ScheduledTickScheduler 行为）
         for (cb in callbacks.toTypedArray()) {
-            try {
-                cb.doFrame(t)
-            } catch (ignored: Throwable) {
-                // 单个 callback 抛异常不连累其他（对齐 ScheduledTickScheduler 行为）
-            }
+            runCatching { cb.doFrame(t) }
         }
         if (count < 0) {
             frameCountAtomic.set(0)

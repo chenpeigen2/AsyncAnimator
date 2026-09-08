@@ -7,6 +7,9 @@ import android.util.FloatProperty
 import com.asyncanimator.launcher.pending.PendingAnimation
 import com.asyncanimator.util.Trace
 
+/** 把当前动画值应用到 target 的回调。 */
+internal typealias ValueApplicator = (value: Any?) -> Unit
+
 /**
  * OplusValueAnimator — timeController 委托模式 + 续行动画。
  *
@@ -22,10 +25,6 @@ internal class OplusValueAnimator<T>(
     private val timeController: TimeControllerObjectAnimator?
 ) : ValueAnimator() {
 
-    fun interface ValueApplicator {
-        fun applyValue(value: Any?)
-    }
-
     constructor() : this(AnimParam(), null)
 
     private var animatorEnded = false
@@ -34,7 +33,7 @@ internal class OplusValueAnimator<T>(
         param.interpolator?.let { super.setInterpolator(it) }
         // 自监听帧更新，把值应用到 target
         addUpdateListener { a ->
-            param.applicator?.applyValue(a.animatedValue)
+            param.applicator?.invoke(a.animatedValue)
         }
     }
 

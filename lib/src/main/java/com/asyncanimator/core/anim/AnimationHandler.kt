@@ -95,23 +95,15 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         val size = animationCallbacks.size
         for (i in 0 until size) {
             val cb = animationCallbacks[i] ?: continue
-            // 异常隔离：一个动画出错不影响其他
-            try {
-                cb.doAnimationFrame(frameTimeMs)
-            } catch (t: Throwable) {
-                // 类似原版 swallow
-            }
+            // 异常隔离：一个动画出错不影响其他（类似原版 swallow）
+            runCatching { cb.doAnimationFrame(frameTimeMs) }
         }
     }
 
     /** 清理 null 槽。仅当 listDirty=true 才执行（性能优化）。 */
     private fun cleanUpList() {
         if (!listDirty) return
-        for (i in animationCallbacks.indices.reversed()) {
-            if (animationCallbacks[i] == null) {
-                animationCallbacks.removeAt(i)
-            }
-        }
+        animationCallbacks.removeAll { it == null }
         listDirty = false
     }
 
@@ -129,12 +121,8 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
     private class TickSchedulerHolder(private var scheduler: TickScheduler?) {
 
         @Synchronized
-        fun get(): TickScheduler {
-            if (scheduler == null) {
-                scheduler = ScheduledTickScheduler()
-            }
-            return scheduler!!
-        }
+        fun get(): TickScheduler =
+            scheduler ?: ScheduledTickScheduler().also { scheduler = it }
     }
 
     companion object {
@@ -149,13 +137,8 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
         /** 当前线程的 AnimationHandler 单例（测试 hook 优先）。 */
         val instance: AnimationHandler
-            get() {
-                testHandler?.let { return it }
-                if (threadLocalHandler.get() == null) {
-                    threadLocalHandler.set(AnimationHandler(ScheduledTickScheduler()))
-                }
-                return threadLocalHandler.get()!!
-            }
+            get() = testHandler ?: threadLocalHandler.get()
+                ?: AnimationHandler(ScheduledTickScheduler()).also(threadLocalHandler::set)
 
         /**
          * 为当前线程安装自定义 TickScheduler。

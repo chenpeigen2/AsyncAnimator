@@ -7,6 +7,11 @@ import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import com.asyncanimator.launcher.pending.AnimationSuccessListener
 
+/** 全局进度 → 子动画进度的映射策略（默认线性截断）。 */
+internal typealias ProgressMapper = (globalFraction: Float, globalEndProgress: Float) -> Float
+
+private val DEFAULT_PROGRESS_MAPPER: ProgressMapper = { f, g -> if (f > g) 1f else f / g }
+
 /**
  * AnimatorPlaybackController — "主时钟驱动所有子动画"的统一播放控制器。
  *
@@ -14,7 +19,7 @@ import com.asyncanimator.launcher.pending.AnimationSuccessListener
  *
  * 关键设计：
  *
- *  - 内部一个 LINEAR 0..1 主 ValueAnimator（animationPlayer）作为唯一被 Choreographer 驱动的对象
+ *  - 内部一个 LINEAR 0..1 主 ValueAnimator（[animationPlayer]）作为唯一被 Choreographer 驱动的对象
  *  - 所有子动画通过 [Holder] 同步推进（每帧主时钟回调 → Holder.setProgress → 子 anim.setCurrentFraction）
  *  - reverse / setPlayFraction 只需修改主时钟
  *  - [ProgressMapper] 提供"全局进度→子动画进度"的策略钩子
@@ -29,8 +34,9 @@ internal class AnimatorPlaybackController(
     private val childAnimations: Array<Holder>
     private var targetCancelled = false
     private var isDispatchStartPending = false
-    private var cancelAction: Runnable? = null
-    private val endActionMap = HashMap<String, Runnable>()
+
+    var cancelAction: Runnable? = null
+    val endActions = HashMap<String, Runnable>()
 
     var progressFraction = 0f
         private set
@@ -69,35 +75,23 @@ internal class AnimatorPlaybackController(
         val anim: ValueAnimator = animator as ValueAnimator
         val globalEndProgress: Float = animator.duration / totalDuration
         val interpolator: TimeInterpolator? = anim.interpolator
-        var mapper: ProgressMapper = ProgressMapper.DEFAULT
+        var mapper: ProgressMapper = DEFAULT_PROGRESS_MAPPER
         val springProperty: Any? = null // 保留字段（弹簧场景用，本 demo 简化）
 
         fun setProgress(f: Float) {
-            val local = mapper.getProgress(f, globalEndProgress)
-            anim.setCurrentFraction(local)
+            anim.setCurrentFraction(mapper(f, globalEndProgress))
         }
 
         fun reset() {
             anim.interpolator = interpolator
-            mapper = ProgressMapper.DEFAULT
-        }
-    }
-
-    // ──── ProgressMapper ────────────────────────────────
-
-    fun interface ProgressMapper {
-        fun getProgress(globalFraction: Float, globalEndProgress: Float): Float
-
-        companion object {
-            val DEFAULT = ProgressMapper { f, g -> if (f > g) 1f else f / g }
+            mapper = DEFAULT_PROGRESS_MAPPER
         }
     }
 
     // ──── 帧回调 ────────────────────────────────
 
     override fun onAnimationUpdate(animator: ValueAnimator) {
-        val v = animator.animatedValue as? Float
-        if (v != null) setPlayFraction(v)
+        (animator.animatedValue as? Float)?.let(::setPlayFraction)
     }
 
     fun setPlayFraction(f: Float) {
@@ -128,10 +122,8 @@ internal class AnimatorPlaybackController(
         animationPlayer.cancel()
     }
 
-    fun clampDuration(f: Float): Long {
-        val d = (duration * f).toLong()
-        return d.coerceIn(0L, duration)
-    }
+    fun clampDuration(f: Float): Long =
+        (duration * f).toLong().coerceIn(0L, duration)
 
     fun forceFinishIfCloseToEnd() {
         if (animationPlayer.isRunning && animationPlayer.animatedFraction <= 0.95f) return
@@ -148,17 +140,15 @@ internal class AnimatorPlaybackController(
         private var dispatched = false
 
         override fun onAnimationStart(animator: Animator) {
-            this.cancelled = false
-            this.dispatched = false
+            cancelled = false
+            dispatched = false
         }
 
         override fun onAnimationSuccess(animator: Animator) {
             if (dispatched) return
             dispatchOnEnd()
-            if (endActionMap.isNotEmpty()) {
-                for (r in endActionMap.values) r.run()
-                endActionMap.clear()
-            }
+            endActions.values.forEach(Runnable::run)
+            endActions.clear()
             dispatched = true
         }
 
@@ -168,60 +158,35 @@ internal class AnimatorPlaybackController(
         }
     }
 
+    private inline fun dispatchToListeners(
+        action: Animator.AnimatorListener.(Animator) -> Unit
+    ): AnimatorPlaybackController = apply {
+        for (a in anims) a.listeners.orEmpty().forEach { it.action(a) }
+    }
+
     fun dispatchOnStart(): AnimatorPlaybackController {
-        for (a in anims) {
-            for (l in a.listeners.orEmpty()) {
-                l.onAnimationStart(a)
-            }
-        }
+        dispatchToListeners(Animator.AnimatorListener::onAnimationStart)
         isDispatchStartPending = true
         return this
     }
 
-    fun dispatchOnEnd(): AnimatorPlaybackController {
-        for (a in anims) {
-            for (l in a.listeners.orEmpty()) {
-                l.onAnimationEnd(a)
-            }
-        }
-        return this
-    }
+    fun dispatchOnEnd() = dispatchToListeners(Animator.AnimatorListener::onAnimationEnd)
 
-    fun dispatchOnCancel(): AnimatorPlaybackController {
-        for (a in anims) {
-            for (l in a.listeners.orEmpty()) {
-                l.onAnimationCancel(a)
-            }
-        }
-        return this
-    }
-
-    fun setCancelAction(r: Runnable?) {
-        cancelAction = r
-    }
-
-    fun setEndAction(key: String, r: Runnable) {
-        endActionMap[key] = r
-    }
+    fun dispatchOnCancel() = dispatchToListeners(Animator.AnimatorListener::onAnimationCancel)
 
     companion object {
 
         /** 静态工厂：从 AnimatorSet 构造，递归收集所有 ValueAnimator 子动画。 */
         fun wrap(set: AnimatorSet, duration: Long): AnimatorPlaybackController {
-            val list = ArrayList<Holder>()
-            addHoldersRecur(set, duration, list)
-            return AnimatorPlaybackController(set, duration, list)
+            val holders = ArrayList<Holder>()
+            addHoldersRecur(set, duration, holders)
+            return AnimatorPlaybackController(set, duration, holders)
         }
 
-        fun addHoldersRecur(anim: Animator, totalDuration: Long, list: MutableList<Holder>) {
-            if (anim is ValueAnimator) {
-                list.add(Holder(anim, totalDuration.toFloat()))
-                return
-            }
-            if (anim is AnimatorSet) {
-                for (child in anim.childAnimations) {
-                    addHoldersRecur(child, totalDuration, list)
-                }
+        fun addHoldersRecur(anim: Animator, totalDuration: Long, out: MutableList<Holder>) {
+            when (anim) {
+                is ValueAnimator -> out.add(Holder(anim, totalDuration.toFloat()))
+                is AnimatorSet -> anim.childAnimations.forEach { addHoldersRecur(it, totalDuration, out) }
             }
         }
     }

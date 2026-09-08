@@ -20,7 +20,7 @@ import com.asyncanimator.util.Trace
 class AnimationSeqHelper : DefaultAnimationSeqHelper() {
 
     private var seqId = 0L
-    private var delayRunnable: Runnable? = null
+    private var delayAction: (() -> Unit)? = null
 
     /** 懒创建：JVM 单测环境没有主 Looper，构造期不触碰 android.os.Handler。 */
     private var handler: Handler? = null
@@ -33,8 +33,8 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
             handler = Handler(Looper.getMainLooper()) { msg ->
                 if (msg.what == MSG_EXC_RUNNABLE) {
                     Trace.traceBegin(8L, "exc delayRunnable")
-                    delayRunnable?.run()
-                    delayRunnable = null
+                    delayAction?.invoke()
+                    delayAction = null
                     Trace.traceEnd(8L)
                 }
                 true
@@ -57,14 +57,14 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
     override val canInterceptGesture: Boolean
         get() = AnimSeqTimeStamp.timeGapToLastStartAppTime > MAX_INTERCEPT_GESTURE_DELAY_TIME
 
-    override fun delayFinishRecents(r: Runnable?): Boolean {
+    override fun delayFinishRecents(action: (() -> Unit)?): Boolean {
         if (canFinishRecent) {
-            r?.run()
+            action?.invoke()
             return false
         }
         Trace.traceBegin(8L, "delayFinishRecents")
         clearFinishRecentsRunnable()
-        delayRunnable = r
+        delayAction = action
         val delay = MAX_DELAY_TIME - AnimSeqTimeStamp.timeGapToLastRecentFinishTime
         getOrCreateHandler().sendEmptyMessageDelayed(MSG_EXC_RUNNABLE, maxOf(0L, delay))
         Trace.traceEnd(8L)
@@ -73,7 +73,7 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
 
     override fun clearFinishRecentsRunnable() {
         handler?.removeMessages(MSG_EXC_RUNNABLE)
-        delayRunnable = null
+        delayAction = null
     }
 
     override fun updateNextFinishSeqIdIfNeed(recentsController: Any?) {

@@ -48,15 +48,14 @@ object AnimSeqTimeStamp {
         lastLaunchTaskTime = 0
     }
 
-    internal val timeGapToLastStartAppTime: Long
-        get() = if (lastStartAppTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastStartAppTime
+    private fun gapTo(timestamp: Long): Long =
+        if (timestamp == 0L) Long.MAX_VALUE else System.currentTimeMillis() - timestamp
 
-    internal val timeGapToLastRecentFinishTime: Long
-        get() = if (lastRecentFinishTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastRecentFinishTime
+    internal val timeGapToLastStartAppTime: Long get() = gapTo(lastStartAppTime)
 
-    internal val timeGapToLastRecentStartTime: Long
-        get() = if (lastRecentStartTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastRecentStartTime
+    internal val timeGapToLastRecentFinishTime: Long get() = gapTo(lastRecentFinishTime)
 
-    internal val timeGapToLastLaunchTaskTime: Long
-        get() = if (lastLaunchTaskTime == 0L) Long.MAX_VALUE else System.currentTimeMillis() - lastLaunchTaskTime
+    internal val timeGapToLastRecentStartTime: Long get() = gapTo(lastRecentStartTime)
+
+    internal val timeGapToLastLaunchTaskTime: Long get() = gapTo(lastLaunchTaskTime)
 }

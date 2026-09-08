@@ -23,7 +23,6 @@ class AnimationController : DefaultAnimationController() {
     private val recentsAnims = ArrayList<CustomRectFSpringAnim>()
     private val appLaunchAnims = ArrayList<RemoteAnimationFactory>()
     private val removeTasksMaps = LinkedHashMap<Any, Any>()
-    private var currentAnim: CustomRectFSpringAnim? = null
 
     @Volatile
     private var runningTaskInfo: Any? = null
@@ -33,10 +32,7 @@ class AnimationController : DefaultAnimationController() {
     private var isNavModeLandScapeOnAppExit = false
     private var isBetweenAppExitTransitionEndAndFinish = false
     private var isBetweenTransitionEndAndFinish = false
-    private var mIsCloseWidgetRemoteAnim = false
     private var onceGestureProcessingFlag = false
-    private var mForbidSwipeUpWhileStartingLandApp = false
-    private var mSwipingUpActivityPkg: String? = null
 
     var specialSceneExitTimeOutListener: TaskStateChangeTimeOutListener? = null
         private set
@@ -64,7 +60,6 @@ class AnimationController : DefaultAnimationController() {
     // ──── Recents 动画管理 ────────────────────────────────
 
     override fun addRecentsAnim(anim: CustomRectFSpringAnim, recentsController: Any?, targets: Array<out Any?>?) {
-        currentAnim = null
         recentsAnims.add(anim)
         when (animState) {
             AnimationState.NONE, AnimationState.REVERSE_OPEN,
@@ -124,38 +119,39 @@ class AnimationController : DefaultAnimationController() {
 
     // ──── 三种超时 listener（独立运行） ─────────────────────────
 
+    /** 三种超时 listener 的公共骨架：匹配 type → 执行挂起的 startActivity → 清理本场景状态。 */
+    private fun timeoutListener(expected: TaskStateChangeTimeOutListener.Type,
+                                clearState: () -> Unit = {}): TaskStateChangeTimeOutListener =
+        TaskStateChangeTimeOutListener { type, _ ->
+            if (type == expected) {
+                startActivityRunnable?.run()
+                clearState()
+                startActivityRunnable = null
+            }
+        }
+
     fun registerSpecialSceneExitTimeOutListener(timeoutMs: Long) {
         specialSceneExitTimeOutMaxTime = System.currentTimeMillis() + timeoutMs
-        specialSceneExitTimeOutListener = TaskStateChangeTimeOutListener { type, _ ->
-            if (type == TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT) {
-                startActivityRunnable?.run()
+        specialSceneExitTimeOutListener =
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT) {
                 isLandScapeGesture = false
                 isSplitScreenGesture = false
                 isNavModeLandScapeOnAppExit = false
                 isBetweenAppExitTransitionEndAndFinish = false
-                startActivityRunnable = null
             }
-        }
     }
 
     fun registerTransitionFinishTimeOutListener(timeoutMs: Long) {
-        transitionFinishTimeOutListener = TaskStateChangeTimeOutListener { type, _ ->
-            if (type == TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH) {
-                startActivityRunnable?.run()
+        transitionFinishTimeOutListener =
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH) {
                 isBetweenTransitionEndAndFinish = false
-                startActivityRunnable = null
             }
-        }
     }
 
     fun registerOverviewContinuationTimeOutListener(timeoutMs: Long) {
         overviewContinuationTimeOutMaxTime = System.currentTimeMillis() + timeoutMs
-        overviewContinuationTimeOutListener = TaskStateChangeTimeOutListener { type, _ ->
-            if (type == TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION) {
-                startActivityRunnable?.run()
-                startActivityRunnable = null
-            }
-        }
+        overviewContinuationTimeOutListener =
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION)
     }
 
     override fun setOnAppExit(context: Any?) {

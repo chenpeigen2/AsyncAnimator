@@ -8,7 +8,6 @@ import android.animation.ValueAnimator
 import android.util.FloatProperty
 import com.asyncanimator.launcher.playback.AnimatorPlaybackController
 import com.asyncanimator.launcher.playback.PropertySetter
-import java.util.function.Consumer
 
 /**
  * PendingAnimation — 转场动画的"构建器"。
@@ -26,7 +25,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
 
     private val anim = AnimatorSet()
     private val animHolders = ArrayList<AnimatorPlaybackController.Holder>()
-    private val durationMs: Long = if (duration > 0) duration else 0
+    private val durationMs: Long = duration.coerceAtLeast(0)
     private var progressAnimator: ValueAnimator? = null
     private var controller: AnimatorPlaybackController? = null
 
@@ -40,11 +39,10 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         })
     }
 
-    fun add(child: Animator): PendingAnimation {
+    fun add(child: Animator): PendingAnimation = apply {
         child.duration = durationMs
         anim.playTogether(child)
         addToHolders(child)
-        return this
     }
 
     fun add(child: Animator, ip: TimeInterpolator?): PendingAnimation {
@@ -52,15 +50,12 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         return add(child)
     }
 
-    fun add(child: Animator, ip: TimeInterpolator?, springProperty: Any?): PendingAnimation {
-        child.interpolator = ip
-        return add(child)
-    }
+    fun add(child: Animator, ip: TimeInterpolator?, springProperty: Any?): PendingAnimation =
+        add(child, ip)
 
-    fun addWithoutDuration(child: Animator): PendingAnimation {
+    fun addWithoutDuration(child: Animator): PendingAnimation = apply {
         anim.playTogether(child)
         addToHolders(child)
-        return this
     }
 
     fun <T> addFloat(target: T, property: FloatProperty<T>,
@@ -74,21 +69,16 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         property.setValue(target, value)
     }
 
-    fun addEndListener(consumer: Consumer<Boolean>?): PendingAnimation {
-        if (progressAnimator == null) progressAnimator = ValueAnimator.ofFloat(0f, 1f)
-        progressAnimator!!.addListener(AnimatorListeners.forEndCallback(consumer))
-        return this
+    fun addEndListener(onEnd: ((success: Boolean) -> Unit)?): PendingAnimation = apply {
+        progressAnimator().addListener(AnimatorListeners.forEndCallback(onEnd))
     }
 
-    fun addOnFrameCallback(runnable: Runnable): PendingAnimation {
-        if (progressAnimator == null) progressAnimator = ValueAnimator.ofFloat(0f, 1f)
-        progressAnimator!!.addUpdateListener { runnable.run() }
-        return this
+    fun addOnFrameCallback(onFrame: () -> Unit): PendingAnimation = apply {
+        progressAnimator().addUpdateListener { onFrame() }
     }
 
-    fun addListener(l: Animator.AnimatorListener): PendingAnimation {
+    fun addListener(l: Animator.AnimatorListener): PendingAnimation = apply {
         anim.addListener(l)
-        return this
     }
 
     fun buildAnim(): AnimatorSet {
@@ -102,12 +92,13 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         return anim
     }
 
-    fun createPlaybackController(): AnimatorPlaybackController {
-        if (controller == null) {
-            controller = AnimatorPlaybackController(buildAnim(), durationMs, animHolders)
-        }
-        return controller!!
-    }
+    fun createPlaybackController(): AnimatorPlaybackController =
+        controller ?: AnimatorPlaybackController(buildAnim(), durationMs, animHolders)
+            .also { controller = it }
+
+    /** 懒创建辅助 ValueAnimator（挂 end/frame 回调用）。 */
+    private fun progressAnimator(): ValueAnimator =
+        progressAnimator ?: ValueAnimator.ofFloat(0f, 1f).also { progressAnimator = it }
 
     private fun addToHolders(child: Animator) {
         AnimatorPlaybackController.addHoldersRecur(child, durationMs, animHolders)
@@ -145,9 +136,8 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
             va.addUpdateListener { a ->
                 val f = a.animatedValue as? Float
                 if (f != null && property != null && target != null) {
-                    val v = from + (to - from) * f
                     @Suppress("UNCHECKED_CAST")
-                    (property as FloatProperty<Any?>).setValue(target, v)
+                    (property as FloatProperty<Any?>).setValue(target, from + (to - from) * f)
                 }
             }
             return object : Animator() {

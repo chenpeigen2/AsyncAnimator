@@ -75,13 +75,10 @@ internal class ScheduledTickScheduler(
         val count = frameCountAtomic.incrementAndGet()
         val t = System.nanoTime()
         frameTimeNanosAtomic.set(t)
-        // 快照遍历：避免遍历中 callback 列表被修改
+        // 快照遍历：避免遍历中 callback 列表被修改；
+        // runCatching 做异常隔离（单个 callback 抛异常不连累其他）
         for (cb in callbacks.toTypedArray()) {
-            try {
-                cb.doFrame(t)
-            } catch (t2: Throwable) {
-                // 单个 callback 抛异常不连累其他；典型情况：动画已 cancel 但仍被 fire
-            }
+            runCatching { cb.doFrame(t) }
         }
         if (count < 0) {
             // 极少见：long 溢出，重置

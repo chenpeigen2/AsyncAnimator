@@ -1,5 +1,7 @@
 package com.asyncanimator.launcher.async
 
+import android.os.Handler
+
 /**
  * LooperExecutor — 跨线程 Executor 封装。
  *
@@ -10,44 +12,36 @@ package com.asyncanimator.launcher.async
  *
  *  - 同一线程：直接 `runnable.run()`
  *  - 不同线程：用 Handler.post 投递（[Executors.MAIN_EXECUTOR] 与
- *    `AnimExecutors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler；
- *    仅 JVM 单测兜底为就地执行）
+ *    `AnimExecutors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler）
+ *
+ * JVM 单测环境下（android stub，returnDefaultValues）拿不到主 Looper，
+ * [handler] 为 null，全部退化为"就地执行"，保证单测可跑。
  */
-class LooperExecutor(private val handler: Handler?) {
+class LooperExecutor internal constructor(private val handler: Handler?) {
 
-    /** 简化版 Handler 契约。 */
-    interface Handler {
-        val looper: Looper?
-        fun post(r: Runnable): Boolean
-        fun postDelayed(r: Runnable, delayMs: Long): Boolean
-    }
+    /** 目标线程。handler 为 null（JVM 单测）时视为"调用方线程"。 */
+    private val thread: Thread?
+        get() = handler?.looper?.thread ?: Thread.currentThread()
 
-    /** 简化版 Looper 契约。demo 模块会用真实 Android Looper 实现。 */
-    fun interface Looper {
-        fun thread(): Thread
-    }
+    val isCurrentThread: Boolean
+        get() = thread === Thread.currentThread()
 
-    internal val looper: Looper? get() = handler?.looper
-
-    internal val thread: Thread? get() = handler?.looper?.thread()
-
-    internal val isCurrentThread: Boolean
-        get() = looper?.let { it.thread() === Thread.currentThread() } ?: false
-
-    internal fun execute(runnable: Runnable?) {
+    fun execute(runnable: Runnable?) {
         if (runnable == null) return
-        if (isCurrentThread) {
+        if (isCurrentThread) runnable.run() else post(runnable)
+    }
+
+    fun post(runnable: Runnable) {
+        handler?.post(runnable) ?: runnable.run()
+    }
+
+    fun postDelayed(runnable: Runnable, delayMs: Long) {
+        handler?.postDelayed(runnable, delayMs) ?: Thread({
+            try {
+                Thread.sleep(delayMs)
+            } catch (ignored: InterruptedException) {
+            }
             runnable.run()
-        } else {
-            handler?.post(runnable)
-        }
-    }
-
-    internal fun post(runnable: Runnable) {
-        handler?.post(runnable)
-    }
-
-    internal fun postDelayed(runnable: Runnable, delayMs: Long) {
-        handler?.postDelayed(runnable, delayMs)
+        }, "AsyncAnimator-Delayed").start()
     }
 }

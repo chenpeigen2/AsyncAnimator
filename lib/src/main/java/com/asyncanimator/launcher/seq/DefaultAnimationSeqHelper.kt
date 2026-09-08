@@ -10,8 +10,8 @@ open class DefaultAnimationSeqHelper {
     open fun addSeqId(bundle: android.os.Bundle?) {}
     open val canFinishRecent: Boolean get() = true
     open val canInterceptGesture: Boolean get() = true
-    open fun delayFinishRecents(r: Runnable?): Boolean {
-        r?.run()
+    open fun delayFinishRecents(action: (() -> Unit)?): Boolean {
+        action?.invoke()
         return false
     }
     open fun clearFinishRecentsRunnable() {}

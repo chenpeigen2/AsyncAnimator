@@ -24,7 +24,7 @@ open class DefaultAnimationController {
 
     open fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) {
         for (l in ArrayList(animStateChangeListeners)) {
-            l.onAnimStateChanged(oldState, newState, runningTask)
+            l(oldState, newState, runningTask)
         }
     }
 

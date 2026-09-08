@@ -30,27 +30,6 @@ import com.asyncanimator.launcher.async.LooperExecutor
  */
 object AnimExecutors {
 
-    /** 独立动画线程执行器：首次加载即拉起 AnimationControlThread（holder 单例）。 */
-    val ANIM_CONTROL_EXECUTOR: LooperExecutor = LooperExecutor(
-        AndroidHandlerAdapter(Handler(AnimationControlThread.instance.looper))
-    )
-
-    /** android.os.Handler → LooperExecutor.Handler 适配。 */
-    private class AndroidHandlerAdapter(
-        private val handler: Handler
-    ) : LooperExecutor.Handler {
-
-        override val looper: LooperExecutor.Looper
-            get() {
-                // 映射到 LooperExecutor.Looper（单成员 thread）；
-                // android.os.Looper.thread 正好返回该线程
-                val l = handler.looper
-                return LooperExecutor.Looper { l.thread }
-            }
-
-        override fun post(r: Runnable): Boolean = handler.post(r)
-
-        override fun postDelayed(r: Runnable, delayMs: Long): Boolean =
-            handler.postDelayed(r, delayMs)
-    }
+    /** 独立动画线程执行器：首次加载即拉起 AnimationControlThread（单例）。 */
+    val ANIM_CONTROL_EXECUTOR = LooperExecutor(Handler(AnimationControlThread.instance.looper))
 }

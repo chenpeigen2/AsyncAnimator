@@ -23,8 +23,7 @@ class AsyncAnimCallbacks {
     internal var animationId = -1
 
     fun addListener(l: NullableAnimatorListener?) {
-        if (l == null || animListeners.contains(l)) return
-        animListeners.add(l)
+        if (l != null && !animListeners.contains(l)) animListeners.add(l)
     }
 
     internal fun removeListener(l: NullableAnimatorListener?) {
@@ -34,45 +33,31 @@ class AsyncAnimCallbacks {
 
     internal fun clearListeners() = animListeners.clear()
 
-    internal fun onAnimationStart(animator: Animator) {
-        Trace.traceBegin(8L, "AsyncAnimStart-$animationId")
-        runOnMainThread {
-            for (l in animListeners) {
-                if (l == null) continue
-                if (l is NullableAnimatorListenerAdapter) l.animationId = animationId
-                l.onAnimationStart(animator)
-            }
-        }
-        Trace.traceEnd(8L)
-    }
+    internal fun onAnimationStart(animator: Animator) =
+        dispatch("AsyncAnimStart-") { it.onAnimationStart(animator) }
 
-    internal fun onAnimationEnd(animator: Animator) {
-        Trace.traceBegin(8L, "AsyncAnimEnd-$animationId")
-        runOnMainThread {
-            for (l in animListeners) {
-                if (l == null) continue
-                if (l is NullableAnimatorListenerAdapter) l.animationId = animationId
-                l.onAnimationEnd(animator)
-            }
-        }
-        Trace.traceEnd(8L)
-    }
+    internal fun onAnimationEnd(animator: Animator) =
+        dispatch("AsyncAnimEnd-") { it.onAnimationEnd(animator) }
 
-    internal fun onAnimationCancel(animator: Animator) {
-        Trace.traceBegin(8L, "AsyncAnimCancel-$animationId")
+    internal fun onAnimationCancel(animator: Animator) =
+        dispatch("AsyncAnimCancel-") { it.onAnimationCancel(animator) }
+
+    /** 打 trace → 回主线程逐个 fire（跳过懒删除的 null 槽，同步 animationId）。 */
+    private fun dispatch(traceTagPrefix: String, action: (NullableAnimatorListener) -> Unit) {
+        Trace.traceBegin(8L, "$traceTagPrefix$animationId")
         runOnMainThread {
             for (l in animListeners) {
                 if (l == null) continue
-                if (l is NullableAnimatorListenerAdapter) l.animationId = animationId
-                l.onAnimationCancel(animator)
+                (l as? NullableAnimatorListenerAdapter)?.animationId = animationId
+                action(l)
             }
         }
         Trace.traceEnd(8L)
     }
 
     /** listener 跨线程派发：marshal 到主线程（兜底）。 */
-    private fun runOnMainThread(r: () -> Unit) {
+    private fun runOnMainThread(action: () -> Unit) {
         val exec = Executors.MAIN_EXECUTOR
-        if (exec.isCurrentThread) r() else exec.post(Runnable(r))
+        if (exec.isCurrentThread) action() else exec.post { action() }
     }
 }
