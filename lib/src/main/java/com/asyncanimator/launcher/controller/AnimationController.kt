@@ -1,6 +1,7 @@
 package com.asyncanimator.launcher.controller
 
 import android.content.Intent
+import android.os.SystemClock
 import com.android.launcher3.LauncherAnimationRunner
 import com.asyncanimator.launcher.async.CustomRectFSpringAnim
 
@@ -64,10 +65,11 @@ class AnimationController : DefaultAnimationController() {
     override fun addRecentsAnim(anim: CustomRectFSpringAnim, recentsController: Any?, targets: Array<out Any?>?) {
         recentsAnims.add(anim)
         when (animState) {
-            AnimationState.NONE, AnimationState.REVERSE_OPEN,
-            AnimationState.WAITING, AnimationState.UNKNOWN ->
+            AnimationState.NONE, AnimationState.OPEN,
+            AnimationState.REVERSE_OPEN, AnimationState.WAITING ->
                 updateAnimState(AnimationState.CLOSE)
-            AnimationState.OPEN, AnimationState.MULTI_WAITING, AnimationState.MULTI_REVERSE_OPEN ->
+            AnimationState.MULTI_OPEN, AnimationState.MULTI_WAITING,
+            AnimationState.MULTI_REVERSE_OPEN ->
                 updateAnimState(AnimationState.MULTI_CLOSE)
             else ->
                 updateAnimState(AnimationState.UNKNOWN)
@@ -87,7 +89,21 @@ class AnimationController : DefaultAnimationController() {
 
     override fun appLaunchAnimStartOrEnd(isEnd: Boolean, factory: RemoteAnimationFactory?,
                                          targets: Array<LauncherAnimationRunner.RemoteAnimationTarget>?) {
-        if (!isEnd) {
+        if (isEnd) {
+            factory?.let { appLaunchAnims.remove(it) }
+            if (appLaunchAnims.isEmpty()) {
+                if (onceGestureProcessingFlag) {
+                    when (animState) {
+                        AnimationState.OPEN -> updateAnimState(AnimationState.WAITING)
+                        AnimationState.MULTI_OPEN -> updateAnimState(AnimationState.MULTI_WAITING)
+                        else -> Unit
+                    }
+                } else {
+                    checkAllAnimationFinished()
+                }
+            }
+        } else {
+            factory?.let { appLaunchAnims.add(it) }
             when (animState) {
                 AnimationState.NONE -> updateAnimState(AnimationState.OPEN)
                 AnimationState.CLOSE, AnimationState.MULTI_CLOSE ->
@@ -97,7 +113,27 @@ class AnimationController : DefaultAnimationController() {
         }
     }
 
+    private fun checkAllAnimationFinished() {
+        if (appLaunchAnims.isEmpty() && recentsAnims.isEmpty()) {
+            recentsAnimFinishCallback?.invoke()
+            appLaunchAnimFinishCallback?.invoke()
+            reset()
+        }
+    }
+
     override fun reset() {
+        recentsAnims.clear()
+        appLaunchAnims.clear()
+        removeTasksMaps.clear()
+        recentsAnimFinishCallback = null
+        appLaunchAnimFinishCallback = null
+        startActivityAction = null
+        onceGestureProcessingFlag = false
+        isLandScapeGesture = false
+        isSplitScreenGesture = false
+        isNavModeLandScapeOnAppExit = false
+        isBetweenAppExitTransitionEndAndFinish = false
+        isBetweenTransitionEndAndFinish = false
         updateAnimState(AnimationState.NONE)
     }
 
@@ -123,19 +159,18 @@ class AnimationController : DefaultAnimationController() {
 
     /** 三种超时 listener 的公共骨架：匹配 type → 执行挂起的 startActivity → 清理本场景状态。 */
     private fun timeoutListener(expected: TaskStateChangeTimeOutListener.Type,
+                                timeoutMs: Long,
                                 clearState: () -> Unit = {}): TaskStateChangeTimeOutListener =
-        TaskStateChangeTimeOutListener { type, _ ->
-            if (type == expected) {
-                startActivityAction?.invoke()
-                clearState()
-                startActivityAction = null
-            }
+        TaskStateChangeTimeOutListener(expected, timeoutMs) {
+            startActivityAction?.invoke()
+            clearState()
+            startActivityAction = null
         }
 
     fun registerSpecialSceneExitTimeOutListener(timeoutMs: Long) {
-        specialSceneExitTimeOutMaxTime = System.currentTimeMillis() + timeoutMs
+        specialSceneExitTimeOutMaxTime = SystemClock.uptimeMillis() + timeoutMs
         specialSceneExitTimeOutListener =
-            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT) {
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, timeoutMs) {
                 isLandScapeGesture = false
                 isSplitScreenGesture = false
                 isNavModeLandScapeOnAppExit = false
@@ -145,15 +180,15 @@ class AnimationController : DefaultAnimationController() {
 
     fun registerTransitionFinishTimeOutListener(timeoutMs: Long) {
         transitionFinishTimeOutListener =
-            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH) {
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, timeoutMs) {
                 isBetweenTransitionEndAndFinish = false
             }
     }
 
     fun registerOverviewContinuationTimeOutListener(timeoutMs: Long) {
-        overviewContinuationTimeOutMaxTime = System.currentTimeMillis() + timeoutMs
+        overviewContinuationTimeOutMaxTime = SystemClock.uptimeMillis() + timeoutMs
         overviewContinuationTimeOutListener =
-            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION)
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, timeoutMs)
     }
 
     override fun setOnAppExit(context: Any?) {
@@ -177,27 +212,31 @@ class AnimationController : DefaultAnimationController() {
         startActivityAction = null
         // 第一层：横屏/分屏退出
         if (specialSceneExitTimeOutListener != null) {
-            if (System.currentTimeMillis() > specialSceneExitTimeOutMaxTime) return false
+            if (SystemClock.uptimeMillis() > specialSceneExitTimeOutMaxTime) return false
             if (isLandScapeGesture || isSplitScreenGesture
                 || (isNavModeLandScapeOnAppExit && isBetweenAppExitTransitionEndAndFinish)) {
                 startActivityAction = action
                 return true
             }
-        }
-        // 第二层：特殊应用
-        if (transitionFinishTimeOutListener != null) {
+        } else if (transitionFinishTimeOutListener != null) {
             if (isSplitScreenGesture || call?.invoke() == true) {
                 startActivityAction = action
                 return true
             }
-        }
-        // 第三层：swipe-to-recent 续行
-        if (overviewContinuationTimeOutListener != null) {
-            if (System.currentTimeMillis() < overviewContinuationTimeOutMaxTime) {
+        } else if (overviewContinuationTimeOutListener != null) {
+            if (SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime) {
                 startActivityAction = action
                 return true
             }
         }
+        isBetweenAppExitTransitionEndAndFinish = false
+        isBetweenTransitionEndAndFinish = false
+        specialSceneExitTimeOutListener?.dispose()
+        specialSceneExitTimeOutListener = null
+        transitionFinishTimeOutListener?.dispose()
+        transitionFinishTimeOutListener = null
+        overviewContinuationTimeOutListener?.dispose()
+        overviewContinuationTimeOutListener = null
         return false
     }
 

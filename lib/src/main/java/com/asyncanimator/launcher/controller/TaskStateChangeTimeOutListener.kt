@@ -1,15 +1,19 @@
 package com.asyncanimator.launcher.controller
 
+import android.os.Handler
+import android.os.Looper
+
 /**
- * 任务状态变化超时监听器接口。
+ * TaskStateChangeTimeOutListener - 自管理超时对象（对齐原厂 TaskStateHelper$TaskStateChangeTimeOutListener）。
  *
- * 对应 `docs/review/03-controller-manager-seq.md`。三种 listener 都实现此接口：
- *
- *  - mSpecialSceneExitTimeOutListener（横屏/分屏退出，1500/2500ms）
- *  - mTransitionFinishTimeOutListener（特殊应用，1500ms）
- *  - mOverviewContinuationTimeOutListener（swipe-to-recent 续行，100ms）
+ * 构造即向主线程 Handler postDelayed 一个超时兜底：事件（onTimeOut 匹配）或超时任一先到，
+ * 都执行一次 option 并 dispose。防止 startActivity 在事件丢失时永久挂起。
  */
-fun interface TaskStateChangeTimeOutListener {
+class TaskStateChangeTimeOutListener(
+    private val type: Type,
+    duration: Long,
+    private val option: () -> Unit
+) {
 
     enum class Type {
         ON_LAND_SCAPE_SCENE_EXIT,
@@ -17,5 +21,31 @@ fun interface TaskStateChangeTimeOutListener {
         ON_APP_TO_OVERVIEW_CONTINUATION
     }
 
-    fun onTimeOut(type: Type, duration: Long)
+    private val handler: Handler? = mainLooper()?.let(::Handler)
+    private val timeOutOption = Runnable {
+        dispose()
+        option()
+    }
+
+    init {
+        handler?.postDelayed(timeOutOption, duration)
+    }
+
+    fun onTimeOut(type: Type, duration: Long) {
+        if (type == this.type) {
+            dispose()
+            option()
+        }
+    }
+
+    fun dispose() {
+        handler?.removeCallbacks(timeOutOption)
+    }
+
+    private fun mainLooper(): Looper? =
+        try {
+            Looper.getMainLooper()
+        } catch (t: Throwable) {
+            null // JVM 单测无 android runtime
+        }
 }

@@ -25,7 +25,8 @@ import com.asyncanimator.core.anim.AnimationHandler
  *
  * 两个要点必须一起看，这才是方案能成立的原因：
  *
- *  1. **线程**：优先级 -19（`THREAD_PRIORITY_DISPLAY - 17`，比 URGENT_DISPLAY 更激进），
+ *  1. **线程**：优先级字面量 -19（数值上等于 `THREAD_PRIORITY_URGENT_AUDIO`，
+ *     比 `THREAD_PRIORITY_URGENT_DISPLAY`(-8) 更激进），
  *     并通过 LauncherBooster 注册为 UX 线程（提权 / 绑大核，OPPO 私有）；
  *  2. **帧源**：在该线程的 `android.animation.AnimationHandler`（平台隐藏类，ThreadLocal）
  *     上装 `SfVsyncFrameCallbackProvider` —— 直接吃 SurfaceFlinger 的 VSYNC，
@@ -36,7 +37,8 @@ import com.asyncanimator.core.anim.AnimationHandler
  *  - `SfVsyncFrameCallbackProvider`、`AnimationHandler.setProvider`、`LauncherBooster`
  *    都是 hidden/私有，这里用 [HandlerTickScheduler]（绑本线程 Looper 的 postDelayed 帧循环）
  *    等价替代，并保留 [onLooperPrepared] 作为"线程 init 回调"的落点；
- *  - 优先级用 [Process.THREAD_PRIORITY_DISPLAY] - 17 还原 -19 这个数值。
+ *  - 优先级按原厂字面量 -19 直接设置（见 [PRIORITY]；不使用 SDK 常量，
+ *    因为没有一个公开常量等于 -19）。
  *
  * 线程安全模型（对齐原厂）：动画参数 volatile/Atomic；View 与 listener 回主线程
  * （`AsyncAnimWrapper.runOnMainThread` / AsyncAnimCallbacks）；
@@ -75,8 +77,12 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
         /** 原厂线程名，便于在 systrace / logcat 上对照。 */
         const val THREAD_NAME = "launcher.anim"
 
-        /** 原厂优先级：-19（见 OplusExecutors.java:95），即 THREAD_PRIORITY_URGENT_DISPLAY。 */
-        private val PRIORITY = Process.THREAD_PRIORITY_URGENT_DISPLAY
+        /**
+         * 原厂优先级：字面量 -19（OplusExecutors.java:95 `createAndStartNewLooper("launcher.anim", -19, …)`）。
+         * 数值上等于 `Process.THREAD_PRIORITY_URGENT_AUDIO`；
+         * 注意不是 `THREAD_PRIORITY_URGENT_DISPLAY`（后者是 -8，曾是本库的 bug，见 review 01 §②C-1）。
+         */
+        private const val PRIORITY = -19
 
         /** 单例：类加载即创建线程并 start（原厂 ANIM_EXECUTOR 是静态 final，同样随进程常驻）。 */
         internal val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {

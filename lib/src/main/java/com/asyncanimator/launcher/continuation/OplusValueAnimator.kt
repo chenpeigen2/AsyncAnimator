@@ -4,6 +4,7 @@ import android.animation.Animator
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import android.util.FloatProperty
+import android.view.animation.LinearInterpolator
 import com.asyncanimator.launcher.pending.PendingAnimation
 import com.asyncanimator.util.Trace
 
@@ -40,6 +41,11 @@ internal class OplusValueAnimator<T>(
     override fun setCurrentFraction(f: Float) {
         super.setCurrentFraction(f)
         param.currentFraction = f
+    }
+
+    override fun setInterpolator(i: TimeInterpolator?) {
+        super.setInterpolator(i)
+        param.interpolator = i
     }
 
     // ──── 委托给 timeController ──────────────────────────────────
@@ -91,10 +97,9 @@ internal class OplusValueAnimator<T>(
 
     open class TimeControllerObjectAnimator : PendingAnimation.ObjectAnimator(null, null, 0f, 1f) {
 
-        fun setProperty(prop: FloatProperty<*>?): TimeControllerObjectAnimator = apply {
-            // 把 prop 当作"内部 property"；setValue 走 FloatProperty 协议
-            // 实际值 = 0..1，由 timeController 推进
-        }
+        private var target: OplusValueAnimator<*>? = null
+
+        fun setProperty(prop: FloatProperty<*>?): TimeControllerObjectAnimator = this
 
         override fun setFloatValues(vararg values: Float): TimeControllerObjectAnimator = apply {
             super.setFloatValues(*values)
@@ -104,8 +109,11 @@ internal class OplusValueAnimator<T>(
             super.setDuration(duration)
         }
 
-        fun setTarget(target: OplusValueAnimator<*>?) {
-            // 实际应用由 lambda 处理
+        fun setTarget(target: OplusValueAnimator<*>?): TimeControllerObjectAnimator = apply {
+            this.target = target
+            addUpdateListener { a ->
+                (a.animatedValue as? Float)?.let { target?.setCurrentFraction(it) }
+            }
         }
     }
 
@@ -134,9 +142,10 @@ internal class OplusValueAnimator<T>(
             }
             // 新 timeController 驱动 CURRENT_FRACTION
             val timeController = TimeControllerObjectAnimator()
-            val newAnim = OplusValueAnimator<T>(anim.param, timeController)
+            val newAnim = OplusValueAnimator<T>(anim.param.copy(), timeController)
             timeController.setTarget(newAnim)
             timeController.setProperty(CURRENT_FRACTION)
+            timeController.setInterpolator(LinearInterpolator())
             timeController.setFloatValues(f, 1f)
             if (durationMs > 0) timeController.setDuration(durationMs)
             Trace.traceBegin(8L, "Continuation-$f")

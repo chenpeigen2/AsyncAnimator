@@ -15,6 +15,7 @@ core/anim (internal)             AnimationHandler                         ← Th
 launcher/animthread              AnimationControlThread / AnimExecutors   ← "launcher.anim" 独立线程
 launcher/async                   LooperExecutor / Executors               ← 跨 Looper 执行器
                                  AsyncValueAnimator / AsyncAnimCallbacks  ← 跨线程安全动画
+                                 ActualEndAnimListener                    ← "物理帧播完"回调基类（双轨结束）
                                  CustomRectFSpringAnim                    ← 转场动画句柄
 launcher/pending (internal)      PendingAnimation / NullableAnimatorListener* / AnimatorListeners
 launcher/playback (internal)     AnimatorPlaybackController / Interpolators / PropertySetter
@@ -69,14 +70,30 @@ anim.start() // 任意线程调用都安全
 fun addListener(l: NullableAnimatorListener?)
 ```
 
-懒删除（remove 置 null 槽）、add 去重、派发前把 `animationId` 同步进 adapter —— 这些均为 internal 实现细节。
+对齐原厂的派发语义（均为 internal 实现细节）：懒删除（remove 置 null 槽）、add 去重、
+派发前把 `animationId` 同步进 adapter、**快照迭代**（派发前压缩 null 槽 + 拷贝，
+消除跨线程并发 add/remove 的 CME 窗口）、**异步消息投递**（`Message.setAsynchronous(true)`，
+sync-barrier 期间不阻塞）、**双轨结束**（`onAnimActualEnd` 只派发给 ActualEndAnimListener）。
+
+### ActualEndAnimListener — "物理帧播完"回调基类
+
+对应原厂 `com.android.quickstep.util.animation.ActualEndAnimListener`（review 01 §②-C2）。
+双轨结束语义：`onAnimationEnd` 是逻辑结束（UI 线程即发），`onAnimActualEnd` 是物理结束
+（动画线程帧循环真的停了，cancel/end 都会走到），用于资源清理：
+
+```kotlin
+object : ActualEndAnimListener() {
+    override fun onAnimActualEnd(animator: Animator) { /* 帧循环已停，做清理 */ }
+}
+```
 
 ### LooperExecutor / Executors
 
 对应原厂 `com.oplus.basecommon.thread.LooperExecutor` / `Executors`（review 01）。
 
-`LooperExecutor` 对外只是类型占位（构造器与 `execute`/`post`/`isCurrentThread` 均 internal）；
-业务只使用预定义单例：
+`LooperExecutor` 构造器为 internal；`execute`/`post`/`isCurrentThread` 公开，
+`postAsync` 以异步消息投递（对齐原厂 `Utilities.postAsyncCallback`，可穿透 sync-barrier）。
+业务一般只使用预定义单例：
 
 ```kotlin
 Executors.MAIN_EXECUTOR   // object Executors，绑定主 Looper；JVM 单测下退化为就地执行
@@ -107,7 +124,8 @@ AnimationControlThread.THREAD_NAME   // = "launcher.anim"，systrace/logcat 对�
 ```
 
 单例 `instance` 为 internal：线程随 `AnimExecutors.ANIM_CONTROL_EXECUTOR` 首次加载拉起，
-`onLooperPrepared` 内完成帧源安装（`AnimationHandler.installThreadScheduler`）+ 线程优先级兜底。
+`onLooperPrepared` 内完成帧源安装（`AnimationHandler.installThreadScheduler`）+ 线程优先级兜底
+（优先级字面量 -19，对齐原厂 `OplusExecutors.java:95`）。
 
 ### AnimExecutors
 
@@ -178,15 +196,21 @@ controller.reset()
 
 `(oldState: AnimationState, newState: AnimationState, runningTask: Any?) -> Unit`
 
-### TaskStateChangeTimeOutListener（fun interface）
+### TaskStateChangeTimeOutListener（class，自管理超时）
 
-对应原厂 `TaskStateHelper$TaskStateChangeTimeOutListener`（review 03；原厂是自管理超时对象，
-lib 只保留"type 匹配 → 执行"分发语义）。
+对应原厂 `TaskStateHelper$TaskStateChangeTimeOutListener`（review 03）。构造即向主线程
+Handler `postDelayed` 一个超时兜底：`onTimeOut(type, duration)`（事件）或超时任一先到，
+都会执行一次 option 并 `dispose()`，防止 startActivity 永久挂起。
 
 ```kotlin
-fun interface TaskStateChangeTimeOutListener {
+class TaskStateChangeTimeOutListener(
+    private val type: Type,
+    duration: Long,
+    private val option: () -> Unit
+) {
     enum class Type { ON_LAND_SCAPE_SCENE_EXIT, ON_TRANSITION_FINISH, ON_APP_TO_OVERVIEW_CONTINUATION }
     fun onTimeOut(type: Type, duration: Long)
+    fun dispose()
 }
 ```
 
@@ -301,6 +325,5 @@ lib 内部的动效溯源 trace（输出到 stderr）。demo 不直接调用其�
 - `CustomRectFSpringAnim` 降级为句柄占位（review 04 §2.2-3）
 - `AnimationFeatureHelper` 用本地 setter 模拟 RUS 下发（review 03 §2.2）
 
-**已知语义差异（本次未修，属于后续回移项）**：线程优先级数值、`addRecentsAnim` 转移表两处偏差、
-`forEndCallback` 的 success 判定、续行动画的 timeController 接线等 —— 完整清单见
+**已知语义差异（本次未修，属于后续回移项）**：`addRecentsAnim` 转移表两处偏差、续行动画的 timeController 接线等 —— 完整清单见
 `docs/review/01` ~ `04` 各自的「行为差异风险点」一节。

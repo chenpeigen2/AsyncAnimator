@@ -10,7 +10,7 @@ import android.animation.TimeInterpolator
  */
 internal class RecordInputInterpolator(private val realInterpolator: TimeInterpolator) : TimeInterpolator {
 
-    var inputed = -1f
+    var inputed = 0f
         private set
 
     override fun getInterpolation(input: Float): Float {

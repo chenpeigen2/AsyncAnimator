@@ -1,6 +1,7 @@
 package com.asyncanimator.launcher.async
 
 import android.os.Handler
+import android.os.Message
 
 /**
  * LooperExecutor — 跨线程 Executor 封装。
@@ -33,5 +34,21 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
 
     fun post(action: () -> Unit) {
         if (handler != null) handler.post { action() } else action()
+    }
+
+    /**
+     * 以**异步消息**投递（`Message.setAsynchronous(true)`）：可穿透主线程 sync-barrier，
+     * measure/layout（traversal）期间也能按时执行。
+     *
+     * 对齐原厂 `com/android/launcher3/Utilities.java:631-637` 的 `postAsyncCallback`
+     * （`Message.obtain(handler, r)` + `setAsynchronous(true)` + `sendMessage`），
+     * 原厂 AsyncAnimCallbacks 的 listener 派发走的就是这条路径
+     * （`AsyncAnimCallbacks.java:120, 160`）。普通任务请用 [post]/[execute]。
+     */
+    fun postAsync(action: () -> Unit) {
+        val h = handler ?: return action()
+        val msg = Message.obtain(h) { action() }
+        msg.isAsynchronous = true
+        h.sendMessage(msg)
     }
 }

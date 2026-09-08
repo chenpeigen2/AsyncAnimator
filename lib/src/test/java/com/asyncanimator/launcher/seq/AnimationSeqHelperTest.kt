@@ -24,6 +24,8 @@ class AnimationSeqHelperTest {
     fun resetTimeStamps() {
         // AnimSeqTimeStamp 是全局静态状态，测试间必须复位，否则结果依赖执行顺序
         AnimSeqTimeStamp.resetAllForTest()
+        // JVM stub: SystemClock.uptimeMillis() == 0, use monotonic nanoTime.
+        AnimSeqTimeStamp.clock = { System.nanoTime() / 1_000_000 }
     }
 
     @Test

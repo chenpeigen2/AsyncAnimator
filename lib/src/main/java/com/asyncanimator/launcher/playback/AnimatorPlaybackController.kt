@@ -76,7 +76,7 @@ internal class AnimatorPlaybackController(
         val globalEndProgress: Float = animator.duration / totalDuration
         val interpolator: TimeInterpolator? = anim.interpolator
         var mapper: ProgressMapper = DEFAULT_PROGRESS_MAPPER
-        val springProperty: Any? = null // 保留字段（弹簧场景用，本 demo 简化）
+        val springProperty: Any? = null // 占位字段：SpringProperty / startWithVelocity 弹簧沉降链路按 review ②-保持简化-1 决定不回移，暂无赋值方
 
         fun setProgress(f: Float) {
             anim.setCurrentFraction(mapper(f, globalEndProgress))
@@ -187,6 +187,9 @@ internal class AnimatorPlaybackController(
             when (anim) {
                 is ValueAnimator -> out.add(Holder(anim, totalDuration.toFloat()))
                 is AnimatorSet -> anim.childAnimations.forEach { addHoldersRecur(it, totalDuration, out) }
+                // 原厂抛 RuntimeException（AnimatorPlaybackController.java:168-169）：
+                // 不认识的动画类型显式失败，而不是静默丢弃出 Holder 链
+                else -> throw RuntimeException("Unknown animation type $anim")
             }
         }
     }

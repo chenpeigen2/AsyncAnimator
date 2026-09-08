@@ -46,6 +46,7 @@ internal class ScheduledTickScheduler(
     override fun postFrameCallback(callback: TickScheduler.FrameCallback?) {
         if (callback == null) return
         callbacks.add(callback)
+        if (!running) start()
     }
 
     override fun removeFrameCallback(callback: TickScheduler.FrameCallback?) {
@@ -80,6 +81,9 @@ internal class ScheduledTickScheduler(
         // runCatching 做异常隔离（单个 callback 抛异常不连累其他）
         for (cb in callbacks.toTypedArray()) {
             runCatching { cb.doFrame(t) }
+        }
+        if (callbacks.isEmpty()) {
+            stop()
         }
         if (count < 0) {
             // 极少见：long 溢出，重置

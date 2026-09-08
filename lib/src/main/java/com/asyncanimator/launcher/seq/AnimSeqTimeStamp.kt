@@ -1,5 +1,7 @@
 package com.asyncanimator.launcher.seq
 
+import android.os.SystemClock
+
 /**
  * AnimSeqTimeStamp — 全局时间戳协调（demo 简化版）。
  *
@@ -20,20 +22,24 @@ object AnimSeqTimeStamp {
     @Volatile
     private var lastLaunchTaskTime = 0L
 
+    /** 可注入时钟：生产用 uptimeMillis，JVM 单测可换成 nanoTime 单调源。 */
+    @Volatile
+    var clock: () -> Long = { SystemClock.uptimeMillis() }
+
     internal fun updateLastStartAppTime() {
-        lastStartAppTime = System.currentTimeMillis()
+        lastStartAppTime = clock()
     }
 
     fun updateLastRecentFinishTime() {
-        lastRecentFinishTime = System.currentTimeMillis()
+        lastRecentFinishTime = clock()
     }
 
     internal fun updateLastRecentStartTime() {
-        lastRecentStartTime = System.currentTimeMillis()
+        lastRecentStartTime = clock()
     }
 
     internal fun updateLastLaunchTaskTime() {
-        lastLaunchTaskTime = System.currentTimeMillis()
+        lastLaunchTaskTime = clock()
     }
 
     internal fun resetLastStartAppTime() {
@@ -49,7 +55,7 @@ object AnimSeqTimeStamp {
     }
 
     private fun gapTo(timestamp: Long): Long =
-        if (timestamp == 0L) Long.MAX_VALUE else System.currentTimeMillis() - timestamp
+        if (timestamp == 0L) Long.MAX_VALUE else clock() - timestamp
 
     internal val timeGapToLastStartAppTime: Long get() = gapTo(lastStartAppTime)
 

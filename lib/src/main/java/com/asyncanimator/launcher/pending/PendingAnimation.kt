@@ -10,16 +10,19 @@ import com.asyncanimator.launcher.playback.AnimatorPlaybackController
 import com.asyncanimator.launcher.playback.PropertySetter
 
 /**
- * PendingAnimation — 转场动画的"构建器"。
+ * PendingAnimation — 转场动画的"待组装"层
  *
- * 对应 `docs/review/02-pending-playback.md`。
+ * 对应 `docs/review/02-pending-playback.md`；原厂 `com.android.launcher3.anim.PendingAnimation`。
  *
  * 关键设计：
  *
- *  - 实现 [PropertySetter]（addFloat/setViewAlpha 等），让代码可以在"动画 vs no-op"之间无缝切换
- *  - `add(Animator, TimeInterpolator, springProperty)` 把每个属性动画加到 [animHolders]
- *  - `progressAnimator` 是辅助 ValueAnimator，挂 onEndListener / onFrameListener
- *  - [buildAnim] 把 progressAnimator 合并到顶层 AnimatorSet，[createPlaybackController] 包装成 APC
+ *  - 实现 [PropertySetter] 的动画版：[setFloat]/[addFloat] 把属性动画包成 ObjectAnimator
+ *    加进 AnimatorSet；[PropertySetter.NO_ANIM_PROPERTY_SETTER] 则是 no-op（直接 setValue），
+ *    同一段业务代码可在"动画 vs no-op"之间无缝切换
+ *  - `add(Animator, TimeInterpolator)` 时每个子动画都登记进 [animHolders]
+ *  - `progressAnimator` 是个普通 ValueAnimator，挂 onEndListener / onFrameListener
+ *  - [buildAnim] 把 progressAnimator 走 [add]（时长覆写为 [durationMs]，原厂
+ *    PendingAnimation.java:93-98）并进 AnimatorSet，[createPlaybackController] 再包装成 APC
  */
 internal class PendingAnimation(duration: Long) : PropertySetter {
 
@@ -50,9 +53,6 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         return add(child)
     }
 
-    fun add(child: Animator, ip: TimeInterpolator?, springProperty: Any?): PendingAnimation =
-        add(child, ip)
-
     fun addWithoutDuration(child: Animator): PendingAnimation = apply {
         anim.playTogether(child)
         addToHolders(child)
@@ -65,8 +65,16 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         return add(oa.buildAnimator())
     }
 
-    override fun <T> setFloat(target: T, property: FloatProperty<T>, value: Float) {
-        property.setValue(target, value)
+    /**
+     * 动画版 setFloat（原厂 PendingAnimation.java:127-134）：构造 ObjectAnimator 并 [add]，
+     * 属性为 null 或当前值已等于目标值时短路。no-op 语义见 [PropertySetter] 默认实现。
+     */
+    override fun <T> setFloat(target: T, property: FloatProperty<T>?, value: Float,
+                              interpolator: TimeInterpolator) {
+        if (property == null || property.get(target) == value) return
+        val oa = ObjectAnimator.ofFloat(target, property, property.get(target), value)
+        oa.setInterpolator(interpolator)
+        add(oa.buildAnimator())
     }
 
     fun addEndListener(onEnd: ((success: Boolean) -> Unit)?): PendingAnimation = apply {
@@ -83,7 +91,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
 
     fun buildAnim(): AnimatorSet {
         progressAnimator?.let {
-            addWithoutDuration(it)
+            add(it) // 原厂走 add()（PendingAnimation.java:96），时长覆写为 mDuration
             progressAnimator = null
         }
         if (animHolders.isEmpty()) {
@@ -96,7 +104,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         controller ?: AnimatorPlaybackController(buildAnim(), durationMs, animHolders)
             .also { controller = it }
 
-    /** 懒创建辅助 ValueAnimator（挂 end/frame 回调用）。 */
+    /** 懒建 progress ValueAnimator（挂 end/frame 回调用）。 */
     private fun progressAnimator(): ValueAnimator =
         progressAnimator ?: ValueAnimator.ofFloat(0f, 1f).also { progressAnimator = it }
 
@@ -104,7 +112,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         AnimatorPlaybackController.addHoldersRecur(child, durationMs, animHolders)
     }
 
-    // ──── 简化的 ObjectAnimator ────────────────────────────────
+    // ───────────────── 简化版 ObjectAnimator ─────────────────
 
     open class ObjectAnimator(
         private val target: Any?,
@@ -128,11 +136,17 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         }
 
         /**
-         * 产出一个平台 Animator：内部 va 推进时把 fraction 映射到 from→to 再 setValue。
-         * 平台 Animator 的抽象方法比仿写件多（getStartDelay/setStartDelay/
-         * setDuration/setInterpolator），全部委托给内部 va，保持原包装语义不变。
+         * 返回内部 ValueAnimator 本体：va 推进时把 0..1 的 animatedValue 映射到 from..to
+         * 并 setValue 到 target。
+         *
+         * 必须直接返回 ValueAnimator（而不是包一层匿名 Animator）：原厂这里用平台
+         * android.animation.ObjectAnimator，本身就是 ValueAnimator 子类，能进
+         * AnimatorPlaybackController.addAnimationHoldersRecur 的 Holder 链
+         * （原厂 AnimatorPlaybackController.java:164-166）。此前 lib 返回匿名 Animator，
+         * 会被 Holder 收集静默丢弃，跟手进度驱动不到该属性
+         * （见 docs/review/02-pending-playback.md ③-3）。
          */
-        fun buildAnimator(): Animator {
+        fun buildAnimator(): ValueAnimator {
             va.addUpdateListener { a ->
                 val f = a.animatedValue as? Float
                 if (f != null && property != null && target != null) {
@@ -140,28 +154,21 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
                     (property as FloatProperty<Any?>).setValue(target, from + (to - from) * f)
                 }
             }
-            return object : Animator() {
-                override fun start() = va.start()
-                override fun cancel() = va.cancel()
-                override fun end() = va.end()
-                override fun isRunning(): Boolean = va.isRunning
-                override fun getDuration(): Long = va.duration
-                override fun setDuration(duration: Long): Animator = apply { va.duration = duration }
-                override fun getStartDelay(): Long = va.startDelay
-                override fun setStartDelay(startDelay: Long) { va.startDelay = startDelay }
-                override fun setInterpolator(ip: TimeInterpolator?) { va.interpolator = ip }
-            }
+            return va
         }
 
         val duration: Long get() = va.duration
 
-        // ──── 生命周期委托（TimeControllerObjectAnimator 依赖） ────────
+        // 时间控制类委托（TimeControllerObjectAnimator 等子类用这些直接驱动内部 va）
         fun start() = va.start()
         fun cancel() = va.cancel()
         fun end() = va.end()
         fun pause() = va.pause()
         fun isRunning(): Boolean = va.isRunning
         fun addListener(l: Animator.AnimatorListener) = va.addListener(l)
+        fun addUpdateListener(l: ValueAnimator.AnimatorUpdateListener): ObjectAnimator = apply {
+            va.addUpdateListener(l)
+        }
 
         companion object {
 
