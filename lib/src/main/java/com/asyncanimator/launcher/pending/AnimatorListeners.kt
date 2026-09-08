@@ -6,7 +6,7 @@ import android.animation.AnimatorListenerAdapter
 /**
  * AnimatorListeners — 工厂方法集合。
  *
- * 对应分析文档 §6.3.7。提供三种 listener 工厂：
+ * 对应 `docs/review/02-pending-playback.md`。提供三种 listener 工厂：
  *
  *  - [forEndCallback]（Runnable）— 任何 end 都触发
  *  - [forEndCallback]（函数类型）— 区分 success (true) / cancel (false)
@@ -14,10 +14,10 @@ import android.animation.AnimatorListenerAdapter
  */
 internal object AnimatorListeners {
 
-    fun forEndCallback(onEnd: Runnable?): Animator.AnimatorListener =
+    fun forEndCallback(onEnd: (() -> Unit)?): Animator.AnimatorListener =
         object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animator: Animator) {
-                onEnd?.run()
+                onEnd?.invoke()
             }
         }
 
@@ -36,10 +36,10 @@ internal object AnimatorListeners {
             }
         }
 
-    fun forSuccessCallback(onSuccess: Runnable?): Animator.AnimatorListener =
+    fun forSuccessCallback(onSuccess: (() -> Unit)?): Animator.AnimatorListener =
         object : AnimationSuccessListener() {
             override fun onAnimationSuccess(animator: Animator) {
-                onSuccess?.run()
+                onSuccess?.invoke()
             }
         }
 }

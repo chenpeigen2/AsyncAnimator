@@ -6,7 +6,7 @@ package com.asyncanimator.core.scheduler
  * 设计动机：原始 Android [android.view.Choreographer] 只能在 Android 设备上跑，
  * 本接口抽象出"每帧调用 callback"的本质，让 lib 模块的代码可以在 JVM 里测试。
  *
- * 对应分析文档 §1 / §2 — 平台层 Choreographer + 框架层 AnimationHandler。
+ * 对应 v3 文档 `docs/animation-thread-analysis.md` §1/§2 — 平台层 Choreographer + 框架层 AnimationHandler。
  *
  * 实现类：
  *

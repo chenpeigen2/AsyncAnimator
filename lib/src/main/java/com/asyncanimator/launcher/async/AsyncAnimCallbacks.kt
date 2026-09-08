@@ -8,7 +8,7 @@ import com.asyncanimator.util.Trace
 /**
  * AsyncAnimCallbacks — listener 容器 + 跨线程派发器。
  *
- * 对应分析文档 §6.3.3。业务 listener 在主线程 fire，避免业务代码自己处理线程切换。
+ * 对应 `docs/review/01-async-animthread.md`。业务 listener 在主线程 fire，避免业务代码自己处理线程切换。
  *
  * 配合 [AsyncValueAnimator]：
  *
@@ -18,7 +18,7 @@ import com.asyncanimator.util.Trace
  */
 class AsyncAnimCallbacks {
 
-    private val animListeners = ArrayList<NullableAnimatorListener?>()
+    private val animListeners = mutableListOf<NullableAnimatorListener?>()
 
     internal var animationId = -1
 

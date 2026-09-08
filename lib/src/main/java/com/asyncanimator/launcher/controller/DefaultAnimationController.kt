@@ -7,12 +7,12 @@ import com.asyncanimator.launcher.async.CustomRectFSpringAnim
 /**
  * DefaultAnimationController — AnimationController 的 no-op 基类。
  *
- * 对应分析文档 §6.10。当 feature off 时，OplusAnimManager 返回此基类实例，
+ * 对应 `docs/review/03-controller-manager-seq.md`。当 feature off 时，OplusAnimManager 返回此基类实例，
  * 所有方法都是 no-op，业务调用没有副作用。
  */
 open class DefaultAnimationController {
 
-    private val animStateChangeListeners = ArrayList<OnAnimStateChangeListener>()
+    private val animStateChangeListeners = mutableListOf<OnAnimStateChangeListener>()
 
     fun addOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) {
         if (listener != null) animStateChangeListeners.add(listener)
@@ -23,7 +23,8 @@ open class DefaultAnimationController {
     }
 
     open fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) {
-        for (l in ArrayList(animStateChangeListeners)) {
+        // 快照遍历：允许回调中增删 listener
+        for (l in animStateChangeListeners.toList()) {
             l(oldState, newState, runningTask)
         }
     }
@@ -54,7 +55,7 @@ open class DefaultAnimationController {
     open fun canFinishRecentsAnim(anim: CustomRectFSpringAnim, animationId: Int): Boolean = true
     open fun cleanUpRecentsAnim(): Boolean = true
     open fun delayStartActivityIfNeed(context: Any?, intent: Intent?,
-                                      call: (() -> Boolean)?, runnable: Runnable?): Boolean = false
+                                      call: (() -> Boolean)?, action: (() -> Unit)?): Boolean = false
     open fun enableSwipeUp() {}
     open fun forbidTouch(): Boolean = false
     open fun forceStopAllRecentAnim() {}
@@ -73,12 +74,12 @@ open class DefaultAnimationController {
     open fun updateRunningTask(taskInfo: Any?) {}
 
     /** no-op 存储：基类 feature off 时吞掉赋值、读取恒为 null。 */
-    open var recentsAnimFinishCallback: Runnable?
+    open var recentsAnimFinishCallback: (() -> Unit)?
         get() = null
         set(value) {}
 
     /** no-op 存储：同上。 */
-    open var appLaunchAnimFinishCallback: Runnable?
+    open var appLaunchAnimFinishCallback: (() -> Unit)?
         get() = null
         set(value) {}
 }

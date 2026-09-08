@@ -12,7 +12,7 @@ import com.asyncanimator.launcher.playback.PropertySetter
 /**
  * PendingAnimation — 转场动画的"构建器"。
  *
- * 对应分析文档 §6.2。
+ * 对应 `docs/review/02-pending-playback.md`。
  *
  * 关键设计：
  *
@@ -24,7 +24,7 @@ import com.asyncanimator.launcher.playback.PropertySetter
 internal class PendingAnimation(duration: Long) : PropertySetter {
 
     private val anim = AnimatorSet()
-    private val animHolders = ArrayList<AnimatorPlaybackController.Holder>()
+    private val animHolders = mutableListOf<AnimatorPlaybackController.Holder>()
     private val durationMs: Long = duration.coerceAtLeast(0)
     private var progressAnimator: ValueAnimator? = null
     private var controller: AnimatorPlaybackController? = null

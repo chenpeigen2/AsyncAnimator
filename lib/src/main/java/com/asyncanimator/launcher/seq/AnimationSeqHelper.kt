@@ -5,10 +5,17 @@ import android.os.Handler
 import android.os.Looper
 import com.asyncanimator.util.Trace
 
+internal const val MAX_DELAY_TIME = 500L
+internal const val MAX_INTERCEPT_GESTURE_DELAY_TIME = 300L
+
+private const val MSG_EXC_RUNNABLE = 1
+private const val KEY_INTERRUPT_TRANSITION_START_ACTIVITY_SEQ_ID =
+    "interrupt.transition.startActivity.seqId"
+
 /**
  * AnimationSeqHelper — Recents 动画 SeqId 防抖。
  *
- * 对应分析文档 §6.9。
+ * 对应 `docs/review/03-controller-manager-seq.md`。
  *
  * 核心机制：
  *
@@ -86,15 +93,5 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
         // 原厂按引用比较 controller，这里用 === 保持一致
         if (p != null && p.first === recentsController) return p.second
         return 0L
-    }
-
-    companion object {
-        internal const val MAX_DELAY_TIME = 500L
-        internal const val MAX_GO_NORMAL_DELAY_TIME = 200L
-        internal const val MAX_INTERCEPT_GESTURE_DELAY_TIME = 300L
-
-        private const val MSG_EXC_RUNNABLE = 1
-        private const val KEY_INTERRUPT_TRANSITION_START_ACTIVITY_SEQ_ID =
-            "interrupt.transition.startActivity.seqId"
     }
 }

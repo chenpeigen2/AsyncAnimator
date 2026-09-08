@@ -3,7 +3,7 @@ package com.asyncanimator.launcher.seq
 /**
  * DefaultAnimationSeqHelper — SeqHelper 的 no-op 基类。
  *
- * 对应分析文档 §6.9。feature off 时返回此基类。
+ * 对应 `docs/review/03-controller-manager-seq.md`。feature off 时返回此基类。
  */
 open class DefaultAnimationSeqHelper {
 

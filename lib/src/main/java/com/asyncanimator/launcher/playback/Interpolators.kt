@@ -8,10 +8,4 @@ import android.animation.TimeInterpolator
  */
 internal object Interpolators {
 
-    val LINEAR = TimeInterpolator { input -> input }
-
-    val DECELERATE = TimeInterpolator { input ->
-        val t = input + 1.0f
-        t * t * ((1.7f + 1.0f) * t - 1.7f) / 2.0f
-    }
-}
+    val LINEAR = TimeInterpolator { input -> input }}

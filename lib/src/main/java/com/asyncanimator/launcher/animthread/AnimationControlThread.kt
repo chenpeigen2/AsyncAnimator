@@ -41,7 +41,8 @@ import com.asyncanimator.core.anim.AnimationHandler
  * 线程安全模型（对齐原厂）：动画参数 volatile/Atomic；View 与 listener 回主线程
  * （`AsyncAnimWrapper.runOnMainThread` / AsyncAnimCallbacks）；
  * start/cancel/end 按"当前线程 vs 目标 Looper"自动 marshal
- * （见 CustomRectFSpringAnim.start()：先取 executor 再判 `looper.isCurrentThread`）。
+ * （原厂 `CustomRectFSpringAnim.start()` 的模式：先取 executor 再判 `isCurrentThread`；
+ * 本 lib 未复刻该协议，见 `docs/review/04-frame-spring-continuation.md` §4.2-2）。
  */
 class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, PRIORITY) {
 

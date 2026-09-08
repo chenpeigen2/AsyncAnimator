@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong
 /**
  * HandlerTickScheduler — 绑定指定 Looper 的帧调度器。
  *
- * 对应分析文档 §2.3 FrameCallbackProvider14 的退化路径：
+ * 对应 v3 文档 `docs/animation-thread-analysis.md` §2 中 FrameCallbackProvider14 的退化路径：
  * `handler.postDelayed(this, frameDelay)` 定时驱动帧。
  * 真机上若把本类换成 per-thread Choreographer 适配（FrameCallbackProvider16 语义），
  * 即可获得 VSYNC 精度——本类保留同样接口，替换成本为零。

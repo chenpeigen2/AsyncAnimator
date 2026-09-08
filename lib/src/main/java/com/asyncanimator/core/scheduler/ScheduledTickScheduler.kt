@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.concurrent.thread
 
 /**
  * ScheduledTickScheduler — JVM 仿真 TickScheduler。
@@ -13,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
  * 用 [ScheduledExecutorService.scheduleAtFixedRate] 每 N 毫秒触发一次"tick"，
  * tick 内遍历所有已注册的 callback 并调用 `doFrame(frameTimeNanos)`。
  *
- * 对应分析文档 §2.3 FrameCallbackProvider14 的退化路径 —— 当 Choreographer 不可用时，
+ * 对应 v3 文档 `docs/animation-thread-analysis.md` §2 中 FrameCallbackProvider14 的退化路径 —— 当 Choreographer 不可用时，
  * 用 Handler.postDelayed(this, 16) 定时驱动。本类是这种思路的纯 Java 实现。
  *
  * 特点：
@@ -28,7 +29,7 @@ internal class ScheduledTickScheduler(
 ) : TickScheduler {
 
     private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
-        Thread(r, "AsyncAnimator-Tick").apply { isDaemon = true }
+        thread(start = false, name = "AsyncAnimator-Tick", isDaemon = true) { r.run() }
     }
     private val callbacks = ConcurrentLinkedQueue<TickScheduler.FrameCallback>()
     private val frameCountAtomic = AtomicLong(0)
@@ -69,7 +70,7 @@ internal class ScheduledTickScheduler(
 
     /**
      * 一次 tick：取时间戳 → 遍历 callbacks（快照）→ 逐个 doFrame。
-     * 这是分析文档 §2.5 onAnimationFrame 主循环的仿真实现。
+     * 这是原厂 onAnimationFrame 主循环的仿真实现（review 04）。
      */
     private fun tick() {
         val count = frameCountAtomic.incrementAndGet()
@@ -84,11 +85,4 @@ internal class ScheduledTickScheduler(
             // 极少见：long 溢出，重置
             frameCountAtomic.set(0)
         }
-    }
-
-    /** 关闭底层 executor。一般在程序退出时调用。 */
-    fun shutdown() {
-        stop()
-        exec.shutdownNow()
-    }
-}
+    }}

@@ -6,7 +6,7 @@ import android.animation.AnimatorListenerAdapter
 /**
  * NullableAnimatorListenerAdapter — Animator listener 基类。
  *
- * 对应分析文档 §6.3.4。早期仿写件时代 AsyncAnimCallbacks 派发时常传 null，listener 需可容忍；
+ * 对应 `docs/review/02-pending-playback.md`。早期仿写件时代 AsyncAnimCallbacks 派发时常传 null，listener 需可容忍；
  * 换平台 `android.animation.Animator` 后参数为 `@NonNull`，现派发真实 animator。
  */
 open class NullableAnimatorListenerAdapter : AnimatorListenerAdapter(), NullableAnimatorListener {

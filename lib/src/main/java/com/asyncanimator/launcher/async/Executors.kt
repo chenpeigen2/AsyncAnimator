@@ -7,7 +7,7 @@ import android.os.Looper
  * Executors — 预定义的 LooperExecutor 单例集合。
  *
  * 对应原 OPPO 代码 `com.oplus.basecommon.thread.Executors`（简化版）
- * 和分析文档 §6.3.2。
+ * 和 `docs/review/01-async-animthread.md`。
  *
  * [MAIN_EXECUTOR] 直接绑定 `Looper.getMainLooper()`，
  * 与"哪个线程先触发类加载"无关——在任意线程首次引用都指向真正的主线程。

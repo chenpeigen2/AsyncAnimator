@@ -13,7 +13,7 @@ internal typealias ValueApplicator = (value: Any?) -> Unit
 /**
  * OplusValueAnimator — timeController 委托模式 + 续行动画。
  *
- * 对应分析文档 §6.5。核心洞察：**this 是 wrapper**，把所有生命周期操作委托给 timeController；
+ * 对应 `docs/review/04-frame-spring-continuation.md`。核心洞察：**this 是 wrapper**，把所有生命周期操作委托给 timeController；
  * timeController 写 CURRENT_FRACTION FloatProperty → setCurrentFraction → AOSP onAnimationUpdate
  * → lambda 转给 valueApplicator.applyValue。
  *
@@ -26,8 +26,6 @@ internal class OplusValueAnimator<T>(
 ) : ValueAnimator() {
 
     constructor() : this(AnimParam(), null)
-
-    private var animatorEnded = false
 
     init {
         param.interpolator?.let { super.setInterpolator(it) }

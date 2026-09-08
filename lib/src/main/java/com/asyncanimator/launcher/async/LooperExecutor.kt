@@ -6,11 +6,11 @@ import android.os.Handler
  * LooperExecutor — 跨线程 Executor 封装。
  *
  * 对应原 OPPO 代码 `com.oplus.basecommon.thread.LooperExecutor`（简化版）
- * 和分析文档 §6.3.2。
+ * 和 `docs/review/01-async-animthread.md`。
  *
  * 关键设计：[execute] 自动判断"当前线程 vs 目标 Looper"：
  *
- *  - 同一线程：直接 `runnable.run()`
+ *  - 同一线程：直接执行
  *  - 不同线程：用 Handler.post 投递（[Executors.MAIN_EXECUTOR] 与
  *    `AnimExecutors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler）
  *
@@ -26,22 +26,12 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
     val isCurrentThread: Boolean
         get() = thread === Thread.currentThread()
 
-    fun execute(runnable: Runnable?) {
-        if (runnable == null) return
-        if (isCurrentThread) runnable.run() else post(runnable)
+    fun execute(action: (() -> Unit)?) {
+        if (action == null) return
+        if (isCurrentThread) action() else post(action)
     }
 
-    fun post(runnable: Runnable) {
-        handler?.post(runnable) ?: runnable.run()
-    }
-
-    fun postDelayed(runnable: Runnable, delayMs: Long) {
-        handler?.postDelayed(runnable, delayMs) ?: Thread({
-            try {
-                Thread.sleep(delayMs)
-            } catch (ignored: InterruptedException) {
-            }
-            runnable.run()
-        }, "AsyncAnimator-Delayed").start()
+    fun post(action: () -> Unit) {
+        if (handler != null) handler.post { action() } else action()
     }
 }

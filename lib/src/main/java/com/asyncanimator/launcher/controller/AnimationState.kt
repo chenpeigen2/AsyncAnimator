@@ -3,7 +3,7 @@ package com.asyncanimator.launcher.controller
 /**
  * AnimationState — 转场状态枚举。
  *
- * 对应分析文档 §6.8.2。每个状态携带两个 boolean：
+ * 对应 `docs/review/03-controller-manager-seq.md`。每个状态携带两个 boolean：
  *
  *  - [withTaskbarAlignment] — 该状态下 taskbar 是否参与对齐
  *  - [taskbarAlignmentToLauncher] — 对齐方向

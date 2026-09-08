@@ -15,7 +15,7 @@ private val DEFAULT_PROGRESS_MAPPER: ProgressMapper = { f, g -> if (f > g) 1f el
 /**
  * AnimatorPlaybackController — "主时钟驱动所有子动画"的统一播放控制器。
  *
- * 对应分析文档 §6.1，是 Launcher 转场动画的核心抽象。
+ * 对应 `docs/review/02-pending-playback.md`，是 Launcher 转场动画的核心抽象。
  *
  * 关键设计：
  *
@@ -30,13 +30,13 @@ internal class AnimatorPlaybackController(
     holders: List<Holder>
 ) : ValueAnimator.AnimatorUpdateListener {
 
-    private val anims = ArrayList<Animator>()
+    private val anims = mutableListOf<Animator>()
     private val childAnimations: Array<Holder>
     private var targetCancelled = false
     private var isDispatchStartPending = false
 
-    var cancelAction: Runnable? = null
-    val endActions = HashMap<String, Runnable>()
+    var cancelAction: (() -> Unit)? = null
+    val endActions = mutableMapOf<String, () -> Unit>()
 
     var progressFraction = 0f
         private set
@@ -147,14 +147,14 @@ internal class AnimatorPlaybackController(
         override fun onAnimationSuccess(animator: Animator) {
             if (dispatched) return
             dispatchOnEnd()
-            endActions.values.forEach(Runnable::run)
+            endActions.values.forEach { it() }
             endActions.clear()
             dispatched = true
         }
 
         override fun onAnimationCancel(animator: Animator) {
             super.onAnimationCancel(animator)
-            cancelAction?.run()
+            cancelAction?.invoke()
         }
     }
 
@@ -178,7 +178,7 @@ internal class AnimatorPlaybackController(
 
         /** 静态工厂：从 AnimatorSet 构造，递归收集所有 ValueAnimator 子动画。 */
         fun wrap(set: AnimatorSet, duration: Long): AnimatorPlaybackController {
-            val holders = ArrayList<Holder>()
+            val holders = mutableListOf<Holder>()
             addHoldersRecur(set, duration, holders)
             return AnimatorPlaybackController(set, duration, holders)
         }

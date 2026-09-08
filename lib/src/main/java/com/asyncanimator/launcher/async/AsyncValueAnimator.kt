@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * AsyncValueAnimator — 跨 Looper 安全的 ValueAnimator。
  *
- * 对应分析文档 §6.3。start/cancel/end 先判断"当前线程 vs 目标 Looper"，
+ * 对应 `docs/review/01-async-animthread.md`。start/cancel/end 先判断"当前线程 vs 目标 Looper"，
  * 不一致时通过 LooperExecutor marshal 过去。
  *
  * listener 跨线程派发（[asyncAnimCallbacks]）：listener fire 时再 marshal 回主线程。

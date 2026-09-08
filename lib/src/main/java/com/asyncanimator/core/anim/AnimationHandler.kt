@@ -6,7 +6,7 @@ import com.asyncanimator.core.scheduler.TickScheduler
 /**
  * AnimationHandler — 核心动画调度中枢。
  *
- * 对应 Android 平台 `androidx.core.animation.AnimationHandler`（简化版）和分析文档 §2。
+ * 对应 Android 平台 `androidx.core.animation.AnimationHandler`（简化版），逐项对比见 `docs/review/04-frame-spring-continuation.md`。
  *
  * 核心不变式（与原版完全一致）：
  *
@@ -30,7 +30,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
     private var schedulerHolder = TickSchedulerHolder(scheduler)
 
     /** 当前线程上活跃的 animation callbacks。懒删除（null 槽）。 */
-    private val animationCallbacks = ArrayList<AnimationFrameCallback?>()
+    private val animationCallbacks = mutableListOf<AnimationFrameCallback?>()
 
     /** 懒删除标志：true 表示本帧末尾需要 cleanUpList。 */
     private var listDirty = false
@@ -75,7 +75,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
     // ──── 帧循环（每 tick 调一次）────────────────────────────────────
 
     /**
-     * TickScheduler 每帧调一次。这是分析文档 §2.5 onAnimationFrame 的入口。
+     * TickScheduler 每帧调一次。这是原厂 onAnimationFrame 的入口（对比见 review 04）。
      *
      * 顺序：分发所有 callback → cleanUpList 压缩 null 槽 → 若还有 callback 则由 TickScheduler 续帧
      * （这里续帧逻辑由 ScheduledTickScheduler.scheduleAtFixedRate 自动完成，
@@ -89,7 +89,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     /**
      * 顺序遍历 animationCallbacks，跳过 null 槽，调每个 callback 的 doAnimationFrame。
-     * 对应分析文档 §2.5 doAnimationFrame。
+     * 对应原厂 doAnimationFrame（review 04）。
      */
     private fun doAnimationFrame(frameTimeMs: Long) {
         val size = animationCallbacks.size

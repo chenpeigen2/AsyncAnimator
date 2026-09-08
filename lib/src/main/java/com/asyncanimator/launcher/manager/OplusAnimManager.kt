@@ -9,7 +9,7 @@ import com.asyncanimator.launcher.seq.DefaultAnimationSeqHelper
 /**
  * OplusAnimManager — feature flag 驱动的工厂单例。
  *
- * 对应分析文档 §6.10。默认所有 helper 返回 `Default*BaseClass`（no-op），
+ * 对应 `docs/review/03-controller-manager-seq.md`。默认所有 helper 返回 `Default*BaseClass`（no-op），
  * 当 [supportInterruption] 为 true 时切换到 `Impl`。
  *
  * 业务统一通过 `OplusAnimManager.animController` 等获取实例，
