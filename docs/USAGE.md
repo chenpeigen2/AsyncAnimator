@@ -12,7 +12,7 @@
 core/scheduler (internal)        TickScheduler / ScheduledTickScheduler   ← 帧源抽象（可替换）
 core/anim (internal)             AnimationHandler                         ← ThreadLocal 调度中枢
         ↑ installThreadScheduler
-launcher/animthread              AnimationControlThread / AnimExecutors   ← "launcher.anim" 独立线程
+launcher/animthread              AnimationControlThread                 ← "launcher.anim" 独立线程
 launcher/async                   LooperExecutor / Executors               ← 跨 Looper 执行器
                                  AsyncValueAnimator / AsyncAnimCallbacks  ← 跨线程安全动画
                                  ActualEndAnimListener                    ← "物理帧播完"回调基类（双轨结束）
@@ -89,14 +89,15 @@ object : ActualEndAnimListener() {
 
 ### LooperExecutor / Executors
 
-对应原厂 `com.oplus.basecommon.thread.LooperExecutor` / `Executors`（review 01）。
+对应原厂 `com.oplus.basecommon.thread.LooperExecutor` / `Executors` + `OplusExecutors.ANIM_EXECUTOR`（review 01）。
 
 `LooperExecutor` 构造器为 internal；`execute`/`post`/`isCurrentThread` 公开，
 `postAsync` 以异步消息投递（对齐原厂 `Utilities.postAsyncCallback`，可穿透 sync-barrier）。
 业务一般只使用预定义单例：
 
 ```kotlin
-Executors.MAIN_EXECUTOR   // object Executors，绑定主 Looper；JVM 单测下退化为就地执行
+Executors.MAIN_EXECUTOR         // 绑定主 Looper；JVM 单测下退化为就地执行
+Executors.ANIM_CONTROL_EXECUTOR // 绑定独立 launcher.anim 线程
 ```
 
 ### CustomRectFSpringAnim — 转场动画句柄
@@ -123,24 +124,16 @@ enum class AnimType { SWIPE_TO_HOME, RECENTS_TRANSITION, APP_LAUNCH }
 AnimationControlThread.THREAD_NAME   // = "launcher.anim"，systrace/logcat 对照用
 ```
 
-单例 `instance` 为 internal：线程随 `AnimExecutors.ANIM_CONTROL_EXECUTOR` 首次加载拉起，
+单例 `instance` 为 internal：线程随 `Executors.ANIM_CONTROL_EXECUTOR` 首次加载拉起，
 `onLooperPrepared` 内完成帧源安装（`AnimationHandler.installThreadScheduler`）+ 线程优先级兜底
 （优先级字面量 -19，对齐原厂 `OplusExecutors.java:95`）。
-
-### AnimExecutors
-
-对应原厂 `OplusExecutors.getANIM_EXECUTOR()`（review 01）。
-
-```kotlin
-AnimExecutors.ANIM_CONTROL_EXECUTOR   // 绑定 launcher.anim 线程的 LooperExecutor
-```
 
 最小示例（Demo10，动画跑在独立线程）：
 
 ```kotlin
 val anim = AsyncValueAnimator().apply {
-    executor = AnimExecutors.ANIM_CONTROL_EXECUTOR // start/帧推进都在 launcher.anim
-    asyncAnimCallbacks.addListener(...)            // listener 仍回主线程
+    executor = Executors.ANIM_CONTROL_EXECUTOR // start/帧推进都在 launcher.anim
+    asyncAnimCallbacks.addListener(...)        // listener 仍回主线程
 }
 anim.start()
 ```

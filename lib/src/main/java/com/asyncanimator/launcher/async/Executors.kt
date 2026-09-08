@@ -2,22 +2,26 @@ package com.asyncanimator.launcher.async
 
 import android.os.Handler
 import android.os.Looper
+import com.asyncanimator.launcher.animthread.AnimationControlThread
 
 /**
- * Executors — 预定义的 LooperExecutor 单例集合。
+ * Executors - 预定义的 LooperExecutor 单例集合。
  *
- * 对应原 OPPO 代码 `com.oplus.basecommon.thread.Executors`（简化版）
+ * 对应原 OPPO 代码 `com.oplus.basecommon.thread.Executors` + `OplusExecutors`（简化版）
  * 和 `docs/review/01-async-animthread.md`。
  *
- * [MAIN_EXECUTOR] 直接绑定 `Looper.getMainLooper()`，
- * 与"哪个线程先触发类加载"无关——在任意线程首次引用都指向真正的主线程。
- * JVM 单测环境下（android stub，returnDefaultValues）拿不到主 Looper，
- * handler 为 null，[LooperExecutor] 退化为"就地执行"，保证单测可跑。
+ *  - [MAIN_EXECUTOR] 直接绑 `Looper.getMainLooper()`，与"哪个线程先触发类加载"无关。
+ *    JVM 单测环境（android stub，returnDefaultValues）拿不到 Looper，退化为就地执行。
+ *  - [ANIM_CONTROL_EXECUTOR] 绑独立的 launcher.anim HandlerThread（首次访问时拉起），
+ *    对应原厂 `OplusExecutors.ANIM_EXECUTOR`。
  */
 object Executors {
 
     /** 主线程 LooperExecutor（绑定真实 Main Looper）。 */
     val MAIN_EXECUTOR = LooperExecutor(mainHandlerOrNull())
+
+    /** 独立动画线程 LooperExecutor（launcher.anim，首次访问即启动该线程）。 */
+    val ANIM_CONTROL_EXECUTOR = LooperExecutor(Handler(AnimationControlThread.instance.looper))
 
     private fun mainHandlerOrNull(): Handler? = try {
         Looper.getMainLooper()?.let(::Handler)

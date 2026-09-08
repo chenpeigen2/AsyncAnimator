@@ -13,7 +13,7 @@ import android.os.Message
  *
  *  - 同一线程：直接执行
  *  - 不同线程：用 Handler.post 投递（[Executors.MAIN_EXECUTOR] 与
- *    `AnimExecutors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler）
+ *    `Executors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler）
  *
  * JVM 单测环境下（android stub，returnDefaultValues）拿不到主 Looper，
  * [handler] 为 null，全部退化为"就地执行"，保证单测可跑。

@@ -10,7 +10,7 @@ import android.widget.TextView
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.FrameGapHistogramView
-import com.asyncanimator.launcher.animthread.AnimExecutors
+import com.asyncanimator.launcher.async.Executors
 import com.asyncanimator.launcher.animthread.AnimationControlThread
 import com.asyncanimator.launcher.async.AsyncValueAnimator
 import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter
@@ -188,7 +188,7 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
         asyncAnim = AsyncValueAnimator()
         asyncAnim!!.apply {
-            executor = AnimExecutors.ANIM_CONTROL_EXECUTOR // start/帧推进 → "Launcher Animation Control"
+            executor = Executors.ANIM_CONTROL_EXECUTOR // start/帧推进 → "Launcher Animation Control"
             setFloatValues(0f, 1f)
             duration = 1200
             repeatCount = ValueAnimator.INFINITE

@@ -37,7 +37,7 @@ internal open class AsyncAnimWrapper {
 
     /** 投递到独立动画线程（"launcher.anim"）执行。 */
     fun runOnAnimThread(task: (() -> Unit)?) {
-        if (task != null) AnimExecutors.ANIM_CONTROL_EXECUTOR.execute(task)
+        if (task != null) Executors.ANIM_CONTROL_EXECUTOR.execute(task)
     }
 
     /** 投递回主线程执行（View 属性写入、listener 回调走这里）。 */
