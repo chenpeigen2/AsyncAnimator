@@ -1,12 +1,14 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 
 /**
  * NullableAnimatorListenerAdapter — 允许 Animator 为 null 的 listener 基类。
  *
- * <p>对应分析文档 §6.3.4。AsyncAnimCallbacks 派发 listener 时常传 null，listener 需可容忍。
+ * <p>对应分析文档 §6.3.4。早期仿写件时代 AsyncAnimCallbacks 派发时常传 null，listener 需可容忍；
+ * 换平台 {@code android.animation.Animator} 后参数为 {@code @NonNull}，现派发真实 animator，
+ * 本类的 null 容忍仅作防御保留。
  */
 public class NullableAnimatorListenerAdapter extends AnimatorListenerAdapter implements NullableAnimatorListener {
 

@@ -1,21 +1,17 @@
 package com.asyncanimator.demo
 
+import android.animation.Animator
+import android.animation.ValueAnimator
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.asyncanimator.core.anim.Animator
-import com.asyncanimator.core.anim.AnimationHandler
-import com.asyncanimator.core.anim.ValueAnimator
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.FrameGapHistogramView
 import com.asyncanimator.launcher.animthread.AnimExecutors
 import com.asyncanimator.launcher.animthread.AnimationControlThread
-import com.asyncanimator.launcher.animthread.HandlerTickScheduler
 import com.asyncanimator.launcher.async.AsyncValueAnimator
 import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter
 import java.util.concurrent.atomic.AtomicLong
@@ -32,7 +28,7 @@ import java.util.concurrent.atomic.AtomicLong
  *   ANIM_EXECUTOR : MAIN_EXECUTOR，再判 looper.isCurrentThread()
  *
  * <p>演示内容：同一舞台窗口做 0→1→0 往复转场，分两路分时驱动（进度逐帧写入窗口 leash）——
- * - 主线程路：移植版 ValueAnimator，帧推进在主线程（传统做法）；
+ * - 主线程路：平台 ValueAnimator，帧推进走主线程 Choreographer（传统做法）；
  * - launcher.anim 路：AsyncValueAnimator.setExecutor(ANIM_CONTROL_EXECUTOR)，
  *   start 与帧推进都在 "Launcher Animation Control" 线程（默认演示这路）。
  *
@@ -88,11 +84,6 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // 把主线程的帧驱动换成主线程 Looper 的 postDelayed（等价真机主线程
-        // Choreographer 语义；移植框架默认用共享 JVM tick 线程，会使对照失真）。
-        // 影响范围仅 demo 进程主线程的移植版动画。
-        AnimationHandler.replaceThreadScheduler(
-                HandlerTickScheduler(Handler(Looper.getMainLooper())))
         // 默认演示 launcher.anim 路：舞台一进来就在动
         stage.post { startAnimThreadDrive() }
     }
@@ -157,7 +148,7 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
             DemoStyle.dp(this@Demo10IndependentThreadActivity, 2f))
     }
 
-    // ── 主线程路：移植版 ValueAnimator，帧推进在主线程 ──────────
+    // ── 主线程路：平台 ValueAnimator，帧推进走主线程 Choreographer ──────────
     private fun startMainThreadDrive() {
         stopDrivers()
         mainStatsData.reset()
@@ -179,13 +170,13 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
                 }
             }
             addListener(object : NullableAnimatorListenerAdapter() {
-                override fun onAnimationStart(animator: Animator?) {
+                override fun onAnimationStart(animator: Animator) {
                     log("[主线程路] onAnimationStart 线程 = ${Thread.currentThread().name}")
                 }
             })
             start() // 主线程启动，帧推进也在主线程
         }
-        log("主线程路启动：ValueAnimator + HandlerTickScheduler，帧推进在主线程")
+        log("主线程路启动：平台 ValueAnimator + 主线程 Choreographer，帧推进在主线程")
     }
 
     // ── launcher.anim 路：AsyncValueAnimator + 独立动画线程 ─────
@@ -213,7 +204,7 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
                 }
             }
             getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
-                override fun onAnimationStart(animator: Animator?) {
+                override fun onAnimationStart(animator: Animator) {
                     log("[launcher.anim 路] onAnimationStart 线程 = ${Thread.currentThread().name}")
                 }
             })

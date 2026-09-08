@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.async;
 
-import com.asyncanimator.core.anim.Animator;
+import android.animation.Animator;
 import com.asyncanimator.launcher.pending.NullableAnimatorListener;
 import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter;
 import com.asyncanimator.util.Trace;

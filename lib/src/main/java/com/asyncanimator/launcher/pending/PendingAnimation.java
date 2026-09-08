@@ -1,13 +1,14 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
-import com.asyncanimator.core.anim.AnimatorSet;
-import com.asyncanimator.core.anim.Interpolator;
-import com.asyncanimator.core.anim.ValueAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
+import android.util.FloatProperty;
+
 import com.asyncanimator.launcher.playback.AnimatorPlaybackController;
 import com.asyncanimator.launcher.playback.PropertySetter;
-import com.asyncanimator.util.FloatProperty;
 
 import java.util.ArrayList;
 import java.util.function.Consumer;
@@ -51,12 +52,12 @@ public class PendingAnimation implements PropertySetter {
         return this;
     }
 
-    public PendingAnimation add(Animator anim, com.asyncanimator.core.anim.Interpolator ip) {
+    public PendingAnimation add(Animator anim, TimeInterpolator ip) {
         anim.setInterpolator(ip);
         return add(anim);
     }
 
-    public PendingAnimation add(Animator anim, Interpolator ip, Object springProperty) {
+    public PendingAnimation add(Animator anim, TimeInterpolator ip, Object springProperty) {
         anim.setInterpolator(ip);
         return add(anim);
     }
@@ -68,7 +69,7 @@ public class PendingAnimation implements PropertySetter {
     }
 
     public <T> PendingAnimation addFloat(T target, FloatProperty<T> property,
-                                         float from, float to, Interpolator ip) {
+                                         float from, float to, TimeInterpolator ip) {
         ObjectAnimator oa = ObjectAnimator.ofFloat(target, property, from, to);
         oa.setInterpolator(ip);
         return add(oa.getAnimator());
@@ -139,7 +140,7 @@ public class PendingAnimation implements PropertySetter {
             this.to = to;
         }
 
-        public ObjectAnimator setInterpolator(Interpolator ip) {
+        public ObjectAnimator setInterpolator(TimeInterpolator ip) {
             va.setInterpolator(ip);
             return this;
         }
@@ -163,18 +164,24 @@ public class PendingAnimation implements PropertySetter {
                     property.setValue((Object) target, v);
                 }
             });
+            // 平台 Animator 的抽象方法比仿写件多（getStartDelay/setStartDelay/
+            // setDuration/setInterpolator），全部委托给内部 va，保持原包装语义不变
             return new Animator() {
                 @Override public void start() { va.start(); }
                 @Override public void cancel() { va.cancel(); }
                 @Override public void end() { va.end(); }
                 @Override public boolean isRunning() { return va.isRunning(); }
                 @Override public long getDuration() { return va.getDuration(); }
+                @Override public Animator setDuration(long duration) { va.setDuration(duration); return this; }
+                @Override public long getStartDelay() { return va.getStartDelay(); }
+                @Override public void setStartDelay(long startDelay) { va.setStartDelay(startDelay); }
+                @Override public void setInterpolator(TimeInterpolator ip) { va.setInterpolator(ip); }
             };
         }
 
         // 让 add() 可以直接接收 ObjectAnimator
         public long getDuration() { return va.getDuration(); }
-        public com.asyncanimator.core.anim.Interpolator getInterpolator() { return va.getInterpolator(); }
+        public TimeInterpolator getInterpolator() { return va.getInterpolator(); }
         public void setDurationOnly(long d) { va.setDuration(d); }
 
         // ──── 生命周期委托（TimeControllerObjectAnimator 依赖） ────────

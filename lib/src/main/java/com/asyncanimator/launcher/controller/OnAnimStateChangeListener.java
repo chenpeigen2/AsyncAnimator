@@ -1,7 +1,5 @@
 package com.asyncanimator.launcher.controller;
 
-import com.asyncanimator.core.anim.Animator;
-
 /**
  * 状态变更监听器接口。
  *

@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
+import android.animation.Animator;
 
 /**
  * ActualEndAnimListener — cancel/end 都触发的 listener。

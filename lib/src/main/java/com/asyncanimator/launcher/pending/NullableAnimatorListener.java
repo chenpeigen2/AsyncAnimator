@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
+import android.animation.Animator;
 
 /**
  * NullableAnimatorListener — Animator 参数可空的 listener 接口。

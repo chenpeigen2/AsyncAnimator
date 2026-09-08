@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.playback;
 
-import com.asyncanimator.util.FloatProperty;
+import android.util.FloatProperty;
 
 /**
  * PropertySetter — "业务想要 set 什么属性"的契约接口。
@@ -21,7 +21,7 @@ public interface PropertySetter {
     <T> void setFloat(T target, FloatProperty<T> property, float value);
 
     default <T> PropertySetter setFloat(T target, FloatProperty<T> property, float value,
-                                       com.asyncanimator.core.anim.Interpolator interpolator) {
+                                       android.animation.TimeInterpolator interpolator) {
         setFloat(target, property, value);
         return this;
     }

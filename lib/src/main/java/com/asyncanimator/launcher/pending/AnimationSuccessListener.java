@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
+import android.animation.Animator;
 
 /**
  * AnimationSuccessListener — 区分 cancel 和 success 的 listener 基类。

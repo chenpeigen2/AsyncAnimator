@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.playback;
 
-import com.asyncanimator.core.anim.Interpolator;
+import android.animation.TimeInterpolator;
 
 /**
  * 预定义插值器集合。
@@ -10,9 +10,9 @@ public final class Interpolators {
 
     private Interpolators() {}
 
-    public static final Interpolator LINEAR = input -> input;
+    public static final TimeInterpolator LINEAR = input -> input;
 
-    public static final Interpolator DECELERATE = input -> {
+    public static final TimeInterpolator DECELERATE = input -> {
         float t = input + 1.0f;
         return t * t * ((1.7f + 1.0f) * t - 1.7f) / 2.0f;
     };

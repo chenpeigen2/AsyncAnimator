@@ -9,7 +9,9 @@ package com.asyncanimator.launcher.async;
  * <p>关键设计：{@link #execute(Runnable)} 自动判断"当前线程 vs 目标 Looper"：
  * <ul>
  *   <li>同一线程：直接 {@code runnable.run()}</li>
- *   <li>不同线程：用 Handler.post 投递（demo 模块实现；lib 模块用守护线程）</li>
+ *   <li>不同线程：用 Handler.post 投递（{@link Executors#MAIN_EXECUTOR} 与
+ *       {@code AnimExecutors#ANIM_CONTROL_EXECUTOR} 均绑定真实 android.os.Handler；
+ *       仅 JVM 单测兜底为就地执行）</li>
  * </ul>
  */
 public class LooperExecutor {

@@ -1,7 +1,6 @@
 package com.asyncanimator.launcher.controller;
 
-import com.asyncanimator.core.anim.AnimatorSet;
-import com.asyncanimator.core.anim.ValueAnimator;
+import android.animation.AnimatorSet;
 
 /**
  * RemoteAnimationFactory — 远程动画工厂接口（demo 模块实现）。

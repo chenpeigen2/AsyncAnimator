@@ -1,6 +1,6 @@
 package com.asyncanimator.launcher.continuation;
 
-import com.asyncanimator.core.anim.Interpolator;
+import android.animation.TimeInterpolator;
 
 /**
  * RecordInputInterpolator — 记录最近一次 input 副作用的插值器。
@@ -8,12 +8,12 @@ import com.asyncanimator.core.anim.Interpolator;
  * <p>对应分析文档 §6.5.5。{@link #getInterpolation(float)} 时把 input 缓存到 {@link #inputed}，
  * 续行动画时 {@code generateContinuationAnim} 通过 {@link #getInputed()} 取出。
  */
-public class RecordInputInterpolator implements Interpolator {
+public class RecordInputInterpolator implements TimeInterpolator {
 
-    private final Interpolator realInterpolator;
+    private final TimeInterpolator realInterpolator;
     private float inputed = -1f;
 
-    public RecordInputInterpolator(Interpolator real) {
+    public RecordInputInterpolator(TimeInterpolator real) {
         this.realInterpolator = real;
     }
 

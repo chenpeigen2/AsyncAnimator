@@ -1,9 +1,10 @@
 package com.asyncanimator.launcher.continuation;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
-import com.asyncanimator.core.anim.ValueAnimator;
-import com.asyncanimator.util.FloatProperty;
+import android.animation.Animator;
+import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
+import android.util.FloatProperty;
+
 import com.asyncanimator.util.Trace;
 
 /**
@@ -127,7 +128,8 @@ public class OplusValueAnimator<T> extends ValueAnimator {
 
     private static final FloatProperty<OplusValueAnimator<?>> CURRENT_FRACTION =
         new FloatProperty<OplusValueAnimator<?>>("currentFraction") {
-            @Override public Float getValue(OplusValueAnimator<?> anim) {
+            // 平台 FloatProperty 继承 Property<T,Float>：读走抽象方法 get(T)，写走 setValue(T,float)
+            @Override public Float get(OplusValueAnimator<?> anim) {
                 return anim.mParam.currentFraction;
             }
             @Override public void setValue(OplusValueAnimator<?> anim, float v) {
@@ -142,7 +144,7 @@ public class OplusValueAnimator<T> extends ValueAnimator {
         public float fromValue = 0f;
         public float toValue = 1f;
         public float currentFraction = -1f;
-        public com.asyncanimator.core.anim.Interpolator interpolator;
+        public TimeInterpolator interpolator;
         public ValueApplicator applicator;
         public long duration;
 
@@ -151,7 +153,7 @@ public class OplusValueAnimator<T> extends ValueAnimator {
         public AnimParam setName(String name) { this.name = name; return this; }
         public AnimParam setRange(float from, float to) { this.fromValue = from; this.toValue = to; return this; }
         public AnimParam setCurrentFraction(float f) { this.currentFraction = f; return this; }
-        public AnimParam setInterpolator(com.asyncanimator.core.anim.Interpolator ip) { this.interpolator = ip; return this; }
+        public AnimParam setInterpolator(TimeInterpolator ip) { this.interpolator = ip; return this; }
         public AnimParam setApplicator(ValueApplicator a) { this.applicator = a; return this; }
         public AnimParam setDuration(long d) { this.duration = d; return this; }
 

@@ -1,8 +1,8 @@
 package com.asyncanimator.demo
 
+import android.animation.Animator
 import android.view.View
 import android.widget.LinearLayout
-import com.asyncanimator.core.anim.Animator
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.ThreadLaneView
@@ -69,14 +69,14 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
         anim.setExecutor(Executors.MAIN_EXECUTOR)
         anim.duration = 500
         anim.getAsyncAnimCallbacks().addListener(object : NullableAnimatorListenerAdapter() {
-            override fun onAnimationStart(animator: Animator?) {
+            override fun onAnimationStart(animator: Animator) {
                 log("onAnimationStart on ${Thread.currentThread().name}  (main=${Thread.currentThread() == android.os.Looper.getMainLooper().thread})")
                 runOnUiThread {
                     lanes.event(1)
                     lanes.setLaneBusy(1, true)
                 }
             }
-            override fun onAnimationEnd(animator: Animator?) {
+            override fun onAnimationEnd(animator: Animator) {
                 log("onAnimationEnd on ${Thread.currentThread().name}  —— listener 始终回主线程 fire")
                 runOnUiThread {
                     lanes.event(1)

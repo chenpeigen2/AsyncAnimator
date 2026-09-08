@@ -1,7 +1,7 @@
 package com.asyncanimator.launcher.pending;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 
 import java.util.function.Consumer;
 
@@ -19,7 +19,7 @@ public final class AnimatorListeners {
 
     private AnimatorListeners() {}
 
-    public static com.asyncanimator.core.anim.Animator.AnimatorListener forEndCallback(Runnable r) {
+    public static Animator.AnimatorListener forEndCallback(Runnable r) {
         return new AnimatorListenerAdapter() {
             @Override public void onAnimationEnd(Animator animator) {
                 if (r != null) r.run();
@@ -27,7 +27,7 @@ public final class AnimatorListeners {
         };
     }
 
-    public static com.asyncanimator.core.anim.Animator.AnimatorListener forEndCallback(Consumer<Boolean> c) {
+    public static Animator.AnimatorListener forEndCallback(Consumer<Boolean> c) {
         return new AnimatorListenerAdapter() {
             private boolean listenerCalled = false;
             @Override public void onAnimationEnd(Animator animator) {
@@ -43,7 +43,7 @@ public final class AnimatorListeners {
         };
     }
 
-    public static com.asyncanimator.core.anim.Animator.AnimatorListener forSuccessCallback(Runnable r) {
+    public static Animator.AnimatorListener forSuccessCallback(Runnable r) {
         return new AnimationSuccessListener() {
             @Override public void onAnimationSuccess(Animator animator) {
                 if (r != null) r.run();

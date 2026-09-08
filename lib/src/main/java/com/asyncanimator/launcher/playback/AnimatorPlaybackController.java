@@ -1,8 +1,10 @@
 package com.asyncanimator.launcher.playback;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
-import com.asyncanimator.core.anim.ValueAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.AnimatorSet;
+import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -21,7 +23,7 @@ import java.util.Iterator;
  *   <li>{@link ProgressMapper} 提供"全局进度→子动画进度"的策略钩子</li>
  * </ul>
  */
-public class AnimatorPlaybackController implements Animator.AnimatorUpdateListener {
+public class AnimatorPlaybackController implements ValueAnimator.AnimatorUpdateListener {
 
     private final ArrayList<Animator> mAnim;
     private final ValueAnimator mAnimationPlayer;
@@ -35,8 +37,8 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
 
     public AnimatorPlaybackController(Animator anim, long duration, ArrayList<Holder> holders) {
         mAnim = new ArrayList<>();
-        if (anim instanceof com.asyncanimator.core.anim.AnimatorSet) {
-            mAnim.addAll(((com.asyncanimator.core.anim.AnimatorSet) anim).getChildAnimations());
+        if (anim instanceof AnimatorSet) {
+            mAnim.addAll(((AnimatorSet) anim).getChildAnimations());
         } else {
             mAnim.add(anim);
         }
@@ -65,7 +67,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
     public static class Holder {
         public final ValueAnimator anim;
         public final float globalEndProgress;
-        public final com.asyncanimator.core.anim.Interpolator interpolator;
+        public final TimeInterpolator interpolator;
         public ProgressMapper mapper = ProgressMapper.DEFAULT;
         public final Object springProperty = null; // 保留字段（弹簧场景用，本 demo 简化）
 
@@ -97,8 +99,8 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
     // ──── 帧回调 ────────────────────────────────
 
     @Override
-    public void onAnimationUpdate(Animator animator) {
-        Float v = (Float) ((ValueAnimator) animator).getAnimatedValue();
+    public void onAnimationUpdate(ValueAnimator animator) {
+        Float v = (Float) animator.getAnimatedValue();
         if (v != null) setPlayFraction(v.floatValue());
     }
 
@@ -208,7 +210,7 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
     public float getProgressFraction() { return mCurrentFraction; }
 
     /** 静态工厂：从 AnimatorSet 构造，递归收集所有 ValueAnimator 子动画。 */
-    public static AnimatorPlaybackController wrap(com.asyncanimator.core.anim.AnimatorSet set, long duration) {
+    public static AnimatorPlaybackController wrap(AnimatorSet set, long duration) {
         ArrayList<Holder> list = new ArrayList<>();
         addHoldersRecur(set, duration, list);
         return new AnimatorPlaybackController(set, duration, list);
@@ -219,8 +221,8 @@ public class AnimatorPlaybackController implements Animator.AnimatorUpdateListen
             list.add(new Holder(anim, totalDuration));
             return;
         }
-        if (anim instanceof com.asyncanimator.core.anim.AnimatorSet) {
-            for (Animator child : ((com.asyncanimator.core.anim.AnimatorSet) anim).getChildAnimations()) {
+        if (anim instanceof AnimatorSet) {
+            for (Animator child : ((AnimatorSet) anim).getChildAnimations()) {
                 addHoldersRecur(child, totalDuration, list);
             }
         }

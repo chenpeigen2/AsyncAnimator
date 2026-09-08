@@ -1,8 +1,8 @@
 package com.asyncanimator.launcher.async;
 
-import com.asyncanimator.core.anim.Animator;
-import com.asyncanimator.core.anim.AnimatorListenerAdapter;
-import com.asyncanimator.core.anim.ValueAnimator;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 不一致时通过 LooperExecutor marshal 过去。
  *
  * <p>listener 跨线程派发（mAsyncAnimCallbacks）：listener fire 时再 marshal 回主线程。
+ * 平台 {@code AnimatorListener} 的参数是 {@code @NonNull}（Kotlin 侧 override 必须声明非空），
+ * 因此派发时传递真实 animator，不再传 null。
  */
 public class AsyncValueAnimator extends ValueAnimator {
 
@@ -26,16 +28,16 @@ public class AsyncValueAnimator extends ValueAnimator {
         addListener(new AnimatorListenerAdapter() {
             @Override public void onAnimationCancel(Animator a) {
                 if (mIsEnd.get()) return;
-                mAsyncAnimCallbacks.onAnimationCancel(null);
+                mAsyncAnimCallbacks.onAnimationCancel(a);
             }
             @Override public void onAnimationEnd(Animator a) {
                 if (mIsEnd.compareAndSet(false, true)) {
-                    mAsyncAnimCallbacks.onAnimationEnd(null);
+                    mAsyncAnimCallbacks.onAnimationEnd(a);
                 }
             }
             @Override public void onAnimationStart(Animator a) {
                 if (mIsEnd.get()) return;
-                mAsyncAnimCallbacks.onAnimationStart(null);
+                mAsyncAnimCallbacks.onAnimationStart(a);
             }
         });
     }
