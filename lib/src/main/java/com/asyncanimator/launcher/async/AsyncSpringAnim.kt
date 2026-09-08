@@ -1,5 +1,6 @@
 package com.asyncanimator.launcher.async
 
+import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import com.asyncanimator.launcher.animthread.AsyncAnimWrapper
 
@@ -13,9 +14,9 @@ import com.asyncanimator.launcher.animthread.AsyncAnimWrapper
  * else                      springAnim.xxx();
  * ```
  *
- * 原厂 SpringAnimation 走 ThreadLocal 的框架 AnimationHandler（start 在哪个线程，帧回调
- * 就在哪个线程）；本移植用 androidx.dynamicanimation（同样是 ThreadLocal AnimationHandler
- * + 调用线程 Choreographer），语义一致，且不碰框架 @hide API。
+ * 弹簧物理用 androidx.dynamicanimation（ThreadLocal AnimationHandler + 调用线程
+ * Choreographer），start 在哪个线程帧回调就在哪个线程；end 回调经
+ * [AsyncAnimWrapper.runOnMainThread] 回主线程。
  */
 class AsyncSpringAnim(
     private val real: SpringAnimation,
@@ -31,6 +32,14 @@ class AsyncSpringAnim(
     fun animateToFinalPosition(position: Float) = dispatch { real.animateToFinalPosition(position) }
 
     fun setStartVelocity(velocity: Float) = dispatch { real.setStartVelocity(velocity) }
+
+    /** 结束回调：弹簧在 anim 线程 tick，但 end 回调 marshal 回主线程（对齐原厂约定）。 */
+    fun addEndListener(listener: DynamicAnimation.OnAnimationEndListener) {
+        real.addEndListener { anim, canceled, value, velocity ->
+            val notify = { listener.onAnimationEnd(anim, canceled, value, velocity) }
+            if (supportAnimThread) runOnMainThread { notify() } else notify()
+        }
+    }
 
     private inline fun dispatch(crossinline action: () -> Unit) {
         if (supportAnimThread) {

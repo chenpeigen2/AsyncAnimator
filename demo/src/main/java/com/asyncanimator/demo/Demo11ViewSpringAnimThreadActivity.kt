@@ -140,9 +140,6 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
                     refreshStats()
                 }
             }
-            addEndListener { _: DynamicAnimation<*>?, canceled: Boolean, _: Float, _: Float ->
-                log("[弹簧结束] canceled=$canceled  线程=${Thread.currentThread().name}")
-            }
         }
 
     private fun startSpring(finalPosition: Float) {
@@ -154,9 +151,15 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
         realSpring = s
         if (supportAnimThread) {
             asyncSpring = AsyncSpringAnim(s, supportAnimThread = true)
+            asyncSpring?.addEndListener { _, canceled, _, _ ->
+                log("[弹簧结束] canceled=$canceled  线程=${Thread.currentThread().name}（回主线程）")
+            }
             asyncSpring?.start()
-            log("launcher.anim 路：AsyncSpringAnim.start() 已 marshal 到独立线程")
+            log("launcher.anim 路：AsyncSpringAnim.start() 已 marshal 到独立线程；end 回调回主线程")
         } else {
+            s.addEndListener { _, canceled, _, _ ->
+                log("[弹簧结束] canceled=$canceled  线程=${Thread.currentThread().name}")
+            }
             s.start()
             log("主线程路：SpringAnimation.start() 直接在主线程启动")
         }
