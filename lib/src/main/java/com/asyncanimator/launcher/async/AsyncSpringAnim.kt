@@ -1,28 +1,26 @@
 package com.asyncanimator.launcher.async
 
 import androidx.dynamicanimation.animation.SpringAnimation
+import com.asyncanimator.launcher.animthread.AsyncAnimWrapper
 
 /**
- * AsyncSpringAnim — 把 androidx SpringAnimation 的生命周期方法按 `supportAnimThread`
- * marshal 到独立动画线程。
- *
- * 对应原厂 `com.android.quickstep.util.OplusAsyncSpringAnimWrapper`（extends
- * `com.android.launcher3.anim.AsyncAnimWrapper`）的线程切换骨架：
+ * AsyncSpringAnim - 把 androidx SpringAnimation 的生命周期方法按 `supportAnimThread`
+ * marshal 到独立动画线程。继承 [AsyncAnimWrapper]，对齐原厂
+ * `OplusAsyncSpringAnimWrapper extends AsyncAnimWrapper` 的骨架：
  *
  * ```
  * if (viewSupportAnimThread) runOnAnimThread(() -> springAnim.xxx());
  * else                      springAnim.xxx();
  * ```
  *
- * 原厂 SpringAnimation 内部走 ThreadLocal 的框架 AnimationHandler，start 在哪个线程，
- * 帧回调就在哪个线程；本移植用 androidx.dynamicanimation（同样是 ThreadLocal
- * AnimationHandler + 调用线程 Choreographer），语义一致。真正的弹簧物理直接用
- * androidx 库，不再手写 SpringForce/DynamicAnimation。
+ * 原厂 SpringAnimation 走 ThreadLocal 的框架 AnimationHandler（start 在哪个线程，帧回调
+ * 就在哪个线程）；本移植用 androidx.dynamicanimation（同样是 ThreadLocal AnimationHandler
+ * + 调用线程 Choreographer），语义一致，且不碰框架 @hide API。
  */
 class AsyncSpringAnim(
     private val real: SpringAnimation,
     private val supportAnimThread: Boolean
-) {
+) : AsyncAnimWrapper() {
 
     fun start() = dispatch { real.start() }
 
@@ -36,7 +34,7 @@ class AsyncSpringAnim(
 
     private inline fun dispatch(crossinline action: () -> Unit) {
         if (supportAnimThread) {
-            Executors.ANIM_CONTROL_EXECUTOR.execute { action() }
+            runOnAnimThread { action() }
         } else {
             action()
         }

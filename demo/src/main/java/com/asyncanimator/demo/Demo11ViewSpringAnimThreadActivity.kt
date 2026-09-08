@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicLong
 class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
 
     override val demoTitle = "Demo 11: View 属性弹簧跑独立线程"
-    override val docSection = "AsyncAnimWrapper / OplusAsyncSpringAnimWrapper / androidx SpringAnimation"
+    override val docSection = "AsyncAnimWrapper / AsyncSpringAnim / androidx SpringAnimation"
 
     private lateinit var card: View
     private lateinit var stats: TextView
