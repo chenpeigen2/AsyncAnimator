@@ -36,6 +36,7 @@ android {
 }
 
 dependencies {
+    implementation(libs.androidx.dynamicanimation)
     testImplementation(libs.junit)
     testImplementation(libs.assertj.core)
 }

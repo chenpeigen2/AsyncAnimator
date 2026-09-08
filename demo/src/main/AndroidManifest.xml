@@ -29,6 +29,7 @@
         <activity android:name=".Demo8FeatureFlagActivity" android:label="@string/demo8_title" />
         <activity android:name=".Demo9AllAppsTransitionActivity" android:label="@string/demo9_title" />
         <activity android:name=".Demo10IndependentThreadActivity" android:label="@string/demo10_title" />
+        <activity android:name=".Demo11ViewSpringAnimThreadActivity" android:label="@string/demo11_title" />
 
     </application>
 

@@ -67,7 +67,10 @@ class LauncherEntryActivity : AppCompatActivity() {
                 Demo9AllAppsTransitionActivity::class.java),
             DemoInfo("Demo 10: 独立动画线程",
                 "launcher.anim — 主线程加压时独立线程动画不掉帧",
-                Demo10IndependentThreadActivity::class.java)
+                Demo10IndependentThreadActivity::class.java),
+            DemoInfo("Demo 11: View 属性弹簧跑独立线程",
+                "AsyncAnimWrapper / OplusAsyncSpringAnimWrapper — 弹簧物理用 androidx，帧跑 launcher.anim",
+                Demo11ViewSpringAnimThreadActivity::class.java)
         )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)

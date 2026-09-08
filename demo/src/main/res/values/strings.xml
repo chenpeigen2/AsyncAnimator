@@ -12,4 +12,5 @@
     <string name="demo8_title">Demo 8: Feature Flag</string>
     <string name="demo9_title">Demo 9: AllApps Transition</string>
     <string name="demo10_title">Demo 10: Independent Animation Thread</string>
+    <string name="demo11_title">Demo 11: View Spring on Anim Thread</string>
 </resources>
