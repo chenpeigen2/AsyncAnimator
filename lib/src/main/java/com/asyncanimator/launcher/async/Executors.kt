@@ -23,9 +23,6 @@ object Executors {
     /** 独立动画线程 LooperExecutor（launcher.anim，首次访问即启动该线程）。 */
     val ANIM_CONTROL_EXECUTOR = LooperExecutor(Handler(AnimationControlThread.instance.looper))
 
-    private fun mainHandlerOrNull(): Handler? = try {
-        Looper.getMainLooper()?.let(::Handler)
-    } catch (t: Throwable) {
-        null // JVM 单测无 android runtime
-    }
+    private fun mainHandlerOrNull(): Handler? =
+        runCatching { Looper.getMainLooper()?.let(::Handler) }.getOrNull()
 }

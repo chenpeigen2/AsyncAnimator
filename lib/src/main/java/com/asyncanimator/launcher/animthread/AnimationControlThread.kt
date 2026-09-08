@@ -65,11 +65,7 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
         AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))
         // ② UX 线程提权：原厂 LauncherBooster.getCpu().setUxThreadValue(Process.myTid())，
         //    AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
-        try {
-            Process.setThreadPriority(Process.myTid(), PRIORITY)
-        } catch (ignored: RuntimeException) {
-            // 某些设备不允许设置该优先级，忽略即可（不影响动画正确性，仅影响调度优先级）
-        }
+        runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
     }
 
     companion object {

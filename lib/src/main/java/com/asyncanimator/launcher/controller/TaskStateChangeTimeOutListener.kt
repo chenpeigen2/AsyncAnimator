@@ -43,9 +43,5 @@ class TaskStateChangeTimeOutListener(
     }
 
     private fun mainLooper(): Looper? =
-        try {
-            Looper.getMainLooper()
-        } catch (t: Throwable) {
-            null // JVM 单测无 android runtime
-        }
+        runCatching { Looper.getMainLooper() }.getOrNull()
 }
