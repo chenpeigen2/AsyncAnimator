@@ -94,6 +94,20 @@ Executors.MAIN_EXECUTOR         // 绑定主 Looper；JVM 单测下退化为就�
 Executors.ANIM_CONTROL_EXECUTOR // 绑定独立 launcher.anim 线程
 ```
 
+### AsyncSpringAnim — View 属性弹簧跑独立线程
+
+对应原厂 `OplusAsyncSpringAnimWrapper extends AsyncAnimWrapper`（review 01/16）。
+包 androidx.dynamicanimation 的 `SpringAnimation`（真库，非仿写），按 `supportAnimThread`
+把 start/cancel/skipToEnd/animateToFinalPosition/setStartVelocity marshal 到 launcher.anim；
+`addEndListener` 的结束回调经 `runOnMainThread` 回主线程。
+
+```kotlin
+val spring = SpringAnimation(card, SpringAnimation.TRANSLATION_Y).apply { spring = SpringForce(0f) }
+val anim = AsyncSpringAnim(spring, supportAnimThread = true)
+anim.addEndListener { _, canceled, _, _ -> /* 主线程 */ }
+anim.start()   // 任意线程调用都安全；帧推进在 launcher.anim
+```
+
 ### CustomRectFSpringAnim — 转场动画句柄
 
 对应原厂 `com.android.quickstep.util.animation.CustomRectFSpringAnim`（review 04；原厂 907 行弹簧实现未复刻，
@@ -179,9 +193,16 @@ controller.reset()
 `OplusAnimManager.animController` 返回此基类实例，所有方法 no-op、查询返回默认值，
 业务代码不需要判空。结构刻意保留，不要合并。
 
-### OnAnimStateChangeListener（typealias）
+### OnAnimStateChangeListener（fun interface）
 
-`(oldState: AnimationState, newState: AnimationState, runningTask: Any?) -> Unit`
+```kotlin
+fun interface OnAnimStateChangeListener {
+    fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?)
+}
+```
+
+用 fun interface 而非函数类型：函数类型没有引用相等性，
+`removeOnAnimStateChangeListener(同一个 lambda)` 会静默失效（review 30 bug #1，已修复）。
 
 ### TaskStateChangeTimeOutListener（class，自管理超时）
 
@@ -243,7 +264,7 @@ seqHelper.clearFinishRecentsRunnable()
 
 ---
 
-## manager · manager
+## manager（Ext 工厂 + feature 灰度）
 
 ### AnimationFeatureHelper — 远程灰度配置容器
 
