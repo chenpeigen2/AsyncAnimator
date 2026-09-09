@@ -3,7 +3,9 @@ package com.asyncanimator.launcher.animthread
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Process
+import android.view.Choreographer
 import com.asyncanimator.core.anim.AnimationHandler
+import com.asyncanimator.core.scheduler.TickScheduler
 
 /**
  * AnimationControlThread — 独立动画线程（"launcher.anim"）。
@@ -35,7 +37,7 @@ import com.asyncanimator.core.anim.AnimationHandler
  * 移植取舍（AOSP 无对应公开 API）：
  *
  *  - `SfVsyncFrameCallbackProvider`、`AnimationHandler.setProvider`、`LauncherBooster`
- *    都是 hidden/私有，这里用 [HandlerTickScheduler]（绑本线程 Looper 的 postDelayed 帧循环）
+ *    都是 hidden/私有，这里用 [ChoreographerTickScheduler]（公开 Choreographer，真 VSYNC）/ [HandlerTickScheduler]（postDelayed 兜底）
  *    等价替代，并保留 [onLooperPrepared] 作为"线程 init 回调"的落点；
  *  - 优先级按原厂字面量 -19 直接设置（见 [PRIORITY]；不使用 SDK 常量，
  *    因为没有一个公开常量等于 -19）。
@@ -62,11 +64,20 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
      */
     override fun onLooperPrepared() {
         // ① 帧源：原厂 setProvider(SfVsyncFrameCallbackProvider())，移植为绑本线程 Looper 的帧循环
-        AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))
+        // 帧源：优先公开 Choreographer（真 VSYNC，对齐平台 FrameCallbackProvider16 语义）；
+        // 拿不到（JVM/无 Looper 环境）退化为 HandlerTickScheduler（postDelayed 帧循环）
+        val scheduler: TickScheduler =
+            if (choreographerAvailable()) ChoreographerTickScheduler()
+            else HandlerTickScheduler(Handler(looper))
+        AnimationHandler.installThreadScheduler(scheduler)
         // ② UX 线程提权：原厂 LauncherBooster.getCpu().setUxThreadValue(Process.myTid())，
         //    AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
         runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
     }
+
+    /** 本线程是否可用公开 Choreographer（onLooperPrepared 在本线程执行，正常必为 true）。 */
+    private fun choreographerAvailable(): Boolean =
+        runCatching { Choreographer.getInstance() != null }.getOrDefault(false)
 
     companion object {
 

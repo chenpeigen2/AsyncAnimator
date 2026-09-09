@@ -12,6 +12,7 @@ package com.asyncanimator.core.scheduler
  *
  *  - [ScheduledTickScheduler] — JVM 实现，用 ScheduledExecutorService 驱动帧
  *  - [com.asyncanimator.launcher.animthread.HandlerTickScheduler] — 绑定 Looper 的实现
+ *  - [com.asyncanimator.launcher.animthread.ChoreographerTickScheduler] — 公开 Choreographer 实现（真 VSYNC）
  */
 internal interface TickScheduler {
 
