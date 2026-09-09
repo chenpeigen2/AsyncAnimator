@@ -340,3 +340,16 @@
 | 原厂"裸 ArrayList 无锁 + 主线程纪律"模式 | `AsyncAnimCallbacks.java:34-43`（mAnimListeners）、`AnimationController.java:67-87`（状态字段）、`AnimationSeqHelper.java:50-55`（seqId）—— **整套设计哲学是"靠纪律而非同步"** |
 | 原厂"全方法 synchronized"模式（与 lib 粒度反向） | `AnimSeqTimeStamp.java:31-138`（8 个 `@JvmStatic synchronized` 方法）—— **写少读多也要加锁，性能保守** |
 | 原厂"synchronized 段内重写 List"模式 | `AnimationFeatureHelper.java:320,345`（`synchronized(this.m1pxPkgDisableList) { clear(); add(); }`）—— **写时拷贝语义，但 OPPO 偷懒直接重写** |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **0e8a472** — TaskStateChangeTimeOutListener.mainLooper、Executors.mainHandlerOrNull 用 runCatching
+- **60bd048** — OplusAnimManager.interruptionEnabled @Synchronized 守 setter 并发切换；AnimSeqTimeStamp 4 个 @Volatile 字段仍是裸写但本批不降级
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -416,3 +416,13 @@ lib 当前 `OplusAnimManager.kt`（63 行）只覆盖原厂 `OplusAnimManager.ja
 | `InterceptKeyEventHelper` 调用方 | `OplusBaseSwipeUpHandler.java:6347-6350, 6368-6371` + `LauncherAnimationRunner.java` + `OplusBaseRecentsAnimationController.java` + `RecentsAnimationController.java` |
 | `MultiOpenPreStartHelper` 9+ 调用方 | `LauncherAnimationRunner.java:479-480, 512-513, 559-560` + `Launcher.java:2840, 3013` + `OplusLauncherSwipeHandlerV2Impl.java:1391-1393` + `OplusBaseTouchInteractionService.java` + `RecentsAnimationCallbacks.java` + `RecentsAnimationController.java` + `OplusBaseSwipeUpHandler.java` (10+ 调用点) + `IconLayerUpdater.java` + `SystemUiProxy.java` |
 | `AppSwipeToRecentContinuationHelper` 11+ 调用方 | `AnimationController.java:646-650` + `StackRecentsViewAnimUtil.java` + `OplusStackRecentsView.java` + `OplusTaskViewTouchControllerImpl.java` + `OplusRecentsViewStateControllerImpl.java` + `OplusGridRecentsView.java` + `TaskViewUtils.java` + `TaskStackLayoutAlgorithm.java` + `OplusBaseSwipeUpHandler.java` + `RecentsViewAnimUtil.java` + `OplusRecentsViewImpl.java` + `OplusTaskViewImpl.java` + `OplusStackTaskView.java` + `StackPagedViewEx.java` |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

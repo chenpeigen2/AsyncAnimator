@@ -605,3 +605,14 @@ enum class AnimType {
 | lib `AsyncAnimCallbacks.onAnimActualEnd` 仅给 ActualEndAnimListener 子类派发 | `lib/.../async/AsyncAnimCallbacks.kt:60-69` |
 | lib `AsyncAnimCallbacks.runOnMainThread` 只覆盖"回主线程"那一面 | `lib/.../async/AsyncAnimCallbacks.kt:96-99` |
 | lib `AsyncSpringAnim.cancel()` 走 androidx 同步停帧路径 | `lib/.../async/AsyncSpringAnim.kt:28-29` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **937dd23** — springAsyncAnim + androidx.dynamicanimation 演示了单自由度弹簧跑独立线程（替代部分占位功能）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

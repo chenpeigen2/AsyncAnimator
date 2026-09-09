@@ -324,3 +324,15 @@ override fun onLooperPrepared() {
 | 时机（onLooperPrepared vs Looper 消息首条） | ✅ 对调用方不可观察 |
 
 **整体判定**：**保真度高**，与原厂逐字面对照无功能性差异；唯一一类有意简化集中在"OPPO 私有 UI First / UAF 绑核"——AOSP 公开层无替代，属设计取舍。lib 注释已明确记录取舍理由（`AnimationControlThread.kt:30-39`）。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — PRIORITY 字面量 -19 对齐原厂 OplusExecutors.java:95；runCatching 兜底 Process.setThreadPriority 冗余
+- **dbde195** — onLooperPrepared 现在装 ChoreographerTickScheduler（公开 Choreographer VSYNC）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

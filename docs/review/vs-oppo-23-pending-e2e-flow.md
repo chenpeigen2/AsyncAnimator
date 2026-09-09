@@ -298,3 +298,14 @@ lib 演示库 (`D:/AsyncAnimator/demo/src`) **零直接调用 `PendingAnimation`
 - **结构性差异 R5（取消监听挂 animes[0]）、R7（dispatch 不递归）、R8（isDispatchStartPending 语义反转）**：因零调用方，**当前真机演示不可见**——属于"代码存在但路径未触发"的潜在 bug。
 - **API 表面差异 R9 / R10 / R11 / R12**：因零调用方，**当前不可达**。
 - **设计正确的简化 R1 / R2 / R3 / R6 / C6**：即使零调用方，行为也已对齐——属于"已对齐的冗余"。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — setFloat 动画版、addFloat 返回 ValueAnimator 进 Holder、buildAnim 走 add()、addHoldersRecur else-throw 全部对齐原厂
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

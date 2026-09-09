@@ -163,3 +163,15 @@
 | `AppToOverviewContinuationHelper.kt` 是原 Kotlin 源 | `OplusValueAnimator.java` 顶部 `@SourceDebugExtension({"SMAP\nAppToOverviewContinuationHelper.kt\nKotlin\n*F\n+ 1 AppToOverviewContinuationHelper.kt\ncom/oplus/quickstep/utils/OplusValueAnimator...` |
 | `startAlignEliminateAnim` JADX 反编译失败 | `AppSwipeToRecentContinuationHelper.java:61322`（`Code decompiled incorrectly, please refer to instructions dump.`） |
 | Demo 5 自承 TimeControllerObjectAnimator 是 no-op | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/Demo5ContinuationActivity.kt:11-12` 注释 |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — RecordInputInterpolator.inputed -1f→0f、generateContinuationAnim param.copy + LinearInterpolator、setInterpolator 双写 param、TimeControllerObjectAnimator.setTarget 真实接线
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

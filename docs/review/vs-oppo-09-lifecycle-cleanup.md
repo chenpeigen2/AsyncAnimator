@@ -155,3 +155,14 @@
 | `CustomRectFSpringAnim.cancel` → `maybeEnd` → onAnimationCancel + onAnimationEnd + onAnimActualEnd | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:608-628, 423-441` |
 | `AnimationSeqHelper.delayFinishRecents` 500ms postDelayed + `clearFinishRecentsRunnable` | `com/oplus/quickstep/utils/AnimationSeqHelper.java:26, 79-99` |
 | `LooperExecutor.shutdown()` 不支持语义 | `com/oplus/basecommon/thread/LooperExecutor.java:71-79` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **0e8a472** — runCatching 替代 try/catch
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

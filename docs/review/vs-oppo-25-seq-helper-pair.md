@@ -283,3 +283,14 @@ review 03 §3-e 已标，本报告给完整证据：
 | 上游调用 `AnimationController` 三处 | `:212,220,559-580` | 同上 |
 | 上游调用 `OplusBaseTouchInteractionService` | `:2036,2043` | 同上 |
 | 上游调用 `OtherActivityInputConsumer` | `:244,257` | 同上 |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — resetInterceptState override、updateNextFinishSeqIdIfNeed 条件更新（pair 空/变才 ++）、getNextFinishSeqId 改 == + 注释修正
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

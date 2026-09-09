@@ -219,3 +219,12 @@
 ## ⑥ 结论
 
 Demo AndroidManifest 的 12 个 activity 契约（11 unexported + 1 exported）是 **Android 平台级最佳实践**，没有任何安全 bug；但 **lib demo 与原厂 LauncherAnimationRunner/QuickstepTransitionManager 600+ 行入口契约之间存在结构性鸿沟**——lib 故意"分裂"原厂单类（`LauncherAnimationRunner.kt` stub + 独立 `RemoteAnimationFactory` 接口），且 Demo9 完全没走真 `LauncherAnimationRunner` 构造 → `ActivityOptions.makeRemoteAnimation` 通路。所有 11 个 demo activity 都是 **lib 自创 demo harness UI**，**不直接复刻 OPPO 真实入口调用方**——它们对应 OPPO 的**子系统/调用路径**（MasterClock/Holder/Async/Spring/Continuation/StateMachine/SeqId/FeatureFlag/FullTransition/IndependentThread/SpringOnAnimThread），review 06 §2.2 已给出 78% 闭合度。本 review 在 manifest 层补足证据，并发现 10 个 demo manifest 层风险点（其中 bug 级 2 个：`LauncherEntryActivity` 信息暴露面 + Demo9 完全没走真入口通路）。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

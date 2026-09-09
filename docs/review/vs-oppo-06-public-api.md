@@ -131,3 +131,16 @@ USAGE.md 暴露面 100% 在原厂有对应，调用面覆盖率约 78%，缺口�
 5. `AsyncSpringAnim` 漏列文档
 
 D4 demo 把原厂真实存在但 lib 没有对应的 `OplusSpringObjectAnimator` 当主题——属于"OPPO 真用但 lib 缺"的未闭合缺口。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **937dd23** — 新增 AsyncSpringAnim（USAGE.md 后续已补小节 42882ff）
+- **e62dbff** — launcher/* → thread/anim/playback/seq/control/manager 重整
+- **215ecb5** — AnimType 3 值（Demo 11 路径不再依赖 7 值）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

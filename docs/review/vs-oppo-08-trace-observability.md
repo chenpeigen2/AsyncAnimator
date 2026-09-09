@@ -125,3 +125,14 @@
 | OPPO PERSIST_LOG_DIR 落盘 | `com/oplus/basecommon/log/LogUtils.java:62`（`/data/persist_log/launcher%d`） |
 | OPPO Debug.getCallers 总调用规模 | `Grep "Debug\.getCallers"` 1488 个文件命中（远不止动画层，本次只重点对照 OplusValueAnimator + MultiAnimatorSet） |
 | lib demo stderr → logView 重定向 | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/DemoBaseActivity.kt:107-124` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — Trace.STACK 改 ThreadLocal，跨线程 traceBegin/End 不再错位
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

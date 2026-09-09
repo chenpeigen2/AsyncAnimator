@@ -172,3 +172,17 @@
 - "P0 bug 级"指"在原厂设计意图中起关键作用、缺失会导致语义消失或反转"的差异；修复后能消除潜在的难以调试的运行时错误。
 - "P1 语义弱化"指"原厂有但 lib 没有，行为分支范围缩小但当前 demo 不触发"。
 - "P2/P3"为可观测性 / 边界差异，修复成本极低但优先级靠后。
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **0e8a472** — try/catch→runCatching 全部点
+- **60bd048** — 本份列的 15 项高风险点中的 11 项已落地修复（线程优先级 -19、inputed=0f、续行 param copy、async 派发、双轨结束、cleanUpRecentsAnim→checkAllAnimationFinished、addRecentsAnim 转 MULTI_WAITING→MULTI_CLOSE、else-if 互斥、TaskStateChangeTimeOutListener 兜底、uptimeMillis 时钟、APC root dispatch）
+- **dbde195** — launcher.anim 帧源已对齐公开 Choreographer（真 VSYNC）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

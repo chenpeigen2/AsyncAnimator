@@ -498,3 +498,14 @@ lib 与 OPPO **完全一致**——这是派发契约里最稳定的一块。
 - **取证粒度**：review 02/12 是"类 + 字段"层对比；本报告下沉到"每个方法、每个回调触发点、每个 listener 派发顺序"，并补全了 review 02/12 未列的具体证据（如 Bug-2 cancel 不清 endActions、Bug-3 时序 step 2 vs step 3、Bug-4 的完整派发顺序对比、附录 B 的 cancel/success 触发契约表）。
 - **新增风险**：本报告新增 Bug-2（cancel 后 endActions 残留）、Bug-4 的严重度升级（低→高——基于 grep `com/android/quickstep` 13+ 调用方），既有 review 未覆盖。
 - **方法**：本报告用 `python open(...)` 直读 JADX 明文（绕过 DLP Read 通道），按 JADX 文本行号比对 lib 行号；review 02/12 兼用 Grep + Read。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — dispatchToListeners 包含根 AnimatorSet（前序 DFS）；anims[0] vs 根的语义现在不再跳根
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

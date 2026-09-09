@@ -206,3 +206,15 @@
 - **取证**：本报告用 `python open(p,'rb').read().decode('utf-8','replace')` 完整加载原厂明文（避开 DLP 加密 Read），按 JADX 文本行号比对 lib 行号；既有 review 02 用 Grep 走 ripgrep 通道。本报告覆盖度更全（每个 lib 类都通读 OPPO 对应类全文，而不仅是 grep 命中行）。
 - **复核**：本报告**逐条复核**既有 review 02 的"精确复刻 / 简化 / 遗漏"标签，对其中 5 处过时结论做了修正（见附录 A）。
 - **新增风险**：本报告新增 R5（setFloat 不显式设时长，API 说谎）、R8（cancel 监听挂在 animes[0] 而非 AnimatorSet 本体）、R10（addFloat 构造 ObjectAnimator 不持原插值器引用），既有 review 未覆盖。
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — AnimationHandler.doAnimationFrame 每轮重读 size（添加时回调当帧可见）、APC dispatchToListeners 包含根 AnimatorSet
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

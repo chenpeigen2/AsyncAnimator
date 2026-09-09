@@ -465,3 +465,14 @@ object OplusAnimManager {
 | lib `AnimationFeatureHelper` 用 `object` + `SyncedVar<T>` property delegate | `feature/AnimationFeatureHelper.kt:13-52` |
 | lib 全树 0 个 `@JvmStatic` / `@JvmOverloads` / `@JvmField` / `@JvmName` | grep `lib/` 全树无命中 |
 | lib `Demo6StateMachineActivity` 只 add 不 remove OnAnimStateChangeListener | `demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:55` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — OnAnimStateChangeListener typealias→fun interface（lambda 引用相等性 + remove 不静默失效）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

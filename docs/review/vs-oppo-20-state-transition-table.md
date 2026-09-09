@@ -298,3 +298,15 @@ override fun cleanUpRecentsAnim(): Boolean {
 - `python -c "open('D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/AnimationController.kt','rb').read().decode('utf-8')"` 拿 lib 完整文本
 - `grep -nE "AnimationState\.(NONE|OPEN|CLOSE|MULTI_OPEN|MULTI_CLOSE|WAITING|MULTI_WAITING|REVERSE_OPEN|MULTI_REVERSE_OPEN|UNKNOWN|SWIPE_UP_TO_CAPSULE|SWIPE_UP_TO_SPLIT_OR_FLOATING)" /tmp/orig_animctl.txt` 锁 12 状态出现位置
 - `grep -nE "SWIPE_UP_TO_CAPSULE|SWIPE_UP_TO_SPLIT_OR_FLOATING" D:/oppo_a6_launcher/sources -r` 确认这 2 个状态仅由 `OplusBaseSwipeUpHandler` 外部发射
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — revertRecentsAnimation override 已加（CLOSE→REVERSE_OPEN、MULTI_CLOSE→MULTI_REVERSE_OPEN）；cleanUpRecentsAnim 现在调 checkAllAnimationFinished
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -233,3 +233,15 @@
 
 - 承接 `vs-oppo-03-controller.md`、`vs-oppo-07-concurrency.md` 已列的“RUS 简化/列表风险”，本报告新增的是逐字段默认值、`simulateRemoteUpdate` 少第 7 参数、adaptive threshold 钳制、multi-app 派生刷新和相关 gate 的精确调用链。
 - 对 `vs-oppo-07` 的两处表述做字段级校正：原厂 `synchronized` 实例 setter **共享同一个 helper monitor**，不是每字段独立锁；原厂列表 writer **没有替换引用**，而是原地 `clear/add`，所以 `volatile List` 不能单独消除读者 race。
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — interruptionEnabled setter @Synchronized 防止并发 race；列表字段本批未加锁（属 AndroidAnimManager helper 缺失范围）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

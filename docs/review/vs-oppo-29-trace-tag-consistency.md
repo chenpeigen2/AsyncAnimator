@@ -262,3 +262,14 @@
 | 真机 trace 上 `#26-OPEN_FROM_HOME-End` 在 main 线程 | `docs/animation-trace-validation.md:80` `+687.8ms main #26-OPEN_FROM_HOME-End (5.3ms) + TracePrintUtil#notifyAnimationEnd` |
 | lib demo stderr 重定向 | `demo/.../DemoBaseActivity.kt:107-124` `System.setErr(redirectStream)` 按 "Trace" 子串过滤 |
 | 已有 review 08 对 ArrayDeque 的提法（更浅） | `vs-oppo-08-trace-observability.md` §3 #1（仅一段"高 / bug 级"叙述，未量化触发条件） |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — Trace.STACK→ThreadLocal，跨线程 traceBegin/End 不再错位（虽然不是 ATRACE）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

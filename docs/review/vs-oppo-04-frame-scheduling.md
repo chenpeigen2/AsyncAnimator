@@ -437,3 +437,17 @@ private fun swapScheduler(s: TickScheduler) {
 - ✅ "独立动画线程 + 每帧直发 SurfaceFlinger"在真机 trace 上证实（tid 3342 launcher.anim 跑 77 帧 + 每帧 binder→SF）。
 - ⚠️ "launcher.anim 帧源 = SF-vsync"在该 trace 设备上**未体现**（两线程帧相位均为 VSYNC-app 而非 VSYNC-sf）——这意味着即便原厂 `setProvider(SfVsyncFrameCallbackProvider)` 真的生效，效果也不可见于相位（SF-vsync 与 app-vsync 同频 120Hz，相位差仅 5ms）。
 - 对 lib 的启示：**SF-vsync 帧源降级为可选**（v4 §8.1 已经认识），lib 用 `HandlerTickScheduler` 退化到 Looper.postDelayed 是**对真机行为足够忠实的简化**。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — AnimationHandler.doAnimationFrame 行为对齐 vendored core
+- **2be173e** — HandlerTickScheduler 漂移补偿（已删，合入 ChoreographerTickScheduler）
+- **dbde195** — ChoreographerTickScheduler 公开 Choreographer 替代 postDelayed 退化路径
+- **215ecb5** — ScheduledTickScheduler/HandlerTickScheduler 删，只留 ChoreographerTickScheduler（满足 §3-② 收拢意图）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

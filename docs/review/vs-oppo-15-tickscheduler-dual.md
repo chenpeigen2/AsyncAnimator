@@ -360,3 +360,16 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 | 是否接 vsync | ❌ | ❌ | 都不接（vendor 路径 C 接 vsync） |
 | 是否接 SF-vsync | ❌ | ❌ | 都不接（vendor 框架 (c) 接） |
 | 替换成本 | 默认实现，可被 `installThreadScheduler` 替换 | 默认实现，可被 `installThreadScheduler` 替换 | 都是 TickScheduler 接口实现，可互换 |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **2be173e** — HandlerTickScheduler 漂移补偿（当时）
+- **215ecb5** — ScheduledTickScheduler + HandlerTickScheduler 已删除，本文档大量分析已过期
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

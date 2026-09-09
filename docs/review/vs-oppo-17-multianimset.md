@@ -403,3 +403,12 @@ else:
 **Bug 级风险 6 个**（B1 maybeOnEnd 不等齐 / B2 mHasRequestCancel 缺失导致帧撕裂 / B3 bitmask 协议缺失 / B4 play(anim, boolean) sync/async 分支缺失 / B5 cancel(1) sync+async 混合 cancel 缺失 / B6 canSkipToEnd 校验缺失）；**中等风险 7 个**（M1 SpringHolder.mStartDelay 倒计时缺失 / M2 removeSpringAnimFromSet 清理缺失 / M3 live-add spring 路径缺失 / M4 mAnimationId+mAnimEndCallback ID 协议缺失 / M5 isRunning 任一通道未结束契约缺失 / M6 mSpringAnimEndListener 共享 listener 缺失 / M7 listener 传 null 契约缺失）；**低风险 3 个**（业务谓词 / 调试 API / helper API）。
 
 **整体保真度 ~14%**（1/21 字段、1/20 方法、覆盖 4 通道调度 0/4）。**修复成本估算**：仅 bug 级修复 ~60 行；新建完整 MultiAnimatorSet ~250 行；含 SpringHolder + MultiDynamicAnimation ~600 行。Demo9 从 "概念演示" 升级到 "真实 4 通道转场" 必须建主调度器。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

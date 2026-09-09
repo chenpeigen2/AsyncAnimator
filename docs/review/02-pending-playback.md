@@ -1,3 +1,5 @@
+> **⚠️ 已废弃（superseded）**：本文档是第一轮（4 路）对比的旧版本，已被 [vs-oppo-02-pending-playback.md](vs-oppo-02-pending-playback.md) 取代。内容仅供参考，不要按本文档的结论修改代码。
+
 # 区域 2 对比 Review：Pending / Playback 层
 
 > 对比双方：

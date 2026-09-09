@@ -440,3 +440,14 @@
 | 原厂 `lambda$method$N` 静态方法 | `oppo/AsyncValueAnimator.java:131-140, 153-164` 5 个 `lambda$method$N`，`lib` 用 `inline fun` 消除 |
 | 原厂 `WhenMappings.$EnumSwitchMapping$0` 枚举映射表 | `oppo/AnimationController.java:117-141` ~25 行 ordinal 映射，`lib` 用 `when` 直接枚举分支 |
 | 原厂 `extends AbstractExecutorService` 抽象基类 | `oppo/LooperExecutor.java:18`，`lib` 仅实现 `execute` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — OnAnimStateChangeListener typealias→fun interface（lambda 引用相等性恢复）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

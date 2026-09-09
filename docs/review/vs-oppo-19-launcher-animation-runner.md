@@ -160,3 +160,14 @@ demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:172
 ```
 
 **注意**：此处 `arrayOf()` 返回 `Array<LauncherAnimationRunner.RemoteAnimationTarget>`，意味着 `LauncherAnimationRunner.RemoteAnimationTarget` 真正被消费——B1 的"补 25 字段"不是"理论上应该补"，而是"已经被 demo 引用，补不齐会让以后写 `arrayOf(RemoteAnimationTarget(taskId=1))` 时 IDE 找不到其他字段"。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **e62dbff** — RemoteAnimationFactory / LauncherAnimationRunner 仍在 com.android.launcher3 + control 路径
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

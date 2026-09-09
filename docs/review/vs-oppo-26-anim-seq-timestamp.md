@@ -350,3 +350,14 @@ internal fun resetAllForTest() {
 - **review 07 §③-风险 1**：行为差异风险点中"AnimSeqTimeStamp 多字段并发读写的撕裂快照"—— 本报告 §③-风险 6 重新审视该风险，**结论**：原厂**同样没有 multi-field atomicity**（每个 getter 独立 synchronized block），因此"撕裂快照"在原厂也存在，**不是 lib 的独立 bug**。
 - **review 03 §2.2-5**：AnimationSeqHelper 的 `canFinishRecent / canInterceptGesture` 阈值比较 —— 本报告**补全**这些阈值的来源（`getTimeGapToLastRecentFinishTime` / `getTimeGapToLastStartAppTime`）以及哨兵语义差异（`Long.MAX_VALUE` vs `uptimeMillis`）。
 - **review 08 §③-风险 1**：trace 维度的可观测性 —— 本报告 §③-风险 5 在日志维度独立列出 12 处 Log.d 的缺失。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — 3 个 reset 方法补齐：resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

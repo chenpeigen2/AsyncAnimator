@@ -316,3 +316,19 @@
 | `OplusValueAnimator.setInterpolator` 双写 param | `OplusValueAnimator.java:292-298` |
 
 （全部证据经 ripgrep 明文通道穿透 DLP 加密获得，行号为 JADX 反编译文本行号；lib 源码经 git show 取得明文。）
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **0e8a472** — runCatching 替换 try/catch（Trace/Executors/TaskStateChangeTimeOutListener）
+- **60bd048** — Trace.STACK→ThreadLocal、AnimSeqTimeStamp reset 3 件
+- **6bbe9a1** — AsyncAnimWrapper.runOnMainThread 被真用
+- **2be173e** — HandlerTickScheduler 漂移补偿（该类后删，修正合入 ChoreographerTickScheduler 的 VSYNC 路径）
+- **dbde195** — ChoreographerTickScheduler：launcher.anim 帧源对齐平台 Choreographer
+- **215ecb5** — 删 Scheduled/HandlerTickScheduler，只留 ChoreographerTickScheduler（Android 平台 only）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

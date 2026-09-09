@@ -198,3 +198,15 @@
 - sources 侧：Grep ripgrep 明文通道穿透 DLP 加密；行号取自 JADX 反编译文本
 - 文档侧：Python 全文检索正则 `\bAsyncSpringAnim\b` / `fun interface` / `9 个 demo` / `10 个 Demo` / `11 个 demo` 全部命中点列表已在 §①/§②/§③ 列出
 - 未运行任何编译/构建命令；本报告纯静态文档 + 源码对照
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **215ecb5** — USAGE.md AnimType/AsyncValueAnimator 段一致
+- **e62dbff** — 包路径已重整，USAGE.md 同步重写（42882ff 补 AsyncSpringAnim 小节）
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

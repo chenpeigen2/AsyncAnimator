@@ -255,3 +255,14 @@
 | lib `CustomRectFSpringAnim.kt:14-18` 占位类（仅 3 值 AnimType） | `lib/src/main/java/com/asyncanimator/launcher/async/CustomRectFSpringAnim.kt:14-18` |
 | lib 用 androidx `SpringAnimation` + `SpringForce`（公开 API）替代 OPPO fork | `demo/src/main/java/com/asyncanimator/demo/Demo11ViewSpringAnimThreadActivity.kt:13, 132-134` |
 | `demo/scene/SceneSpring.kt` 自实现 3 分支弹簧物理（与 OPPO SpringForce 三支闭式一致） | `demo/src/main/java/com/asyncanimator/demo/scene/SceneSpring.kt:23-63` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **937dd23** — androidx SpringAnimation 替代 MultiDynamicAnimation 缺失部分
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

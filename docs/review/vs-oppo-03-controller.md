@@ -224,3 +224,16 @@
 | 原厂 `RemoteAnimationFactory` 10 default + 1 abstract | `LauncherAnimationRunner.java:242-277` |
 | 原厂 `LauncherAnimationRunner.AnimationResult` 三段式 finish | `LauncherAnimationRunner.java:80-150` |
 | 原厂 `AnimSeqTimeStamp` 4 字段 + `@JvmStatic synchronized` | `D:/oppo_a6_launcher/sources/com/android/systemui/shared/system/AnimSeqTimeStamp.java:10-148` |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **0e8a472** — Executors.mainHandlerOrNull→runCatching.getOrNull
+- **60bd048** — AnimationController.revertRecentsAnimation、cleanUpRecentsAnim→checkAllAnimationFinished、interruptionEnabled @Synchronized、TaskStateChangeTimeOutListener 自管超时 + runCatching
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -1,3 +1,5 @@
+> **⚠️ 已废弃（superseded）**：本文档是第一轮（4 路）对比的旧版本，已被 [vs-oppo-03-controller.md](vs-oppo-03-controller.md) 取代。内容仅供参考，不要按本文档的结论修改代码。
+
 # Review 03：Controller / Manager / Seq / Feature 层对比
 
 > 对比双方：

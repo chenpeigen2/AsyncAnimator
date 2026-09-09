@@ -646,3 +646,16 @@ private fun swapScheduler(s: TickScheduler) {
 | review 12 §①-6 "TickSchedulerHolder 懒构造 + swapScheduler" 1:1 ✓ → 本文 §①-14 + §①-19 细化 holder 与 swapScheduler 的对位关系 |
 | review 12 §③-D "lib 退化为 postDelayed 帧源" → 本文不在范围（帧源层话题，在 §①-1 TickScheduler 对位表已隐含） |
 | 本文新增（review 04/12 未覆盖）：①-11 快照 vs 活取 size、①-18 installThreadScheduler 三 silent、②-C 遗漏清单 10 项、③-① 快照 size bug、③-② install silent bug、③-⑤ removeCallback 漏 delay map、③-⑨ animationCount 静态入口、附 A 行级对位表、附 B A vs B 语义分叉、附 C 单测覆盖率分析 |
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — doAnimationFrame 每轮重读 size 对齐 vendored core：添加回调当帧可见；installThreadScheduler 的隐性时序契约保留
+- **dbde195** — ChoreographerTickScheduler 替代 HandlerTickScheduler 成为 launcher.anim 主帧源
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

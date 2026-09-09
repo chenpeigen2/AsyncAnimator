@@ -1,3 +1,5 @@
+> **⚠️ 已废弃（superseded）**：本文档是第一轮（4 路）对比的旧版本，已被 [vs-oppo-01-async-thread.md](vs-oppo-01-async-thread.md) 取代。内容仅供参考，不要按本文档的结论修改代码。
+
 # 对比 Review 01：异步/线程层（async / animthread）
 
 > 对比双方：

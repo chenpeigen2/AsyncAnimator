@@ -344,3 +344,12 @@ public static final String LIBRARY_PACKAGE_NAME = "com.android.launcher.protonan
 ## 6. 一句话总结
 
 lib 的构建配置整体**跑得通、有测试**，但有 **3 个 P0 真 bug**（`minSdk = 36` 让 ColorOS 15 装不上、`compileSdk = 37` + android-37 hack 让新开发者踩坑、Kotlin 2.0.21 vs 原厂 1.8.x 元数据在某些 stdlib 行为上可能有差异），**1 个 P1 风险**（Java 21 class file version 65 让 Android 13 设备 `VerifyError`），**2 个文档外 hack**（android-37 SDK 复制 + 关 auto-detect + 抑制 compileSdk 警告）。**建议先修 B1 + B2 + B4（合计 6 行），ColorOS 15 真机就能跑起来**。
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -291,3 +291,15 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 ## 8. 一句话总结
 
 `delayStartActivityIfNeed` 三层决策树 11 谓词 lib 覆盖 6/11（55%）：第一层 5/6（缺 `!isTablet` conj）、第二层 2/4（漏 `isSpecialAppScene` + 日志）、第三层 0/1（运行态被时间窗替换）；顶部 `supportInterruption` guard 与清理段精确复刻；P0 修复（A1 运行态 + §4-D 全局事件总线）约 100 行，A2/A3 各 5-15 行可补齐到 11/11 = 100%。
+
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — 时钟域 currentTimeMillis→uptimeMillis（AnimSeqTimeStamp 已带可注入 clock）；delayStartActivityIfNeed 改回 else-if 互斥 + 清理段 dispose listener/清 Between 标志
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

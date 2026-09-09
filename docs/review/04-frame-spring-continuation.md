@@ -1,3 +1,5 @@
+> **⚠️ 已废弃（superseded）**：本文档是第一轮（4 路）对比的旧版本，已被 [vs-oppo-04-frame-scheduling.md / vs-oppo-05-continuation-spring.md](vs-oppo-04-frame-scheduling.md) 取代。内容仅供参考，不要按本文档的结论修改代码。
+
 # 区域 4 对比 Review：帧调度 / 弹簧 / 续行层
 
 > 对比双方：

@@ -173,3 +173,15 @@
 | `forbidTouch()` 含 4 条件查闸门 | `AnimationController.java:forbidTouch` |
 | `delayStartActivityIfNeed` 第三层查 `AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()` | `AnimationController.java:646-650` |
 | `mHandler` 走 `URGENT_TRANSACTION_EXECUTOR`（不是主线程） | `TaskStateHelper.java:124` + `AnimationController.java:14450` |
+
+## 复核记录（2026-09-09）
+
+本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
+**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+
+本份涉及且已落地的修复（按 commit 顺序）：
+
+- **60bd048** — appLaunchAnimStartOrEnd end 分支 + checkAllAnimationFinished 收尾、revertRecentsAnimation、uptimeMillis 时钟、AnimSeqTimeStamp 3 reset 补齐
+- **937dd23** — 加 androidx.dynamicanimation 依赖 + AsyncSpringAnim 演示 View 弹簧跑独立线程
+
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
