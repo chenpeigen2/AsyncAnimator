@@ -1,0 +1,127 @@
+# 区域 08 对比 Review：日志 / Tracing / 可观测性
+
+> 对比双方：
+> - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库；`util/Trace.kt` 是统一 trace 工具；`launcher/async/AsyncAnimCallbacks.kt`、`launcher/continuation/OplusValueAnimator.kt`、`launcher/seq/AnimationSeqHelper.kt` 三处是 Trace 调用点；其它类全部无 `println`/`Log`/`android.util.Log`）。
+> - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）。
+>
+> 取证方法：lib 侧直接 Read + Python 读 UTF-8 含中文文件（`Trace.kt`）；sources 侧因企业 DLP 加密（Read 返回 `%TSD-Header` 密文），全部经 Grep / `bash grep -c`（ripgrep 明文通道）取证，行号为 JADX 反编译文本行号。背景见 `docs/animation-thread-analysis-v4.md` §3、§4 与 `docs/animation-trace-validation.md` §1、§6。
+
+---
+
+## 1. 类对应关系表
+
+| lib | 原厂 | 关系与证据 |
+|---|---|---|
+| `util/Trace.kt`（21 行 object，单 stack 维护 `[tag] name` 嵌套） | **`android.os.Trace`**（`traceBegin(tag, name)` / `traceEnd(tag)`，`tag` 取 `8L` = `TRACE_TAG_APP`）** + **`com.oplus.basecommon.util.TraceHelper`**（`com/oplus/basecommon/util/TraceHelper.java:9-71`，薄壳，调 `Trace.traceBegin/End` 并在 DEBUG=true 时附带 caller 检测；FLAG `ALLOW_BINDER_TRACKING`/`IGNORE_BINDERS`/`CHECK_FOR_RACE_CONDITIONS`/`UI_EVENT` 常量 `:11-14`） | lib 是「内存版」trace：堆栈保存 + stderr 输出；原厂是「平台版」：写到 systrace 环形缓冲，Perfetto/Systrace 工具链消费。两者 API 表面对齐但数据流通道完全不同。 |
+| `launcher/async/AsyncAnimCallbacks.kt` 内的 `Trace.traceBegin(8L, "AsyncAnim{Start,End,Cancel}-${animationId}")`（`:47-65`） | `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:141-144` 的 `Trace.traceBegin(8L, "#" + mAnimationId + "-" + mAnimType + "-Start")`、`:131-137` 的 `-End`、`:111-122` 的 `onAnimActualEnd`（注意：OPPO 在 `onAnimActualEnd` 内**不调** Trace，只打 `LogUtils.i`，与 start/end 不同） | 1:1 对齐：tag 字面量都是 `8L`、事件命名都是「动词 + 单调 id」；唯一差异：lib 用对象 hash（`System.identityHashCode`）的字符串拼接生成 id，OPPO 用 int 字段 `mAnimationId`；OPPO 携带 `mAnimType`（默认 `SWIPE_TO_HOME`），lib 不携带。 |
+| `launcher/async/AsyncAnimCallbacks.kt` 的 `LogUtils` 风格日志 | `AsyncAnimCallbacks.java:112-113, 125-126, 133-134, 142`：`LogUtils.isLogOpen()` 门控的 `LogUtils.i(TAG, "Async anim start #N, anim type: T")`（TAG = `"AsyncAnimCallbacks"`，`:24`） | lib **完全缺失**该层（见 §2-C）；原厂 `isLogOpen()` 在 release 构建关闭，保证用户机器不刷屏；engineer-build 由 `mConfig`（`com/oplus/basecommon/log/config/LogUtilsConfig.java`）下发开关。 |
+| `launcher/seq/AnimationSeqHelper.kt` 内三处 `Trace.traceBegin(8L, "exc delayRunnable") / "delayFinishRecents" / "clearFinishRecentsRunnable"`（`:65, 80-83, 91-95`） | `com/oplus/quickstep/utils/AnimationSeqHelper.java:39, 45, 80, 83, 93, 97`：同名 Trace 调用 + `LogUtils.i(TAG, ...)`（TAG = `"AnimationSeqHelper"`，`:11` import + 顶层常量；LogUtils.i 见 `:60, 64, 120, 126`） | 1:1 对齐：trace 名完全相同（`exc delayRunnable` 这种业内罕用的"动词空格"命名直接保留）。lib 缺同位置的 LogUtils.i。 |
+| `launcher/continuation/OplusValueAnimator.kt` 的 `Trace.traceBegin(8L, "Continuation-fail")` / `"Continuation-$f"`（`:133-145`） | `com/oplus/quickstep/utils/OplusValueAnimator.java:114-118, 143-144, 211, 227, 269, 286-294, 303, 320-321` 的 `LogUtils.i(getTag(), "...")` + `Debug.getCallers(3)` / `Debug.getCallers(15)` 栈采样 | trace 命名不同（lib "Continuation-fail/$f"，OPPO 不打 Trace 仅打 LogUtils）；lib 用 `getTag()` 类方法获取 per-instance 标签的能力**缺失**。 |
+| `launcher/animthread/AnimationControlThread.kt`（无 log） | `com/oplus/basecommon/thread/OplusExecutors.java:95, 169-171`（同样无 log；线程名/优先级字面量在源码中可见，**`OplusExecutors.java:95` 也没有 Trace 调用**——这是文档常被误读的点） | 双侧都不打日志。lib 与原厂一致：launcher.anim 创建点刻意保持"沉默"。 |
+| `launcher/async/AsyncValueAnimator.kt`（无 log） | `com/android/quickstep/util/animation/AsyncValueAnimator.java:28` 仅定义 `TAG = "AsyncValueAnimator"`，**无任何 `LogUtils`/`Trace` 调用**（`bash grep -c "LogUtils"` = 0；同 `Trace\.` 也是 0） | lib 与原厂一致：日志全部委托给 `AsyncAnimCallbacks`。 |
+| `demo/DemoBaseActivity.kt:107-124` 的 `System.setErr(redirectStream)`（按 `"Trace"` 子串过滤 stderr 到 logView） | 无对应；原厂 redirect 由 `com.oplus.basecommon.log.LogUtils.toFile(...)` + `setFileLogDir(Context)`（`:257-272`）+ `PERSIST_LOG_DIR = "/data/persist_log/launcher<uid>"`（`:62`）落到磁盘 | lib 是「Demo UI 视觉化」重定向，原厂是「长期落盘 + 上报后端」；目的不同，结构上无对偶关系。 |
+| （lib 无对应） | `com.oplus.basecommon.log.LogUtils`（420+ 行，`com/oplus/basecommon/log/LogUtils.java`）：30+ 模块 TAG 常量（QUICKSTEP/TASK_VIEW/FOLDER/ICON/HOTSEAT/...，`:32-77`）；`d/dEx/dForever/dRealtime/debug/i/w/e/internal/usDebug/toFile/copyFile/stopPersistentLog` API 表面（`:87-413`）；`isLogOpen()/isAlwayson()/isInternalLogOpen()/isDebuggable()/isLoggable()/isTemporaryLogging()` 6 档门控（`:205-231`） | lib 无 LogUtils；这是**整个区域最大的语义差异**：原厂把日志做成「平台级」可关可开、可分模块、可落盘、可上报；lib 把日志做成「Demo 级」一律输出。 |
+| （lib 无对应） | `Debug.getCallers(N)` 栈采样（`android.os.Debug.getCallers`）：OPPO 在 `OplusValueAnimator.java:115, 144, 287, 294, 321`、`MultiAnimatorSet.java:148, 188` 等至少 80+ 调用点（`Grep "Debug\.getCallers"` 输出 1488 个文件命中，本次只重点查这 2 类） | lib 完全缺失该能力；trace 失败时只能给"名字"不能给"调用链"。 |
+
+补充：OPPO `AsyncAnimCallbacks.java` 的 `onAnimationStart` 路径（`:140-144`）是「先 `Trace.traceBegin(8L, "#N-T-Start")` → `LogUtils.i(TAG, ...)` → `Trace.traceEnd(8L)`」——把 trace 段当"调试时刻"用，包住 log 调用，systrace 上能看到「这一帧 LogUtils.i 在哪两 tick 之间」。lib 用同样模式（`AsyncAnimCallbacks.kt:48-56`），结构 1:1。
+
+---
+
+## 2. 保真度评估
+
+### 2.1 精确复刻
+
+1. **Trace 标签字面量 = `8L`**。lib `AsyncAnimCallbacks.kt:47, 51, 55, 60`、lib `AnimationSeqHelper.kt:65, 82, 93`、lib `OplusValueAnimator.kt:133, 142` 全部使用 `Trace.traceBegin(8L, ...)`；OPPO 同名方法（`AsyncAnimCallbacks.java:132, 141`、`AnimationSeqHelper.java:39, 80, 93`、`TracePrintUtil.java:528, 538` 等）也全部 `8L`。值一致意味着两边产出的 Perfetto/Systrace 都落在 `TRACE_TAG_APP` 区段（公开可读），不会因 hidden tag 屏蔽。
+2. **Trace 命名风格 = "动词空格" + 关键字**。lib 沿用 `AsyncAnimStart-${animationId}`、`AsyncAnimEnd-${animationId}`、`AsyncAnimCancel-${animationId}`（`AsyncAnimCallbacks.kt:48-56`）；OPPO `AsyncAnimCallbacks.java:131-141` 用 `"#" + id + "-" + type + "-Start/-End"`。形式略不同但前缀同根（`AsyncAnim*`），logcat/grep 仍可对齐。
+3. **`AnimationSeqHelper` 的三条 trace 名原样保留**。lib `:65 "exc delayRunnable"`、`:82 "clearFinishRecentsRunnable"`、`:91 "delayFinishRecents"` 与原厂 `AnimationSeqHelper.java:39, 80, 93` **逐字一致**——这是 review 范围里保真度最高的一段（连 "exc" 这种缩写都照搬）。
+4. **「trace 包住 log」的派发模式**。lib `AsyncAnimCallbacks.kt:48-56`：先 `Trace.traceBegin(8L, "AsyncAnimStart-$id")` → `runOnMainThread { dispatch }` → `Trace.traceEnd(8L)`；OPPO `AsyncAnimCallbacks.java:141-144`：先 `Trace.traceBegin(8L, "#N-T-Start")` → `LogUtils.i(TAG, "Async anim start ...")` → `Trace.traceEnd(8L)`。结构一致，差异只在 traceEnd 时机（lib 在 `runOnMainThread` 之前就 traceEnd；OPPO 在 LogUtils 之后 traceEnd，logcat 的"段"包含 log 调用本身）。
+5. **`animationId` 在派发前同步到 listener**。lib `AsyncAnimCallbacks.kt:51`（`(l as? NullableAnimatorListenerAdapter)?.animationId = animationId`）；OPPO `AsyncAnimCallbacks.java:39, 49, 61, 73`（同样在派发前 `setAnimationId(mAnimationId)`）。逐字段一致。
+6. **`listener 懒删除 + null 槽压缩 + 快照迭代`**。lib `AsyncAnimCallbacks.kt:29-32, 56-60, 64-70`；OPPO `AsyncAnimCallbacks.java:29-32, 81-97`（`getListeners()` = `removeNullEntries + toArray`）。review 01 §2-A-4 已确认 1:1。
+7. **`onAnimActualEnd` 只派发给 `ActualEndAnimListener`**。lib `AsyncAnimCallbacks.kt:58-69`；OPPO `AsyncAnimCallbacks.java:111-122, 34-43`。review 01 §②-C2 已确认对齐。
+
+### 2.2 有意简化（lib 注释/文档明示或一眼可见）
+
+1. **`android.os.Trace` → `Trace.kt` 内存堆栈**。lib 类注释（`Trace.kt:6-10`）明示"按 tag 字符串 + 嵌套深度，模拟 native Trace 的可见性，方便单元测试断言"。运行时数据流：lib stderr + Demo logView；原厂：atrace 环形缓冲 + Perfetto 抓取。**正确简化**：JVM 单元测试无法接 Perfetto，且 demo 模块需要 UI 渲染 trace，故 `System.err` 重定向比真 trace 实用。
+2. **`LogUtils` 全套 API 缺失**。原厂 `LogUtils` 提供 `d/dEx/i/w/e/internal/debug/usDebug/toFile/copyFile/setFileLogDir/stopPersistentLog/isLogOpen/isAlwayson/isInternalLogOpen/isDebuggable/isLoggable/isTemporaryLogging`（`LogUtils.java:87-413`）+ 30+ 模块 TAG 常量。lib 一个也没有。
+3. **`Debug.getCallers(N)` 栈采样缺失**。原厂在 `OplusValueAnimator.java:115, 144, 287, 294, 321`、`MultiAnimatorSet.java:148, 188` 等关键路径必带 `Debug.getCallers(3/10/15)`。lib 完全没接 `android.os.Debug`。
+4. **`PERSIST_LOG_DIR` 落盘缺失**。原厂 `LogUtils.java:62, 277-365` 提供 `toFile` 系列方法写 `/data/persist_log/launcher<uid>/...`。lib 的 demo stderr 重定向（`DemoBaseActivity.kt:107-124`）只到内存里的 `logView`，进程退出即丢。
+5. **trace 命名不携带 animType**。原厂 `AsyncAnimCallbacks.java:131-141` trace 名形如 `#26-OPEN_FROM_HOME-Start`（含 `mAnimType.toString()`）；lib `AsyncAnimCallbacks.kt:47-56` 只带 `animationId`。logcat grep 时只能定位动画实例 ID，无法直接定位子系统。
+6. **`TraceHelper` 薄壳不移植**。原厂 `com/oplus/basecommon/util/TraceHelper.java:9-71` 是个独立包装类，`traceBegin/End` 外还做了 `DEBUG=true` 时的 caller 校验 + 旗标位（`FLAG_UI_EVENT = 5` 等）；lib 直接调 `Trace.traceBegin/End`。
+7. **`onAnimationStart` 的 traceEnd 时机早于派发**。lib `AsyncAnimCallbacks.kt:47-57` 在 `runOnMainThread { dispatch }` 返回前就 traceEnd；OPPO `AsyncAnimCallbacks.java:144` 把 traceEnd 紧贴 LogUtils.i 之后。两者 systrace 上看到的事件宽度不同：lib trace 段很短（含异步消息投递），OPPO trace 段覆盖整个 LogUtils.i 调用。
+
+### 2.3 遗漏（影响语义但 lib 未声明）
+
+| # | 遗漏 | 原厂证据 | 影响 |
+|---|---|---|---|
+| 1 | **`LogUtils.i(TAG, "Async anim start #N, anim type: T")` 全部缺失** | `AsyncAnimCallbacks.java:142`（start，无门控）+ `:113, 126, 134`（actualEnd/cancel/end，`isLogOpen()` 门控） | logcat 上看不到「动画 N 开始 / 子结束」语义」。语义不直接受 log 缺失影响，但所有 demo / 单元测试都没法用 "是否打到这一行 LogUtils.i" 作为断言。**bug 级**：lib 单元测试若想覆盖 start→end 双轨结束，只能断言 `Trace.depth` 是否归零，无法验证 LogUtils.i 的「log + trace 同时打」组合语义。 |
+| 2 | **`AsyncAnimCallbacks.mAnimType` 字段缺失** | `AsyncAnimCallbacks.java:26` `mAnimType = CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME`，`:164-166` `setAnimType(...)`，trace/log 全用它生成名字 | lib 改 `animationId` 即可，但无 animType 概念 → 业务 listener 收不到「这次是 SWIPE_TO_HOME 还是 RECENTS」语义，trace tag 也无法区分子系统。review 01 §②-B5 提到过 `AnimType` 字段删除，本表再列为"明确缺失"。 |
+| 3 | **`isLogOpen()` / `isAlwayson()` / `isInternalLogOpen()` 门控缺失** | `LogUtils.java:205-231` + 调用方 100+ 处 `if (LogUtils.isLogOpen()) { LogUtils.i(...) }` | release 构建 release 包默认 LogUtils.i 全关，OPPO 借此保证用户机器不刷屏。lib 无开关，所有 Trace 输出在测试/release 都打；lib 单测跑 N 个动画后 stderr 输出不可读。 |
+| 4 | **`Debug.getCallers(N)` 栈采样缺失** | `OplusValueAnimator.java:115, 144, 287, 294, 321`；`MultiAnimatorSet.java:148, 188`；`com.oplus.*/com.android.*` 共 80+ 文件命中（`Grep "Debug\.getCallers"` 显示大量命中，本次仅对照这 2 类） | 调试时 OplusValueAnimator 续行失败，OPPO log 直接打印调用栈前 3/15 层（`getCallers(3)` / `getCallers(15)`），定位到 `OplusBaseSwipeUpHandler` 哪一处触发的；lib 只能看到 "Continuation-fail" 字符串。 |
+| 5 | **`Trace.traceBegin` 段未携带 mAnimationId + mAnimType 复合 tag** | OPPO `AsyncAnimCallbacks.java:131, 141`：tag = `"#" + mAnimationId + "-" + mAnimType + "-Start/-End"`；如真机 trace 上能看到 `"#26-OPEN_FROM_HOME-Start"` 这条事件 | lib 用 `"AsyncAnimStart-$animationId"`（`AsyncAnimCallbacks.kt:47-55`），**`animationId` 是 `System.identityHashCode` 哈希**（Kotlin object 默认 `hashCode()` 在多数 JVM 上是 identity，但不等价）——logcat grep 时与 OPPO 的数字 id 完全对不上，无法做真机→demo 行为对应。 |
+| 6 | **`LogUtils.debug(...)` 闭包式 lazy 评估** | `LogUtils.java:146-155` `debug(subModuleTag, Function0<String> message)`：message 是 `Function0<String>`，构造时不调；`LogUtils.isLogOpen()` false 时 message lambda 不执行 | lib 用 `Trace.traceBegin(8L, "...")` 直接传字符串：关闭路径时也付出字符串拼接开销。release 性能差异。 |
+| 7 | **`TracePrintUtil.notifyAnimationStart/End`** 通知路径 | `com/oplus/quickstep/utils/TracePrintUtil.java:528, 538`（`TraceHelper.INSTANCE.traceBegin(8L, "TracePrintUtil#notifyAnimationStart")`），与 `AsyncAnimCallbacks` 的 trace 联动形成 **"业务 Trace + 框架 Trace" 双层记录** | lib 只有 `AsyncAnimCallbacks` 单层 trace；动画结束后无独立 "notifyAnimationEnd" 锚点，外部 trace 工具（OPPO 内部使用了 PerfettoTransitionTracer，`com/android/wm/shell/transition/tracing/PerfettoTransitionTracer.java`，由它消费）无 hook 点。 |
+| 8 | **trace 命名未携带 thread name 前缀** | 原厂 `AsyncAnimCallbacks.java:131, 141` 的 traceBegin 在 `runOnMainThread` 前后都会执行，但 trace 段自动带有 thread 上下文（ATRACE thread = 调用线程） | lib `Trace.kt:12-30` 的内部 STACK 是全局 ArrayDeque，**不携带 thread 信息**——多线程并发 traceBegin/End 时 STACK 操作非线程安全（`addFirst/removeFirst` 非原子），理论上会错位。Demo 单元测试单线程下不会触发，多线程下静默错位。 |
+
+---
+
+## 3. 行为差异风险点
+
+按"可能导致 logcat / Perfetto 上看到的 trace 与原厂对不上"的严重度排序：
+
+1. **（高 / bug 级）多线程并发 trace 时 `Trace.STACK` ArrayDeque 非线程安全**。`Trace.kt:12` `private val STACK = ArrayDeque<String>()`；`traceBegin/traceEnd` 在 STACK 上 `addFirst/removeFirst`（`:17, 22`）。`AsyncAnimCallbacks.dispatch` 路径会跨线程：`runOnMainThread { ... }` 是 post 异步消息，动画线程 `traceEnd(8L)` 与主线程 `dispatch` 内部对 STACK 的访问不互斥。Demo 单元测试单线程不触发；真机 demo 多线程下 STACK 可能错位、`traceEnd` 弹出错的 tag。OPPO `android.os.Trace.traceBegin/End` 是平台 ATRACE_BEGIN/ATRACE_END，**每条记录自带 thread 上下文**，不会错位。**这是 lib 的一个潜在正确性 bug**：异步场景下断言 `Trace.depth` 不可信。
+2. **（高）trace tag 没有 animType 子系统区分**。原厂 `"#26-OPEN_FROM_HOME-Start"` 可在 Systrace 里 grep "OPEN_FROM_HOME" 看到所有转场动画；lib `"AsyncAnimStart-<id>"` 只暴露 id，且 id 是 `System.identityHashCode`（每次进程启动不同），无法 grep 跨进程对齐。
+3. **（中）lib trace 段不覆盖整个派发链**。`AsyncAnimCallbacks.kt:48-56`：`traceBegin` → `runOnMainThread { dispatch }` → `traceEnd`；`traceEnd` 在 `runOnMainThread` 的 lambda 之前就执行（因为 `runOnMainThread` 返回是同步的），所以 systrace 上"AsyncAnimStart-N"段长度基本为 0（只覆盖 `runOnMainThread` 的 post 调用），实际 listener 回调发生在主线程下一次 doFrame，那时 trace 段已经关闭。OPPO `AsyncAnimCallbacks.java:140-144` 把 `traceEnd` 放在 `LogUtils.i` 之后（同步），段长度覆盖整个 LogUtils.i 调用。**含义**：OPPO 的 systrace 上能看到 listener 派发和"AsyncAnimStart"段紧邻；lib 上两者不邻接，grep 难度增加。
+4. **（中）`AnimationSeqHelper` trace 名虽然 1:1，但缺同位置的 LogUtils.i**。OPPO `AnimationSeqHelper.java:60, 64, 120, 126` 在 `delayFinishRecents` / `addSeqId` / `updateNextFinishSeqIdIfNeed` 都打 `LogUtils.i(TAG, ...)`（TAG = `"AnimationSeqHelper"`），如 logcat 上看到 `"AnimationSeqHelper: add start activity seqId: 26"` 可与 trace 的 `"addSeqId"` 段形成对照；lib 只打 Trace，无 LogUtils.i，业务侧的"seqId 是几"在 lib 里不可观测。
+5. **（中）`OplusValueAnimator` 续行失败的可观测性弱**。OPPO `OplusValueAnimator.java:114-118, 143-144` 在 generateContinuationAnim / generateAnim 失败时 `LogUtils.isAlwayson()` 门控 + `Debug.getCallers(15)` 输出栈：可定位到上层调用方是 `AppSwipeToRecentContinuationHelper` 还是 `VirtualBtnToRecentContinuationHelper`（见 `OplusBaseSwipeUpHandler.java:3517, 3922`）；lib `OplusValueAnimator.kt:133-136` 只 `Trace.traceBegin(8L, "Continuation-fail")` + `Trace.traceEnd(8L)`，失败信息是一个空字符串，无调用方。
+6. **（中）`LogUtils.i` 的线程上下文不可见**。原厂 `LogUtils.i` 在 release 构建由 `isLogOpen()` 关掉，engineer-build 全开；lib 的 `Trace` 总是输出。release 行为差异：原厂用户机器 logcat 上几乎看不到任何 LogUtils 输出（设计如此），lib 用户机器上能看到大量 Trace（如果 demo 在 release 包跑）。**含义**：lib demo 的 release APK 用户 logcat 会被 Trace 灌满。
+7. **（低）trace 段嵌套关系不同**。lib 用 ArrayDeque 维护嵌套（traceBegin 时 push，traceEnd 时 pop）；OPPO 用 ATRACE 的 counter 维护嵌套（同样 LIFO）。两者概念等价，但 lib 在 `Trace.depth` 暴露的 int（`:26`）供单元测试断言时，**`addFirst/removeFirst` 多线程错位时 depth 也错位**（bug 级 #1 的副作用）。
+8. **（低）`OplusExecutors` 的"线程建立时无 trace 锚点"** 与原厂一致（双方都无 Trace 调用），但 `OplusExecutors.java:169-171` 的 `setProvider(SfVsyncFrameCallbackProvider)` 也没 Trace 包，定位 launcher.anim 线程创建的 systrace 锚点是 `Launcher.java:3255, 4773` 的 `initWallpaper` / `setup views` 等外部 trace，不是 OplusExecutors 本身。**这是原厂也存在的盲区**，lib 没必要补。
+9. **（提示）`AnimationSeqHelper.traceBegin(8L, "exc delayRunnable")` 的 "exc" 缩写**。这是 review 里发现的最不直白的命名（"exc" 应该是 "executable" 或 "execute" 的缩写），OPPO `AnimationSeqHelper.java:39` 直接照搬，lib 也保留。从"代码可读性"看 lib 与原厂都吃亏，但保持一致是优先级更高的目标。
+
+---
+
+## 4. 回移建议
+
+### 4.1 值得补进 lib 的
+
+1. **加 `LogUtils` 壳层（最小集）**：仅 `LogUtils.i(tag, msg)` / `isLogOpen()` / `isAlwayson()` / `setLogLevel(...)` 4 方法，覆到 `AsyncAnimCallbacks`、`AnimationSeqHelper`、`OplusValueAnimator` 三处 OPPO 已有的 LogUtils.i 调用点。`AsyncAnimCallbacks.kt:48-56` 当前 `dispatch` 已包 Trace，再加 LogUtils.i 即可 1:1 对齐 OPPO `AsyncAnimCallbacks.java:131-144`。成本 ≤ 30 行；收益：logcat 上能 grep `AsyncAnimCallbacks:`、`AnimationSeqHelper:`、`OplusValueAnimator:` 三类事件，业务侧可观测性回到原厂水平。
+2. **`AsyncAnimCallbacks` 加 `mAnimType` 字段 + trace tag 携带**：`AsyncAnimCallbacks.kt` 加 `internal var animType: CustomRectFSpringAnim.AnimType = AnimType.SWIPE_TO_HOME` + `setAnimType(...)`，dispatch 时 `Trace.traceBegin(8L, "#${id}-${animType}-Start")`。与 OPPO `AsyncAnimCallbacks.java:25-26, 131-144` 1:1 对齐；同时让 demo 可断言 "SWIPE_TO_HOME 类动画在主线程 start"。
+3. **`Debug.getCallers(N)` 栈采样挂到 `OplusValueAnimator` 的失败路径**：`OplusValueAnimator.kt:133-145` `Continuation-fail` 段加 `LogUtils.i("OplusValueAnimator", "Continuation-fail; caller: ${Debug.getCallers(3)}")`。`android.os.Debug.getCallers` 是公开 API（AOSP `frameworks/base/core/java/android/os/Debug.java`），不依赖 hidden 调用。10 行代码即与 OPPO `:114-118, 143-144` 对齐。
+4. **`isLogOpen()` / `isAlwayson()` 门控**：`LogUtils` 壳层加这两档 boolean，release 默认 false、unit test 默认 true（用 `BuildConfig.DEBUG` 切换）。OPPO release 包靠这个保证用户 logcat 不被刷屏；lib demo 不补则 release APK 用户的 logcat 会被 Trace 灌满。
+5. **STACK 改 `ConcurrentLinkedDeque` 或加 `@Synchronized`**：`Trace.kt:12` `private val STACK = ArrayDeque<String>()` → `ConcurrentLinkedDeque` 或包 `@Synchronized` on `traceBegin/traceEnd`。5 行改动消除风险点 #1（多线程 trace 错位）。OPPO 走 ATRACE 平台实现免于此问题，lib 必须自己防。
+6. **加 `onAnimActualEnd` 的 Trace 锚点**：OPPO `AsyncAnimCallbacks.java:111-122` 的 `onAnimActualEnd` 内部**不调** Trace（只有 LogUtils.i），但 lib 当前也只走 `LogUtils` 路径——保持现状即可。**注意**：lib `AsyncAnimCallbacks.kt:58-69` 与 OPPO 一致地只在 LogUtils 路径，不打 Trace，回移建议里**不补**（避免破坏现状）。
+7. **保留 traceEnd 在 dispatch 之后**：lib `AsyncAnimCallbacks.kt:55-56` 的 `traceEnd(8L)` 在 `runOnMainThread { dispatch }` 后立刻调；OPPO `:144` 在 LogUtils.i 后调。当前 lib 的 trace 段非常短。**建议改**为把 traceEnd 放进 runOnMainThread 的 lambda 末尾（或在 OPPO 风格的 LogUtils.i 之后），让 trace 段覆盖整个派发——但这是性能/可观测性权衡，lib 是 demo 库，可以保持现状。
+
+### 4.2 建议保持简化
+
+1. **`android.os.Trace` 真接入**。理由：① 单元测试用不上（需 Perfetto），② demo 模块需要 UI 可视 trace，stderr 重定向是更好的方案，③ 真机 demo 可选地把 `Trace.traceBegin` 桥接到 `android.os.Trace.traceBegin`（一行 if 包），但默认走 stderr 即可。
+2. **`LogUtils.toFile` + `PERSIST_LOG_DIR` 落盘**。理由：① 涉及文件 I/O 与 SELinux 权限，demo 模块不应碰 `/data/persist_log/`；② 落盘日志有用户隐私问题，demo 数据仅供教学，不应长期保存；③ 真要落盘推荐 `adb logcat -b crash,events,main` 而不是自写文件。
+3. **`LogUtils.debug(Function0<String>)` lazy 评估**。理由：lib 闭包 / Kotlin 风格下默认 lazy（`run { "Continuation-fail" }`），但 trace tag 字符串拼接本身代价极小，引入 Function0 包装收益低。
+4. **`TraceHelper` 薄壳 + FLAG_* 常量**。理由：内部使用频率极低（只在 `OplusWorkspace.java:1891` 等 3-4 处），FLAG 是 OPPO 内部 trace 分类约定，外部 demo 不需要这套分类。
+5. **`MultiStateCallback` / `RecentTasksList` 等周边的 Trace 锚点**（141 处 trace 之外）。理由：与异步动画主题无关，全量补只会稀释 lib 的焦点。
+6. **`com.oplus.basecommon.log.config.LogUtilsConfig` 配置下发**。理由：依赖 `com.oplus.basecommon.log.LogUtilsConfig.INSTANCE.getInstance()`（`LogUtils.java:79`），含 OPPO 私有开关策略，外部 demo 用默认常量即可。
+7. **`DemoBaseActivity` 的 stderr → logView 重定向**。理由：这是 demo UI 层的"trace 可视化"工具，不是 trace 替代品；真要兼顾 perfetto，可以在 `DemoBaseActivity` 里加一行 "if (isPerfettoAvailable) android.os.Trace..." 即可，但默认保留 stderr 重定向。
+
+---
+
+## 附：关键证据速查
+
+| 论断 | 证据 |
+|---|---|
+| lib Trace 的 ArrayDeque stack | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/util/Trace.kt:12` |
+| lib Trace tag 字面量 = `8L` | `lib/.../AsyncAnimCallbacks.kt:47, 51, 55, 60`、`.../AnimationSeqHelper.kt:65, 82, 93`、`.../OplusValueAnimator.kt:133, 142` |
+| lib traceEnd 时机早于派发 | `lib/.../AsyncAnimCallbacks.kt:55-56`（`runOnMainThread { dispatch }` 后立刻 `Trace.traceEnd(8L)`） |
+| lib 三处调用点全部缺 LogUtils.i | grep `LogUtils\.` on `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator` 命中 0 文件 |
+| OPPO LogUtils 30+ 模块 TAG + 4 个门控 | `com/oplus/basecommon/log/LogUtils.java:32-77, 205-231` |
+| OPPO AsyncAnimCallbacks 双层（Trace + LogUtils）| `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:112-144` |
+| OPPO AnimationSeqHelper 同名 trace | `com/oplus/quickstep/utils/AnimationSeqHelper.java:39, 80, 93` |
+| OPPO OplusValueAnimator Debug.getCallers(3/15) | `com/oplus/quickstep/utils/OplusValueAnimator.java:115, 144, 287, 294, 321` |
+| OPPO AnimationController 23 处 LogUtils.i | `com/oplus/quickstep/utils/AnimationController.java:205, 215, 238, 252, 272, 320, 410, 421, 431, 440, 448-449, 459, 475, 511, 568, 623, 639, 641, 702, 758, 812, 827, 871, 924, 943` |
+| OPPO CustomRectFSpringAnim 17 处 LogUtils.i | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:198, 331-332, 357, 424, 496, 584, 610, 632, 642, 712, 813, 838, 863` |
+| OPPO MultiAnimatorSet 含 LogUtils.i + Debug.getCallers(10) | `com/android/quickstep/util/animation/MultiAnimatorSet.java:96, 105, 145-153, 185-193, 303, 309, 343, 368` |
+| OPPO AsyncValueAnimator 0 LogUtils 调用 | `bash grep -c "LogUtils" com/android/quickstep/util/animation/AsyncValueAnimator.java` = 0 |
+| OPPO TraceHelper 薄壳 + FLAG 常量 | `com/oplus/basecommon/util/TraceHelper.java:9-71` |
+| OPPO 141 处 `Trace.traceBegin(8L, ...)` | `Grep "Trace\.traceBegin\(8L"` 显示 141 处命中（本次仅摘录 40 处作证） |
+| OPPO PERSIST_LOG_DIR 落盘 | `com/oplus/basecommon/log/LogUtils.java:62`（`/data/persist_log/launcher%d`） |
+| OPPO Debug.getCallers 总调用规模 | `Grep "Debug\.getCallers"` 1488 个文件命中（远不止动画层，本次只重点对照 OplusValueAnimator + MultiAnimatorSet） |
+| lib demo stderr → logView 重定向 | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/DemoBaseActivity.kt:107-124` |
