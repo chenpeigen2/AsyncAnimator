@@ -84,7 +84,17 @@ class AnimationController : DefaultAnimationController() {
         recentsAnims.clear()
         removeTasksMaps.clear()
         onceGestureProcessingFlag = false
-        return !hasOpeningAnim
+        if (hasOpeningAnim) return false
+        checkAllAnimationFinished()
+        return true
+    }
+
+    override fun revertRecentsAnimation(anim: CustomRectFSpringAnim) {
+        when (animState) {
+            AnimationState.CLOSE -> updateAnimState(AnimationState.REVERSE_OPEN)
+            AnimationState.MULTI_CLOSE -> updateAnimState(AnimationState.MULTI_REVERSE_OPEN)
+            else -> updateAnimState(AnimationState.UNKNOWN)
+        }
     }
 
     override fun appLaunchAnimStartOrEnd(isEnd: Boolean, factory: RemoteAnimationFactory?,

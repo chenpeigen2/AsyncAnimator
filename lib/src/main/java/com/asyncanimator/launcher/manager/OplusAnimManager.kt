@@ -48,7 +48,8 @@ object OplusAnimManager {
         animationControllerImpl?.cleanUpRecentsAnim()
     }
 
-    /** 重置为 no-op（feature toggle 关闭）。demo 用来演示降级。 */
+    /** 重置为 no-op（feature toggle 关闭）。demo 用来演示降级。setter 加锁防并发切换 race。 */
+    @set:Synchronized
     var interruptionEnabled: Boolean
         get() = animationControllerImpl != null
         set(enabled) {

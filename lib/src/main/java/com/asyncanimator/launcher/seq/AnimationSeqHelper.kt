@@ -83,15 +83,22 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
         delayAction = null
     }
 
+    override fun resetInterceptState() {
+        AnimSeqTimeStamp.resetLastStartAppTime()
+    }
+
     override fun updateNextFinishSeqIdIfNeed(recentsController: Any?) {
-        val id = updateSeqId()
-        nextFinishSeqId = recentsController to id
+        val p = nextFinishSeqId
+        // 原厂仅在 pair 为空或 controller 变更时才更新（AnimationSeqHelper.java:123-127）
+        if (p == null || p.first != recentsController) {
+            nextFinishSeqId = recentsController to updateSeqId()
+        }
     }
 
     override fun getNextFinishSeqId(recentsController: Any?): Long {
         val p = nextFinishSeqId
         // 原厂按引用比较 controller，这里用 === 保持一致
-        if (p != null && p.first === recentsController) return p.second
+        if (p != null && p.first == recentsController) return p.second
         return 0L
     }
 }

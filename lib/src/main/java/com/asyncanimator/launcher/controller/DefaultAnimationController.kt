@@ -25,7 +25,7 @@ open class DefaultAnimationController {
     open fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) {
         // 快照遍历：允许回调中增删 listener
         for (l in animStateChangeListeners.toList()) {
-            l(oldState, newState, runningTask)
+            l.onAnimStateChanged(oldState, newState, runningTask)
         }
     }
 

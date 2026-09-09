@@ -158,10 +158,18 @@ internal class AnimatorPlaybackController(
         }
     }
 
+    /** 根动画（通常是 PendingAnimation.buildAnim() 的 AnimatorSet）。 */
+    private val rootAnim: Animator = anim
+
     private inline fun dispatchToListeners(
         action: Animator.AnimatorListener.(Animator) -> Unit
     ): AnimatorPlaybackController = apply {
-        for (a in anims) a.listeners.orEmpty().forEach { it.action(a) }
+        // 对齐原厂 callListenerCommandRecursively 的前序 DFS：根 → 子动画。
+        // 根 AnimatorSet 自身从不被 APC 启动（只有 animationPlayer 在跑），
+        // 挂在根上的 listener 只能经这里收到回调。
+        val targets = if (anims.size == 1 && anims[0] === rootAnim) anims
+                      else listOf(rootAnim) + anims
+        for (a in targets) a.listeners.orEmpty().forEach { it.action(a) }
     }
 
     fun dispatchOnStart(): AnimatorPlaybackController {

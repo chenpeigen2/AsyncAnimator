@@ -46,6 +46,18 @@ object AnimSeqTimeStamp {
         lastStartAppTime = 0
     }
 
+    internal fun resetLastRecentFinishTime() {
+        lastRecentFinishTime = 0
+    }
+
+    internal fun resetLastRecentStartTime() {
+        lastRecentStartTime = 0
+    }
+
+    internal fun resetLastLaunchTaskTime() {
+        lastLaunchTaskTime = 0
+    }
+
     /** 测试辅助：复位全部时间戳（全局静态状态，测试间互相污染）。 */
     internal fun resetAllForTest() {
         lastStartAppTime = 0

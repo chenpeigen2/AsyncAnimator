@@ -10,24 +10,26 @@ package com.asyncanimator.util
  */
 object Trace {
 
-    private val STACK = ArrayDeque<String>()
+    /** 每线程一份栈：traceBegin/End 允许跨线程（动画线程 begin、主线程 end 不互相错位）。 */
+    private val STACK = ThreadLocal.withInitial { ArrayDeque<String>() }
 
     internal fun traceBegin(tag: Long, name: String) {
         val tagStr = "[$tag] $name"
-        STACK.addFirst(tagStr)
+        STACK.get().addFirst(tagStr)
         log(">>> $tagStr")
     }
 
     internal fun traceEnd(tag: Long) {
-        if (STACK.isNotEmpty()) {
-            val name = STACK.removeFirst()
+        val stack = STACK.get()
+        if (stack.isNotEmpty()) {
+            val name = stack.removeFirst()
             log("<<< $name")
         }
     }
 
-    internal val depth: Int get() = STACK.size
+    internal val depth: Int get() = STACK.get().size
 
-    internal fun clear() = STACK.clear()
+    internal fun clear() = STACK.get().clear()
 
     private fun log(msg: String) {
         // 测试时可重定向 System.err

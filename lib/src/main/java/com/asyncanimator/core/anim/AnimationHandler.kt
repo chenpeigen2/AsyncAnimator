@@ -92,11 +92,14 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
      * 对应原厂 doAnimationFrame（review 04）。
      */
     private fun doAnimationFrame(frameTimeMs: Long) {
-        val size = animationCallbacks.size
-        for (i in 0 until size) {
-            val cb = animationCallbacks[i] ?: continue
-            // 异常隔离：一个动画出错不影响其他（类似原版 swallow）
-            runCatching { cb.doAnimationFrame(frameTimeMs) }
+        // 对齐原厂 androidx.core.animation.AnimationHandler:130-137：
+        // 每轮重读 size，本帧内新增的 callback 当帧可见；null 槽跳过。
+        // 异常隔离是 lib 新增语义：原厂单 callback 异常会中断整帧并沿 provider 上抛。
+        var i = 0
+        while (i < animationCallbacks.size) {
+            val cb = animationCallbacks[i]
+            i++
+            if (cb != null) runCatching { cb.doAnimationFrame(frameTimeMs) }
         }
     }
 
