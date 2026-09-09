@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import java.util.concurrent.atomic.AtomicBoolean
 import com.asyncanimator.thread.LooperExecutor
+import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.thread.Executors
 
 /**
@@ -53,4 +54,18 @@ class AsyncValueAnimator : ValueAnimator() {
     override fun cancel() = marshal { super@AsyncValueAnimator.cancel() }
 
     override fun end() = marshal { super@AsyncValueAnimator.end() }
+
+    // ---- 兼容原厂调用方式 ----
+
+    /** 兼容原厂 [Animator.addListener]：委托给 [asyncAnimCallbacks] 保持跨线程 marshal。 */
+    fun addAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.addListener(l) }
+
+    /** 兼容原厂 [Animator.removeListener]：委托给 [asyncAnimCallbacks]。 */
+    fun removeAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.removeListener(l) }
+
+    companion object {
+        /** 原厂兼容工厂：。 */
+        fun ofFloat(vararg values: Float): AsyncValueAnimator =
+            AsyncValueAnimator().apply { setFloatValues(*values) }
+    }
 }

@@ -67,7 +67,11 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
         AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())
         // ② UX 线程提权：原厂 LauncherBooster.getCpu().setUxThreadValue(Process.myTid())，
         //    AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
-        runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
+        try {
+            Process.setThreadPriority(Process.myTid(), PRIORITY)
+        } catch (e: SecurityException) {
+            android.util.Log.w(THREAD_NAME, "setThreadPriority($PRIORITY) failed: ${e.message}")
+        }
     }
 
     companion object {

@@ -25,3 +25,11 @@ object Executors {
     private fun mainHandlerOrNull(): Handler? =
         runCatching { Looper.getMainLooper()?.let(::Handler) }.getOrNull()
 }
+
+/*
+ * NOTE: OPPO's OplusLooperExecutor extends LooperExecutor with executeBlockWait()
+ * (OplusLooperExecutor.java:46-71) — a blocking execute that waits up to 5 seconds
+ * on the caller thread. This is intentionally NOT ported: it risks ANR if the target
+ * looper is congested, and lib consumers should prefer the non-blocking execute()/post()
+ * APIs instead.
+ */

@@ -129,6 +129,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
             va.duration = duration
         }
 
+
         open fun setFloatValues(vararg values: Float): ObjectAnimator = apply {
             va.setFloatValues(*values)
         }
@@ -156,6 +157,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         }
 
         val duration: Long get() = va.duration
+        val currentPlayTime: Long get() = va.currentPlayTime
 
         // 时间控制类委托（TimeControllerObjectAnimator 等子类用这些直接驱动内部 va）
         fun start() = va.start()

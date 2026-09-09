@@ -26,39 +26,48 @@ object AnimSeqTimeStamp {
     @Volatile
     var clock: () -> Long = { SystemClock.uptimeMillis() }
 
+    @Synchronized
     internal fun updateLastStartAppTime() {
         lastStartAppTime = clock()
     }
 
+    @Synchronized
     fun updateLastRecentFinishTime() {
         lastRecentFinishTime = clock()
     }
 
+    @Synchronized
     internal fun updateLastRecentStartTime() {
         lastRecentStartTime = clock()
     }
 
+    @Synchronized
     internal fun updateLastLaunchTaskTime() {
         lastLaunchTaskTime = clock()
     }
 
+    @Synchronized
     internal fun resetLastStartAppTime() {
         lastStartAppTime = 0
     }
 
+    @Synchronized
     internal fun resetLastRecentFinishTime() {
         lastRecentFinishTime = 0
     }
 
+    @Synchronized
     internal fun resetLastRecentStartTime() {
         lastRecentStartTime = 0
     }
 
+    @Synchronized
     internal fun resetLastLaunchTaskTime() {
         lastLaunchTaskTime = 0
     }
 
     /** 测试辅助：复位全部时间戳（全局静态状态，测试间互相污染）。 */
+    @Synchronized
     internal fun resetAllForTest() {
         lastStartAppTime = 0
         lastRecentFinishTime = 0

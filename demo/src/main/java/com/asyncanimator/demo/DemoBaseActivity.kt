@@ -145,6 +145,17 @@ abstract class DemoBaseActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Override in subclasses to release animations, handlers, etc.
+     * Called from [onDestroy] before super.onDestroy().
+     */
+    protected open fun onCleanup() {}
+
+    override fun onDestroy() {
+        onCleanup()
+        super.onDestroy()
+    }
+
     private fun redirectTraceToLogView() {
         // 简化：每次 Trace 输出到 stderr 时通过 System.setErr 捕获
         val originalErr = System.err

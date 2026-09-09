@@ -2,6 +2,7 @@ package com.asyncanimator.thread
 
 import android.os.Handler
 import java.util.concurrent.TimeUnit
+import android.os.Looper
 import android.os.Message
 
 /**
@@ -27,6 +28,15 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
 
     val isCurrentThread: Boolean
         get() = thread === Thread.currentThread()
+
+    /** Returns the underlying [Handler], or null in JVM unit-test environment. */
+    fun getHandler(): Handler? = handler
+
+    /** Returns the underlying [Looper], or null in JVM unit-test environment. */
+    fun getLooper(): Looper? = handler?.looper
+
+    /** Returns the target thread, falling back to current thread when handler is null. */
+    fun getTargetThread(): Thread? = handler?.looper?.thread
 
     fun execute(action: (() -> Unit)?) {
         if (action == null) return

@@ -14,15 +14,15 @@ object AnimationFeatureHelper {
 
     private val lock = Any()
 
-    var asyncEnable by SyncedVar(lock, 1)
+    var asyncEnable by SyncedVar(lock, -1)
         private set
-    var rtUnlockEnable by SyncedVar(lock, 1)
+    var rtUnlockEnable by SyncedVar(lock, -1)
         private set
-    var multiAppBlockEnable by SyncedVar(lock, 0)
+    var multiAppBlockEnable by SyncedVar(lock, -1)
         private set
-    var iconBlurEnable by SyncedVar(lock, 1)
+    var iconBlurEnable by SyncedVar(lock, -1)
         private set
-    var onePxEnable by SyncedVar(lock, 1)
+    var onePxEnable by SyncedVar(lock, -1)
         private set
     var interruptThreshold by SyncedVar(lock, 1.0f)
         private set
@@ -34,6 +34,9 @@ object AnimationFeatureHelper {
 
     @Volatile
     private var onePxCardDisableSnapshot: List<Int> = emptyList()
+
+    /** OPPO compatibility: -1 = unconfigured (default), 0 = disabled, 1 = enabled. */
+    val isAsyncConfigured: Boolean get() = asyncEnable >= 0
 
     /** Read-only snapshot view; updated only via [simulateRemoteUpdate] whole-snapshot replace. */
     val onePxPkgDisableList: List<String> get() = onePxPkgDisableSnapshot

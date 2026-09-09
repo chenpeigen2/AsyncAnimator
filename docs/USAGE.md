@@ -333,3 +333,35 @@ lib 内部的动效溯源 trace（输出到 stderr）。demo 不直接调用其�
 
 **已知语义差异（本次未修，属于后续回移项）**：`addRecentsAnim` 转移表两处偏差、续行动画的 timeController 接线等 —— 完整清单见
 `docs/review/01` ~ `04` 各自的「行为差异风险点」一节。
+
+---
+
+## Activity 生命周期契约
+
+使用 AsyncAnimator 的 Activity/Fragment 需要在销毁时正确释放资源，避免内存泄漏和状态机错乱。
+
+### 最低要求
+
+```kotlin
+override fun onDestroy() {
+    // 1. 释放 AnimationController（取消超时 listener、清空状态机）
+    OplusAnimManager.animController.destroy()
+
+    // 2. 取消正在运行的动画
+    myAnimator.cancel()
+
+    super.onDestroy()
+}
+```
+
+### 框架自动清理
+
+- `DemoBaseActivity.onDestroy()` 提供 `onCleanup()` 钩子供子类覆写
+- `AnimationController.destroy()` 会 dispose 全部超时 listener + reset 状态到 NONE
+- `AnimationHandler` 的 callback 列表随 GC 自动回收（无全局注册）
+
+### 注意事项
+
+- `LooperExecutor` 遵循永不关闭契约（`shutdown()` 始终抛 `UnsupportedOperationException`），无需在 onDestroy 中关闭
+- `AnimSeqTimeStamp` 是全局静态时间戳单例，生命周期跟随进程，不需要 Activity 级别清理
+- 超时 listener（`TaskStateChangeTimeOutListener`）由 `AnimationController` 持有，`destroy()` 统一释放

@@ -76,6 +76,19 @@ internal class OplusValueAnimator<T>(
     override fun getDuration(): Long =
         timeController?.duration ?: super.getDuration()
 
+    override fun getCurrentPlayTime(): Long =
+        timeController?.currentPlayTime ?: super.getCurrentPlayTime()
+
+    override fun setDuration(duration: Long): ValueAnimator {
+        if (timeController != null) {
+            timeController.setDuration(duration)
+            param.duration = duration
+        } else {
+            super.setDuration(duration)
+        }
+        return this
+    }
+
     override fun addListener(l: Animator.AnimatorListener?) {
         if (timeController != null && l != null) timeController.addListener(l)
         else super.addListener(l)

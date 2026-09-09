@@ -147,6 +147,21 @@ class AnimationController : DefaultAnimationController() {
         updateAnimState(AnimationState.NONE)
     }
 
+    /**
+     * Full lifecycle teardown. Disposes timeout listeners, clears all state.
+     * Call from Activity/Fragment onDestroy to prevent leaks.
+     */
+    fun destroy() {
+        specialSceneExitTimeOutListener?.dispose()
+        specialSceneExitTimeOutListener = null
+        transitionFinishTimeOutListener?.dispose()
+        transitionFinishTimeOutListener = null
+        overviewContinuationTimeOutListener?.dispose()
+        overviewContinuationTimeOutListener = null
+        runningTaskInfo = null
+        reset()
+    }
+
     override val isOpeningAnim: Boolean
         get() = animState == AnimationState.REVERSE_OPEN
                 || animState == AnimationState.OPEN
