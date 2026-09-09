@@ -7,9 +7,9 @@ import android.widget.TextView
 import androidx.appcompat.widget.SwitchCompat
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
-import com.asyncanimator.launcher.controller.AnimationController
-import com.asyncanimator.launcher.feature.AnimationFeatureHelper
-import com.asyncanimator.launcher.manager.OplusAnimManager
+import com.asyncanimator.control.AnimationController
+import com.asyncanimator.manager.AnimationFeatureHelper
+import com.asyncanimator.manager.OplusAnimManager
 
 /**
  * Demo 8 — Feature Flag 工厂 + 远程灰度配置。

@@ -6,9 +6,9 @@ import android.widget.LinearLayout
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.ThreadLaneView
-import com.asyncanimator.launcher.async.AsyncValueAnimator
-import com.asyncanimator.launcher.async.Executors
-import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter
+import com.asyncanimator.anim.AsyncValueAnimator
+import com.asyncanimator.thread.Executors
+import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 
 /**
  * Demo 3 — Async 跨 Looper 安全。

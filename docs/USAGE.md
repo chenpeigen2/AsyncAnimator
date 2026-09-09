@@ -1,39 +1,33 @@
 # AsyncAnimator lib — 公开 API 使用文档
 
 本库是 OPPO ColorOS 15 Launcher（`com.android.launcher` 15.8.24）"独立动画线程"方案的 Kotlin 重实现 / 演示库。
-与原厂代码的逐类对比见 `docs/review/01` ~ `04`（类对应表、保真度评估、有意简化与已知差异）。
+与原厂代码的逐类对比见 `docs/review/vs-oppo-01` ~ `34` + `SUMMARY-vs-oppo*.md`（类对应表、保真度评估、有意简化与已知差异）。
 
-可见性约定：只有本文列出的类是 **public API**；`core/`（帧调度）、`pending/`、`playback/`、`continuation/`
+可见性约定：只有本文列出的类是 **public API**；`core/`、`playback/`、`anim/` 的续行件，
 以及未列出的成员均为 `internal`，属于实现细节，外部（demo 模块）不可见。
 
 ## 整体分层
 
 ```
-core (internal)                  TickScheduler / ChoreographerTickScheduler / AnimationHandler / Trace ← 帧调度内核
-core/anim (internal)             AnimationHandler                         ← ThreadLocal 调度中枢
+core (internal)    AnimationHandler / TickScheduler / ChoreographerTickScheduler / Trace ← 帧调度内核（真 VSYNC）
         ↑ installThreadScheduler
-launcher/animthread              AnimationControlThread                 ← "launcher.anim" 独立线程
-launcher/async                   LooperExecutor / Executors               ← 跨 Looper 执行器
-                                 AsyncValueAnimator / AsyncAnimCallbacks  ← 跨线程安全动画
-                                 ActualEndAnimListener                    ← "物理帧播完"回调基类（双轨结束）
-                                 CustomRectFSpringAnim                    ← 转场动画句柄
-launcher/pending (internal)      PendingAnimation / NullableAnimatorListener* / AnimatorListeners
-launcher/playback (internal)     AnimatorPlaybackController / Interpolators / PropertySetter
-launcher/continuation (internal) OplusValueAnimator / RecordInputInterpolator
-launcher/controller              AnimationController / AnimationState / … ← 转场状态机
-launcher/seq                     AnimationSeqHelper / AnimSeqTimeStamp    ← SeqId 防抖
-launcher/feature                 AnimationFeatureHelper                   ← 灰度配置容器
-launcher/manager                 OplusAnimManager                         ← feature 驱动的工厂单例
-com.android.launcher3            LauncherAnimationRunner                  ← 类型壳（RemoteAnimationTarget）
-util                             Trace                                    ← trace 输出（demo 重定向到日志区）
+thread             AnimationControlThread                ← "launcher.anim" 独立线程
+                   LooperExecutor / Executors            ← 跨 Looper 执行器（MAIN / ANIM_CONTROL）
+anim               AsyncValueAnimator / AsyncAnimCallbacks ← 跨线程安全动画
+                   AsyncSpringAnim                       ← View 属性弹簧（androidx 物理 + 线程 marshal）
+                   ActualEndAnimListener                 ← "物理帧播完"回调基类（双轨结束）
+                   CustomRectFSpringAnim                 ← 转场动画句柄
+anim (internal)    OplusValueAnimator / RecordInputInterpolator ← 续行动画
+playback (internal) PendingAnimation / AnimatorPlaybackController / PropertySetter / Interpolators / listener 族
+control            AnimationController / AnimationState / … ← 转场状态机 + 超时 listener
+seq                AnimationSeqHelper / AnimSeqTimeStamp ← SeqId 防抖
+manager            OplusAnimManager（Ext 工厂）/ AnimationFeatureHelper（RUS 灰度容器）
+com.android.launcher3  LauncherAnimationRunner          ← 类型壳（RemoteAnimationTarget）
 ```
-
-依赖方向自上而下：controller/manager/seq 依赖 async/pending 的动画设施，async 依赖 animthread 的执行器，
-animthread 在 `onLooperPrepared` 时向 core/anim 注册绑本线程 Looper 的帧源。
 
 ---
 
-## launcher/async
+## anim
 
 ### AsyncValueAnimator — 跨 Looper 安全的 ValueAnimator
 
@@ -114,7 +108,7 @@ enum class AnimType { SWIPE_TO_HOME, RECENTS_TRANSITION, APP_LAUNCH }
 
 ---
 
-## launcher/animthread
+## thread
 
 ### AnimationControlThread — 独立动画线程（"launcher.anim"）
 
@@ -140,7 +134,7 @@ anim.start()
 
 ---
 
-## launcher/controller
+## control
 
 ### AnimationController — 转场状态机
 
@@ -215,7 +209,7 @@ class TaskStateChangeTimeOutListener(
 
 ---
 
-## launcher/seq
+## seq
 
 ### AnimationSeqHelper — Recents 动画 SeqId 防抖
 
@@ -249,7 +243,7 @@ seqHelper.clearFinishRecentsRunnable()
 
 ---
 
-## launcher/feature · launcher/manager
+## manager · manager
 
 ### AnimationFeatureHelper — 远程灰度配置容器
 
@@ -280,7 +274,7 @@ val implActive = OplusAnimManager.animController is AnimationController // false
 
 ---
 
-## launcher/pending（部分 public）
+## playback（部分 public）
 
 ### NullableAnimatorListener / NullableAnimatorListenerAdapter
 
@@ -295,9 +289,7 @@ object : NullableAnimatorListenerAdapter() {
 
 （父类 `AnimatorListenerAdapter` 的全部回调可 override；`cancelled` 标志位供 cancel/success 区分。）
 
-## util
-
-### Trace
+## core/Trace
 
 lib 内部的动效溯源 trace（输出到 stderr）。demo 不直接调用其成员——DemoBaseActivity 通过
 重定向 `System.err` 把 trace 输出捕获到日志区。

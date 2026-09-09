@@ -10,10 +10,10 @@ import android.widget.TextView
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.FrameGapHistogramView
-import com.asyncanimator.launcher.async.Executors
-import com.asyncanimator.launcher.animthread.AnimationControlThread
-import com.asyncanimator.launcher.async.AsyncValueAnimator
-import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter
+import com.asyncanimator.thread.Executors
+import com.asyncanimator.thread.AnimationControlThread
+import com.asyncanimator.anim.AsyncValueAnimator
+import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 import java.util.concurrent.atomic.AtomicLong
 
 /**

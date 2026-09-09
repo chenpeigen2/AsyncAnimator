@@ -13,7 +13,7 @@ import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.FrameGapHistogramView
-import com.asyncanimator.launcher.async.AsyncSpringAnim
+import com.asyncanimator.anim.AsyncSpringAnim
 import java.util.concurrent.atomic.AtomicLong
 
 /**

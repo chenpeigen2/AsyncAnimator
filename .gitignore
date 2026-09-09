@@ -22,3 +22,4 @@ demo/build/
 # gradle daemon auto-generated
 gradle/gradle-daemon-jvm.properties
 .kotlin/
+.fix_*.py

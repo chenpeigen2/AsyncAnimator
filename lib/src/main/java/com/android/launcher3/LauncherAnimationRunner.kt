@@ -7,7 +7,7 @@ package com.android.launcher3
  * 承载 RemoteAnimation 的 Binder 回调（startAnimation(RemoteAnimationTarget[])）。
  * 本移植工程不需要真实 Binder 通道，仅保留
  * [RemoteAnimationTarget] 类型壳，供
- * `com.asyncanimator.launcher.controller.DefaultAnimationController.appLaunchAnimStartOrEnd`
+ * `com.asyncanimator.control.DefaultAnimationController.appLaunchAnimStartOrEnd`
  * 等签名使用（保持与原厂代码形状一致）。
  */
 abstract class LauncherAnimationRunner {

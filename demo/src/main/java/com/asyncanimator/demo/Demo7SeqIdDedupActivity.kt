@@ -5,8 +5,8 @@ import android.view.View
 import android.widget.LinearLayout
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
-import com.asyncanimator.launcher.seq.AnimationSeqHelper
-import com.asyncanimator.launcher.seq.AnimSeqTimeStamp
+import com.asyncanimator.seq.AnimationSeqHelper
+import com.asyncanimator.seq.AnimSeqTimeStamp
 
 /**
  * Demo 7 — SeqId 防抖。

@@ -1,6 +1,5 @@
 package com.asyncanimator.core
 
-import com.asyncanimator.core.ChoreographerTickScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test

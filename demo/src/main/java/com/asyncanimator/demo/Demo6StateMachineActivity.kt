@@ -10,10 +10,10 @@ import android.widget.TextView
 import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 import com.asyncanimator.demo.widget.StateGraphView
-import com.asyncanimator.launcher.async.CustomRectFSpringAnim
-import com.asyncanimator.launcher.controller.AnimationController
-import com.asyncanimator.launcher.controller.AnimationState
-import com.asyncanimator.launcher.controller.TaskStateChangeTimeOutListener
+import com.asyncanimator.anim.CustomRectFSpringAnim
+import com.asyncanimator.control.AnimationController
+import com.asyncanimator.control.AnimationState
+import com.asyncanimator.control.TaskStateChangeTimeOutListener
 
 /**
  * Demo 6 — 状态机 + 3 种超时监听器。
