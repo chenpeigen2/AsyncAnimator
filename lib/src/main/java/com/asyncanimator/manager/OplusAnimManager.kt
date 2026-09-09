@@ -17,7 +17,9 @@ import com.asyncanimator.seq.DefaultAnimationSeqHelper
 object OplusAnimManager {
 
     // 简化版：直接 lazy 创建（生产环境应该是 t4.b 类型懒加载）
+    @Volatile
     private var animationControllerImpl: AnimationController? = null
+    @Volatile
     private var animationSeqHelperImpl: AnimationSeqHelper? = null
 
     init {

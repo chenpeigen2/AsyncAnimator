@@ -104,6 +104,7 @@
 
 按严重度排序，**🟥 标 BUG-LEVEL**：
 
+> **状态：❌已过期（215ecb5：ScheduledTickScheduler 已删；per-thread 语义由默认 ChoreographerTickScheduler 的 ThreadLocal Choreographer 满足）**
 ### 🟥 ① ScheduledTickScheduler 破坏 v4 §8.1 "per-thread 帧语义"（高 / BUG-LEVEL，**核心**）
 
 **证据**：`ScheduledTickScheduler.kt:30-32`
@@ -133,6 +134,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：scheduleAtFixedRate 实现已删，无掉帧堆积问题）**
 ### 🟥 ② ScheduledTickScheduler `scheduleAtFixedRate` 掉帧时不堆积 vs vendor Handler.postDelayed 会堆积（高 / 行为分歧）
 
 **证据**：
@@ -154,6 +156,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：守护线程实现已删）**
 ### 🟥 ③ ScheduledTickScheduler 默认线程 `"AsyncAnimator-Tick"` 是 daemon（高 / 守护线程语义）
 
 **证据**：`ScheduledTickScheduler.kt:31` `thread(name = "AsyncAnimator-Tick", isDaemon = true)`。
@@ -169,6 +172,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（2be173e 曾加漂移补偿，215ecb5 后类删除；Choreographer vsync 路径无需 drift）**
 ### 🟥 ④ HandlerTickScheduler 不做 drift 补偿（高 / 行为分歧，与 #2 互为表里）
 
 **证据**：`HandlerTickScheduler.kt:73` `handler.postDelayed({...tick...}, frameIntervalMs)`——固定 16ms，无 drift 计算。
@@ -184,6 +188,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：✅已修复（dbde195：ChoreographerTickScheduler 接公开 Choreographer 真 VSYNC；215ecb5 后为唯一帧源，帧率自适应 60/90/120Hz）**
 ### 🟡 ⑤ 两个 scheduler 都不接 vsync（vsync 对齐缺失）（中 / 已知简化）
 
 **证据**：
@@ -204,6 +209,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：同 ③，守护线程已不存在）**
 ### 🟡 ⑥ `ScheduledTickScheduler` 在异常情况下的"守护线程死亡 = 永久静默"（中 / 鲁棒性）
 
 证据见 §3-③。
@@ -212,6 +218,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：两实现已删；ChoreographerTickScheduler 保留 runCatching 异常隔离为有意设计——0e8a472）**
 ### 🟡 ⑦ 两个 scheduler 的 `runCatching` 与原厂相反（低 / 行为分歧）
 
 **证据**：
@@ -235,6 +242,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：仅剩 ChoreographerTickScheduler，帧时间统一取 Choreographer frameTimeNanos）**
 ### 🟢 ⑧ HandlerTickScheduler `tick()` 用 `SystemClock.uptimeNanos()` 而 ScheduledTickScheduler 用 `System.nanoTime()`（低 / 一致性分歧）
 
 **证据**：
@@ -254,6 +262,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：ChoreographerTickScheduler.postFrameCallback 内含 !running→start()，无分裂行为）**
 ### 🟢 ⑨ `ScheduledTickScheduler.postFrameCallback` 早退条件 `running=false → start()`，但 `HandlerTickScheduler.postFrameCallback` 不调 `start()`（低 / 一致性分歧）
 
 **证据**：
@@ -271,6 +280,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 ---
 
+> **状态：❌已过期（215ecb5：无共享 ScheduledExecutorService 需 shutdown）**
 ### 🟢 ⑩ `ScheduledTickScheduler` 自维持回路"空则停"，但停的是守护线程的 ScheduledFuture，**不是退出守护线程本身**（低 / 资源）
 
 **证据**：
@@ -295,34 +305,34 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 | 优先级 | 项 | 理由 | 改动量 |
 |---|---|---|---|
-| 🔴 必修 | `ScheduledTickScheduler` 加 `isDaemon = false` 或 try-catch + 兜底重启（修 §3-③） | daemon 线程静默死亡 = 业务永远感知不到动画停了 | ~5 行 |
-| 🔴 必修 | `HandlerTickScheduler.scheduleNextFrame` 加 drift 补偿（修 §3-④） | vendor (a)(b) 都有，lib 没有；dt 计算系统性偏小 | ~10 行 |
-| 🔴 必修 | `ScheduledTickScheduler` 类 KDoc 加醒目警示"该 scheduler 不满足 v4 §8.1 per-thread 帧语义，仅用于 JVM 单元测试；演示跨线程动画请用 HandlerTickScheduler + AnimationControlThread"（修 §3-①） | 调用方警示到位即可，无需大改；`AnimationHandler.installThreadScheduler` KDoc 同步加 | ~10 行注释 |
-| 🔴 推荐 | `ScheduledTickScheduler` 用 `scheduleWithFixedDelay` 替换 `scheduleAtFixedRate`（修 §3-②） | vendor 语义对齐；掉帧不堆积守护线程任务 | ~3 行 |
-| 🟡 推荐 | 新增第三个 TickScheduler：`ChoreographerTickScheduler`（修 §3-⑤） | 真正 vsync 对齐，120Hz 屏 demo 不再减半帧率；接口化预埋的兑现 | ~30 行 + `AnimationControlThread.kt:75` 替换 |
-| 🟢 推荐 | `runCatching` 加构造参数 `isolateExceptions: Boolean = true`，注释改措辞（修 §3-⑦） | 与原厂语义对齐（默认 swallow；false 时传播），注释说清"原厂不 swallow" | ~10 行 + KDoc |
-| 🟢 推荐 | `HandlerTickScheduler.postFrameCallback` 加 `if (!running) start()`（修 §3-⑨） | 与 `ScheduledTickScheduler` 行为对齐；单独使用不踩坑 | ~5 行 |
+| 🔴 必修 | ❌已过期（215ecb5：类已删；ChoreographerTickScheduler 无守护线程） — `ScheduledTickScheduler` 加 `isDaemon = false` 或 try-catch + 兜底重启（修 §3-③） | daemon 线程静默死亡 = 业务永远感知不到动画停了 | ~5 行 |
+| 🔴 必修 | ❌已过期（2be173e 当时已加、215ecb5 后类删除；vsync 路径无需补偿） — `HandlerTickScheduler.scheduleNextFrame` 加 drift 补偿（修 §3-④） | vendor (a)(b) 都有，lib 没有；dt 计算系统性偏小 | ~10 行 |
+| 🔴 必修 | ❌已过期（215ecb5：类已删，警示对象不存在） — `ScheduledTickScheduler` 类 KDoc 加醒目警示"该 scheduler 不满足 v4 §8.1 per-thread 帧语义，仅用于 JVM 单元测试；演示跨线程动画请用 HandlerTickScheduler + AnimationControlThread"（修 §3-①） | 调用方警示到位即可，无需大改；`AnimationHandler.installThreadScheduler` KDoc 同步加 | ~10 行注释 |
+| 🔴 推荐 | ❌已过期（215ecb5：类已删） — `ScheduledTickScheduler` 用 `scheduleWithFixedDelay` 替换 `scheduleAtFixedRate`（修 §3-②） | vendor 语义对齐；掉帧不堆积守护线程任务 | ~3 行 |
+| 🟡 推荐 | ✅已修复（dbde195：已新增并装上 launcher.anim；215ecb5 后为唯一实现） — 新增第三个 TickScheduler：`ChoreographerTickScheduler`（修 §3-⑤） | 真正 vsync 对齐，120Hz 屏 demo 不再减半帧率；接口化预埋的兑现 | ~30 行 + `AnimationControlThread.kt:75` 替换 |
+| 🟢 推荐 | ❌已过期（215ecb5：类已删；ChoreographerTickScheduler 保留 runCatching 为有意设计） — `runCatching` 加构造参数 `isolateExceptions: Boolean = true`，注释改措辞（修 §3-⑦） | 与原厂语义对齐（默认 swallow；false 时传播），注释说清"原厂不 swallow" | ~10 行 + KDoc |
+| 🟢 推荐 | ❌已过期（215ecb5：ChoreographerTickScheduler 已内置） — `HandlerTickScheduler.postFrameCallback` 加 `if (!running) start()`（修 §3-⑨） | 与 `ScheduledTickScheduler` 行为对齐；单独使用不踩坑 | ~5 行 |
 
 ### B. 建议保持简化的（成本 > 收益 / 复刻 ROI 低）
 
 | # | 项 | 理由 |
 |---|---|---|
-| 1 | vsync 对齐（SF-vsync 替代品）（修 §3-⑤ 的 SF 路径） | 框架 `SfVsyncFrameCallbackProvider` 是 @hide API；反射接入在非 OPPO ROM 上行为不定；trace 实证 `launcher.anim` 在该设备上帧源相位与主线程一致（`animation-trace-validation.md:20`），说明 SF-vsync 在该版本上未生效；lib 保留 `HandlerTickScheduler` 接口可替换是正确取舍 |
-| 2 | `addAnimationFrameCallback(cb, delayMs)` 延迟启动回调（修 §2-C-4） | 当前 demo 无 delay 需求；vs-oppo-04 §3-②⑤ 已记为"按情况分"，未来复刻 dynamicanimation 路径 B 再补 |
-| 3 | `setFrameDelay` / `getFrameDelay` / `onNewCallbackAdded` provider 钩子（修 §2-C-3） | vendor `(a):26` `onNewCallbackAdded` 在两个 vendor 实现里都是空方法（`(a):57-59, 97-99`），vendor 也没用；运行期调帧率 vendor 暴露是为让 ValueAnimator 与系统帧率同步，lib demo 无此需求 |
-| 4 | `PipAnimationController.lambda$new$0` 的 `ThreadLocal.withInitial` 协议（修 §2-C-5） | 已有 `installThreadScheduler`（`AnimationHandler.kt:150-158`）+ `replaceThreadScheduler`（`:162-169`）两条 API 覆盖"装帧源"和"换帧源"；`ThreadLocal.withInitial` 等价 Kotlin 写法是 `object : ThreadLocal<AnimationHandler>() { override fun initialValue() = AnimationHandler(scheduler) }`——值得做但不是必修 |
-| 5 | 框架 `SfVsyncFrameCallbackProvider` 直挂（hidden API 反射） | 见 §B-1；保留接口可替换即可 |
-| 6 | 时间源统一（`System.nanoTime()` vs `SystemClock.uptimeNanos()`）（修 §3-⑧） | 数值差异不影响业务；仅是代码风格——可放在 lint 里而不是必修 |
-| 7 | `ScheduledTickScheduler.stop()` 后 `exec.shutdown()`（修 §3-⑩） | vendor Handler 同样空转；lib daemon 守护线程资源占用可忽略；非必修 |
+| 1 | ✔️保持简化（dbde195 已用公开 Choreographer 对齐 app-VSYNC；SF-vsync @hide 不反射） — vsync 对齐（SF-vsync 替代品）（修 §3-⑤ 的 SF 路径） | 框架 `SfVsyncFrameCallbackProvider` 是 @hide API；反射接入在非 OPPO ROM 上行为不定；trace 实证 `launcher.anim` 在该设备上帧源相位与主线程一致（`animation-trace-validation.md:20`），说明 SF-vsync 在该版本上未生效；lib 保留 `HandlerTickScheduler` 接口可替换是正确取舍 |
+| 2 | ✔️保持简化（demo 无 delay 调用方，复刻 dynamicanimation 路径 B 时再补） — `addAnimationFrameCallback(cb, delayMs)` 延迟启动回调（修 §2-C-4） | 当前 demo 无 delay 需求；vs-oppo-04 §3-②⑤ 已记为"按情况分"，未来复刻 dynamicanimation 路径 B 再补 |
+| 3 | ✔️保持简化（onNewCallbackAdded 是 vendor 空实现死方法） — `setFrameDelay` / `getFrameDelay` / `onNewCallbackAdded` provider 钩子（修 §2-C-3） | vendor `(a):26` `onNewCallbackAdded` 在两个 vendor 实现里都是空方法（`(a):57-59, 97-99`），vendor 也没用；运行期调帧率 vendor 暴露是为让 ValueAnimator 与系统帧率同步，lib demo 无此需求 |
+| 4 | ✔️保持简化（lib instance 默认每线程 ChoreographerTickScheduler，首次访问即自动装帧源；install/replaceThreadScheduler 保留为显式替换 API） — `PipAnimationController.lambda$new$0` 的 `ThreadLocal.withInitial` 协议（修 §2-C-5） | 已有 `installThreadScheduler`（`AnimationHandler.kt:150-158`）+ `replaceThreadScheduler`（`:162-169`）两条 API 覆盖"装帧源"和"换帧源"；`ThreadLocal.withInitial` 等价 Kotlin 写法是 `object : ThreadLocal<AnimationHandler>() { override fun initialValue() = AnimationHandler(scheduler) }`——值得做但不是必修 |
+| 5 | ✔️保持简化（@hide 不反射；接口可替换设计已够） — 框架 `SfVsyncFrameCallbackProvider` 直挂（hidden API 反射） | 见 §B-1；保留接口可替换即可 |
+| 6 | ❌已过期（215ecb5：单一实现，无跨实现时间源分歧） — 时间源统一（`System.nanoTime()` vs `SystemClock.uptimeNanos()`）（修 §3-⑧） | 数值差异不影响业务；仅是代码风格——可放在 lint 里而不是必修 |
+| 7 | ❌已过期（215ecb5：无共享守护线程池） — `ScheduledTickScheduler.stop()` 后 `exec.shutdown()`（修 §3-⑩） | vendor Handler 同样空转；lib daemon 守护线程资源占用可忽略；非必修 |
 
 ### C. 可选的低优回移（按 ROI 排序）
 
 | 优先级 | 项 | ROI |
 |---|---|---|
-| 低 | 路径 D 仿写：OPPO DynamicAnimation + SF 帧对齐（`Choreographer.getSfInstance().getFrameIntervalNanos()`） | 与"窗口弹簧"主线无关；v4 §3 已接受这条 lib 路径不需要对齐；若未来 lib 引入路径 D 复刻，对齐逻辑加在 DynamicAnimation 仿写件内部即可，不必上升到 TickScheduler 层 |
-| 低 | 路径 A 的 `autoCancelBasedOn(ObjectAnimator)`（vs-oppo-04 §2-C-9） | ObjectAnimator 是 platform 类，lib 不重做 |
-| 低 | `getFrameDelay()` / `setFrameDelay()` 暴露 | 见 §B-3 |
-| 低 | `getInstance()` 静态命名对齐 vendor（vs-oppo-04 §2-C-11） | 仅 Kotlin 调用，跨语言场景可加 `@JvmStatic` |
+| 低 | ✔️保持简化（与窗口弹簧主线无关；未来若复刻路径 D 再对齐） — 路径 D 仿写：OPPO DynamicAnimation + SF 帧对齐（`Choreographer.getSfInstance().getFrameIntervalNanos()`） | 与"窗口弹簧"主线无关；v4 §3 已接受这条 lib 路径不需要对齐；若未来 lib 引入路径 D 复刻，对齐逻辑加在 DynamicAnimation 仿写件内部即可，不必上升到 TickScheduler 层 |
+| 低 | ✔️保持简化（ObjectAnimator 是 platform 类，lib 不重做） — 路径 A 的 `autoCancelBasedOn(ObjectAnimator)`（vs-oppo-04 §2-C-9） | ObjectAnimator 是 platform 类，lib 不重做 |
+| 低 | ✔️保持简化（同 §④-B-3） — `getFrameDelay()` / `setFrameDelay()` 暴露 | 见 §B-3 |
+| 低 | ⚠️未修复（1 行 @JvmStatic 可加；无 Java 调用面——doc-14 ③⑨ 同判） — `getInstance()` 静态命名对齐 vendor（vs-oppo-04 §2-C-11） | 仅 Kotlin 调用，跨语言场景可加 `@JvmStatic` |
 
 ---
 
@@ -373,3 +383,9 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 - **215ecb5** — ScheduledTickScheduler + HandlerTickScheduler 已删除，本文档大量分析已过期
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+批次 2 逐条复核（2026-09-09）：
+- §③ ①-⑩：①-③ ⑥-⑩ → ❌已过期（215ecb5 删 Scheduled/HandlerTickScheduler；④ 另含 2be173e 曾修 drift）；⑤ → ✅已修复（dbde195：ChoreographerTickScheduler 真 VSYNC）
+- §④-A 1-7：A-5 → ✅已修复（dbde195）；其余 → ❌已过期（215ecb5）
+- §④-B 1-7：B-1/2/3/4/5 → ✔️保持简化；B-6/7 → ❌已过期（215ecb5）
+- §④-C 1-4：C-1/2/3 → ✔️保持简化；C-4 → ⚠️未修复（@JvmStatic 1 行，无 Java 调用面）

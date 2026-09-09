@@ -84,6 +84,7 @@
 
 ## ③ 行为差异风险点（按严重度排序）
 
+> **状态：✅已修复（本轮：start() isDispatchStartPending 置 false，对齐 OPPO :379）**
 ### Bug-1 ★ `isDispatchStartPending` 在 `start()` 置 true 的反义 ★
 **严重度：中（latent bug——一旦补 getter 即爆）。**
 
@@ -119,6 +120,7 @@ lib 字段赋值（`:36, 110, 117, 169`）：
 
 **与 review 02 R2 的关系**：R2 已识别此 bug，本报告补全证据——即 OPPO **所有 5 个非 dispatchOnStart 触点都置 false**（start/reverse/startWithVelocity + 三个 listener 路径），仅 dispatchOnStart 置 true；lib 只有 start() 这一处错位。
 
+> **状态：✔️保持简化（一次性 controller 语义，OPPO 同未清 endActions；无复用场景不触发）**
 ### Bug-2 ★ `cancelAction` 在 `onAnimationEnd` 中不触发——非语义问题但是潜在调用方陷阱 ★
 **严重度：低（语义对齐，但是 OPPO 有一个 quirk 易被忽略）。**
 
@@ -139,6 +141,7 @@ lib 同结构（`:141-159`，未 override `onAnimationEnd`）。
 
 **触发场景**：当前 OPPO 与 lib 都未触发（因为 controller 是一次性对象）。属于"潜在调用方陷阱"，不修无影响。
 
+> **状态：✅已修复（本轮：取消监听挂根 animator（原 anims[0]）；空 childAnimations 的 IOOBE 消除；三触点同步 isDispatchStartPending=false，对齐 OPPO :140/:147/:154）**
 ### Bug-3 ★ `anims[0]` 监听器 vs `mAnim`（根 AnimatorSet）监听器 ★
 **严重度：中（已暴露 review 02 R8，本报告补全证据 + 时序差异）。**
 
@@ -206,6 +209,7 @@ rootAnim.addListener(object : AnimatorListenerAdapter() {
 
 **修复成本**：5 行（搬监听器 + 同步 isDispatchStartPending 维护）；同时一举修复 Bug-1 残留（监听器不再漏维护 isDispatchStartPending）、Bug-3 根监听器覆盖问题、间接修复 Bug-4 的 dispatch 跳根。
 
+> **状态：✅已修复（60bd048：dispatchToListeners 含根（前序 DFS 主漏派点消除）；嵌套 AnimatorSet 内层递归仍未移植——无触发面）**
 ### Bug-4 ★ `dispatchToListeners` 拍平 vs `callListenerCommandRecursively` DFS 递归 ★
 **严重度：高（dispatch 漏派——若调用方走 `PendingAnimation.addListener` 路径，根 AnimatorSet 上的 listener 永远收不到 onAnimationStart/End/Cancel）。**
 
@@ -314,6 +318,7 @@ private inline fun visitAnimRecursive(
 
 **修复成本**：10-15 行（含 rootAnim 字段持有）。**额外**需要把 `anims` 字段从 `MutableList<Animator>` 改为 root-only（`:29` 简化），或保留 `anims` 但 dispatch 走 root——后者更稳。
 
+> **状态：✔️保持简化（OnAnimationEndDispatcher 装主时钟正确；两版本等价，不修）**
 ### Bug-5 ★ `OnAnimationEndDispatcher` 装到主时钟而非根 AnimatorSet ★
 **严重度：低（语义对齐，但场景细节差异）。**
 
@@ -334,6 +339,7 @@ OPPO `:133` 与 lib `:54` 都把 `OnAnimationEndDispatcher` 装到 `animationPla
 
 lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐。**但 lib `isDispatchStartPending` 没有对应同步机制**——见 ②-Bug-1。
 
+> **状态：汇总表行状态：Bug-1/Bug-3/Bug-4 → ✅（60bd048/本轮）；Bug-2/Bug-5 → ✔️保持简化（逐项依据见各 Bug 标题内联状态）**
 ### 修复优先级与总成本
 
 | Bug | 严重度 | 触发面 | 修复成本 |
@@ -352,8 +358,10 @@ lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐�
 
 ### 4.1 值得补进 lib（高性价比 + 消除 bug 级风险）
 
+> **状态：✅已修复（本轮：start() 置 false，见 §③ Bug-1）**
 1. **修 `isDispatchStartPending` 在 `start()` 置 true 的反义**（`AnimatorPlaybackController.kt:110`）：改为 `false`。这是 review 02 R2 的精确证据补全——一行修复，**消除潜在 bug**。但独立修不够，必须配合 listener 路径（OPPO 5 个 false 触点 lib 只同步了 3 个）；建议直接走方案 2 一次性合并修。
 
+> **状态：✅已修复（本轮：监听器搬根 + 三触点同步，见 §③ Bug-3）**
 2. **把 cancel 监听器从 `anims[0]` 搬到根 AnimatorSet**（`AnimatorPlaybackController.kt:57` → 改 `:35-65`）：
    - 构造期 `private val rootAnim: AnimatorSet = anim as AnimatorSet`（需 narrow `anim`）；
    - 监听器挂在 `rootAnim` 上；
@@ -361,17 +369,20 @@ lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐�
    - `onAnimationEnd/Start` 同步追加 `isDispatchStartPending = false`（对齐 OPPO `:147, 154`）。
    一次性消除 Bug-3 时序差异、Bug-1 残留 4 个 false 触点缺失问题。
 
+> **状态：⚠️未修复（60bd048 已含根不再跳根；嵌套 AnimatorSet 递归仍未补——无触发面）**
 3. **补 dispatch 递归**（`AnimatorPlaybackController.kt:161-165`）：
    - 把 `dispatchToListeners` 改成"对 rootAnim 做 DFS pre-order，每个访问到的 Animator 调其 listeners"；
    - 对齐 OPPO `:184-203` 的 `callListenerCommandRecursively` + `callAnimatorCommandRecursively`；
    - 保留 inline 高阶表达（`Animator.AnimatorListener.(Animator) -> Unit`）。
    消除 Bug-4——这是**当前最重要的 bug**（dispatch 漏派是 OPPO 全栈调用方的高频路径）。
 
+> **状态：⚠️未修复（progressFraction property 已公开；isIsDispatchStartPending getter 无消费者——internal 类集成时再补）**
 4. **补 `isIsDispatchStartPending()` getter + `getProgressFraction()` getter**（对齐原厂 `:270-297`）：
    - 即便当前无外部使用，作为可移植组件的 API 完备性必需；
    - 补 `isIsDispatchStartPending()` 时必须**先**修 Bug-1，否则 getter 返回的语义与原厂相反。
    - 修复方案 1+2 一并做了之后，getter 是 2 行补充（return isDispatchStartPending / return progressFraction）。
 
+> **状态：✔️保持简化（animationPlayer 构造期 final 赋值不可 null；见 ②-B8）**
 5. **`forceFinishIfNeed` 加 `valueAnimator == null` 守护**（`AnimatorPlaybackController.kt:134`）：
    - 原厂 `:264` 有 `if (valueAnimator == null || !valueAnimator.isRunning())` 守护；
    - lib 当前 `mAnimationPlayer` 是 `val` 构造期赋值，理论上不可能 null，但保留对位更稳。
@@ -379,16 +390,22 @@ lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐�
 
 ### 4.2 建议保持简化（无运行时语义影响或属合理裁剪）
 
+> **状态：✔️保持简化（复核确认：startWithVelocity/Spring 与派发契约无关，零调用方）**
 1. **`startWithVelocity` + `SpringProperty` + `SpringAnimationBuilder` 暂不回移**（review 02 §C1, §C2, §C3）：与 Bug-1/3/4 主题无关；零调用方；只有补"手势跟手 + 带速度抬手"demo 场景后才需要。
 
+> **状态：✔️保持简化（复核确认：grid recents 业务补丁与 APC 无关）**
 2. **`removeScaleAnimatorForGridRecentViews` 不移植**（review 02 §C9）：grid recents 业务补丁，与 APC 派发契约无关。
 
+> **状态：✔️保持简化（复核确认：内部工具外部少调用）**
 3. **`dispatchSetInterpolator` / `iterateAllChildAnim` / `overrideDurationScale` 不移植**（review 02 §C8）：APC 内部工具，外部少调用；与派发契约无关。
 
+> **状态：✔️保持简化（复核确认：Kotlin property 已覆盖核心字段）**
 4. **`getTarget`/`getDuration`/`getAnimationPlayer`/`getInterpolator`/`getInterpolatedProgress` getter 不全补**：lib 已用 Kotlin property 暴露核心字段（`progressFraction`、`animationPlayer`、`duration`），method 形式仅在跨语言反射场景必需；当前 demo 全 Kotlin，可省略。
 
+> **状态：✔️保持简化（复核确认：与 OPPO 一致的一次性语义，不修）**
 5. **Bug-2 cancel 后 endActions 残留**：OPPO 没修，lib 也不修；属于"一次性 controller"语义的一致行为；写测试断言"cancel 后 endActions 应清空"可揭示，但当前不实际触发。
 
+> **状态：✔️保持简化（复核确认：inline 高阶风格无语义损失）**
 6. **`dispatchToListeners` 用 inline 高阶 + `a.listeners.orEmpty()` vs 原厂静态 `callListenerCommandRecursively` + `BiConsumer`**（B5, B7）：API 风格差异，无语义损失；保持。
 
 ---
@@ -508,4 +525,25 @@ lib 与 OPPO **完全一致**——这是派发契约里最稳定的一块。
 
 - **60bd048** — dispatchToListeners 包含根 AnimatorSet（前序 DFS）；anims[0] vs 根的语义现在不再跳根
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核
+
+（批次4 / 2026-09-09 逐项打标状态，与正文内联 `> **状态：**` 行一致）
+
+- §③ Bug-1 → ✅已修复（本轮：start() 置 false）
+- §③ Bug-2 → ✔️保持简化（一次性 controller 语义，OPPO 同）
+- §③ Bug-3 → ✅已修复（本轮：监听器移根 + 三触点同步）
+- §③ Bug-4 → ✅已修复（60bd048：dispatch 含根）
+- §③ Bug-5 → ✔️保持简化（装主时钟正确）
+- ③ 汇总表 → 行状态同各 Bug 标题：Bug-1/3/4 ✅；Bug-2/5 ✔️
+- 4.1-1 → ✅已修复（本轮）
+- 4.1-2 → ✅已修复（本轮）
+- 4.1-3 → ⚠️未修复（嵌套递归）
+- 4.1-4 → ⚠️未修复（getter 无消费者）
+- 4.1-5 → ✔️保持简化（final 不可 null）
+- 4.2-1 → ✔️保持简化
+- 4.2-2 → ✔️保持简化
+- 4.2-3 → ✔️保持简化
+- 4.2-4 → ✔️保持简化
+- 4.2-5 → ✔️保持简化
+- 4.2-6 → ✔️保持简化
+

@@ -526,16 +526,16 @@ private fun swapScheduler(s: TickScheduler) {
 
 | # | 项 | 保留理由 |
 |---|---|---|
-| 1 | B 路径的 `AnimationCallbackDispatcher`（B `:22-34`）双时钟域 | lib 单 `onTick(frameTimeNanos)` 入参统一处理，不需要 dispatcher 包装；mCurrentFrameTime 字段（C10）demo 无需求 |
-| 2 | `autoCancelBasedOn(ObjectAnimator)`（A `:184-189`） | ObjectAnimator 是 platform 类，lib 复刻 layer 不重做，依赖 platform 默认 |
-| 3 | `setFrameDelay` / `getFrameDelay`（A `:193-195, 212-215`） | lib 帧率构造期固定；运行期调帧率需求 demo 不存在 |
-| 4 | `onNewCallbackAdded` 钩子（A `:26` 接口位） | vendor 也是空实现（`:57-58, 97-98`） |
-| 5 | 公开 `onAnimationFrame` 命名（A `:197-202` public） | lib 用 lambda `postFrameCallback(::onTick)` 替代 public 入口，是结构变化驱动的合理简化 |
-| 6 | 路径 D 的 SF 帧间隔对齐 | review 04 §2.3-9 已记录 lib 当前不服务路径 D；未来若复刻再补 |
-| 7 | 公开 `mAnimationCallbacks` 字段访问（A `:15` package-private） | lib 用 private，封装更严 |
-| 8 | 公开 `mListDirty` 字段访问（A `:16` package-private） | 同上 |
-| 9 | A 路径 vs B 路径拆两个 AnimationHandler 类 | lib 单类简化；两个原厂类的语义分叉（B 有 delay）在 lib 当前 demo 不需要 |
-| 10 | `getInstance` 加锁 / 双重检查锁 | lib 走 ThreadLocal 默认实现，无 race condition；与 vendor 行为一致 |
+| 1 | ✔️保持简化（清单即保持简化） — B 路径的 `AnimationCallbackDispatcher`（B `:22-34`）双时钟域 | lib 单 `onTick(frameTimeNanos)` 入参统一处理，不需要 dispatcher 包装；mCurrentFrameTime 字段（C10）demo 无需求 |
+| 2 | ✔️保持简化（清单即保持简化） — `autoCancelBasedOn(ObjectAnimator)`（A `:184-189`） | ObjectAnimator 是 platform 类，lib 复刻 layer 不重做，依赖 platform 默认 |
+| 3 | ✔️保持简化（清单即保持简化） — `setFrameDelay` / `getFrameDelay`（A `:193-195, 212-215`） | lib 帧率构造期固定；运行期调帧率需求 demo 不存在 |
+| 4 | ✔️保持简化（清单即保持简化） — `onNewCallbackAdded` 钩子（A `:26` 接口位） | vendor 也是空实现（`:57-58, 97-98`） |
+| 5 | ✔️保持简化（清单即保持简化） — 公开 `onAnimationFrame` 命名（A `:197-202` public） | lib 用 lambda `postFrameCallback(::onTick)` 替代 public 入口，是结构变化驱动的合理简化 |
+| 6 | ✔️保持简化（清单即保持简化） — 路径 D 的 SF 帧间隔对齐 | review 04 §2.3-9 已记录 lib 当前不服务路径 D；未来若复刻再补 |
+| 7 | ✔️保持简化（清单即保持简化） — 公开 `mAnimationCallbacks` 字段访问（A `:15` package-private） | lib 用 private，封装更严 |
+| 8 | ✔️保持简化（清单即保持简化） — 公开 `mListDirty` 字段访问（A `:16` package-private） | 同上 |
+| 9 | ✔️保持简化（清单即保持简化） — A 路径 vs B 路径拆两个 AnimationHandler 类 | lib 单类简化；两个原厂类的语义分叉（B 有 delay）在 lib 当前 demo 不需要 |
+| 10 | ✔️保持简化（清单即保持简化） — `getInstance` 加锁 / 双重检查锁 | lib 走 ThreadLocal 默认实现，无 race condition；与 vendor 行为一致 |
 
 ### C. 不在 lib 范围 / 不建议回移
 
@@ -681,3 +681,6 @@ private fun swapScheduler(s: TickScheduler) {
 - **dbde195** — ChoreographerTickScheduler 替代 HandlerTickScheduler 成为 launcher.anim 主帧源
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+批次 2 逐条复核（2026-09-09）：
+- §③ ①-⑪、§④-A 1-7 维持 6428b10 标记（复核一致：① doAnimationFrame 活取 size=60bd048；②③⑨ 未修复≤30 行待批；④⑤⑥⑦⑧⑩⑪ 保持简化）；本轮补标 §④-B 1-10 → ✔️保持简化（清单即保持简化）

@@ -108,6 +108,7 @@
 
 ## 3. 行为差异风险点
 
+> **⚠️未修复（adaptive 钳制需 LauncherAnimConfig/动画等级输入且 lib 无 threshold 消费者；接入真实 Runner 时随 4.1 注入 provider）**
 ### 风险 1 — [BUG 级 / P0] adaptive 设备上的 threshold 语义失真
 
 **证据**：原厂 `setInterruptThreshold` 在写入后检查 `LauncherAnimConfig.isAdaptiveAnimation()` 并强制 `1.0f`（`AnimationFeatureHelper.java:123-128`）；lib `simulateRemoteUpdate(..., 0.5f, ...)` 会把 `0.5f` 保留下来（`AnimationFeatureHelper.kt:29-36`）。threshold 实际参与远程动画拦截/反转分支（`LauncherAnimationRunner.java:340`、`OplusBaseSwipeUpHandler.java:6353`）。
@@ -116,6 +117,7 @@
 
 **修复成本**：约 5–10 行（注入一个 `adaptiveAnimationProvider`，并在中央更新函数中先计算 effective threshold，再单次写入）+ 2 个边界测试（adaptive true/false）。建议不要复刻原厂“先写再钳制”的瞬时中间值，而是直接一次写最终值。
 
+> **✅已修复（本轮：simulateRemoteUpdate 补 onePxEnable + 两列表，保留 6 参兼容重载；onePx 不再静默漏写）**
 ### 风险 2 — [BUG 级 / P0] “7 配置下发”静默漏写 `onePxEnable`
 
 **证据**：lib 声明 `onePxEnable`（`:21`），但 `simulateRemoteUpdate` 形参只有 `async, rtUnlock, multiApp, iconBlur, threshold, limtSize`（`:29-30`），赋值也只有 `:31-36`；Demo8 的按钮把该方法描述为远程下发并显示 9 项（`:94-118,176-187`）。原厂有独立 1px 分支 `:275-293`。
@@ -124,6 +126,7 @@
 
 **修复成本**：约 8–15 行。推荐保留现有 6 参数 overload 兼容旧 demo，再新增带 `onePx` 和两个 list 参数的明确 API；若不想扩 API，至少把 Demo8 文案改成“6 项”，但那不能满足字段级复刻。
 
+> **✅已修复（本轮：两列表可经 9 参 API 以不可变快照下发，不再永久为空；1px 消费逻辑本身仍无 lib 场景）**
 ### 风险 3 — [BUG 级 / P1] 两个 1px 列表在 lib 中永久为空，黑名单语义丢失
 
 **证据**：原厂 package/card ItemArray parser 在 `AnimationFeatureHelper.java:317-373`，消费者用 package/card list 做禁用判断（`AbsDrawableViewKt.java:74-82`）。lib 只有空 `mutableListOf()` 声明（`AnimationFeatureHelper.kt:25-26`），Grep 未找到任何更新或消费者。
@@ -132,6 +135,7 @@
 
 **修复成本**：约 25–40 行（参数/解析模型、两种 list 转换、快照替换和最小测试）。真实 RUS provider 本身另需约 40–80 行及 OEM 依赖，不建议为可移植库直接接入。
 
+> **✅已修复（本轮：@Volatile 不可变快照整体替换，消除可变 list 零保护与半成品可见；不再暴露可变 ArrayList）**
 ### 风险 4 — [BUG 级 / P1，未来启用列表更新即触发] lib 列表零保护；而“照抄原厂锁”仍不完全安全
 
 **证据**：lib 列表是可变 `ArrayList` 的只读接口引用，且没有 `@Volatile` 或 synchronized（`:25-26`）；原厂 writer 虽在 `synchronized(this.m1px*List)` 内 clear/add（`:320-368`），getter 却直接把同一引用返回（`:375-380`），消费者没有同步（`AbsDrawableViewKt.java:77,81`）。
@@ -143,6 +147,7 @@
 
 **修复成本**：约 15–25 行。不要复制原厂的原地 clear/add；在 lock 内先构造 `ArrayList`，过滤/解析完成后以 `@Volatile private var` 一次替换为不可变/防御性副本，getter 只返回 snapshot。若需要完全一致的“部分坏 item 继续”，在临时 builder 上逐项 catch，最后一次发布。
 
+> **✅已修复（本轮：7 个标量 setter 收窄 private set，写路径收敛到 simulateRemoteUpdate，外部无法绕过）**
 ### 风险 5 — [BUG 级 / P1] public delegated setter 可绕过原厂副作用
 
 **证据**：原厂 setter private（`:99-156`），只能由 `updateRusConfig` 调用；其中 threshold setter含 adaptive clamp（`:123-128`），multi-app setter分支紧接 `AppFeatureUtils.updateMultiAppBlockable()`（`:237-242`）。lib 的 `asyncEnable` 等 7 个 `var` 在顶层 object 中公开（`:17-23`），任何调用方都能直接赋值；`OplusAnimManager.supportInterruption()` 又恒真（`:36`）。
@@ -157,6 +162,7 @@
 
 **修复成本**：约 10–20 行。改为 `private set`/`internal set`，所有变更汇聚到一个 `applyRemoteSnapshot`；保留 public `simulateRemoteUpdate` 作为 demo façade，并在文档中明确它不是逐字段 setter。
 
+> **⚠️未修复（默认值 1/1/0/1/1 未改 -1：无 RUS 消费者且 supportInterruption() 恒真，-1 哨兵目前无行为差异——沿用 doc03-g 判定，接入真实消费者时对齐）**
 ### 风险 6 — [高 / P1] 默认值丢失 `-1` 三态，icon blur 与 multi block 会实质改变
 
 **证据与差异**：原厂六个整数类字段（async/rt/multi/icon/1px/limt）初始化为 `-1`（`AnimationFeatureHelper.java:52-58,60`）；lib 为 `1/1/0/1/1/-1`（`AnimationFeatureHelper.kt:17-23`）。
@@ -167,6 +173,7 @@
 
 **修复成本**：约 5–10 行字段初始化 + 3–5 个默认值测试。若 demo 需要“开箱即开”，可在 demo 层显式调用一组配置，而不是改 helper 的生产默认值。
 
+> **⚠️未修复（multiApp 派生 gate/重建需 AppFeatureUtils 等价 provider；lib 恒真 + interruptionEnabled 已提供切换演示）**
 ### 风险 7 — [高 / P1] RUS multi-app 更新在 lib 中不会重建/切换实现
 
 **证据**：原厂 `updateMultiAppBlockable()` 在派生 bool 改变时调用 `OplusAnimManager.recreateAnimHelper()`（`AppFeatureUtils.java:2885-2890`），而 `supportInterruption()` 同时受该 bool 控制（`OplusAnimManager.java:232-234`）。lib `simulateRemoteUpdate` 只写 `multiAppBlockEnable`（`AnimationFeatureHelper.kt:33`），manager 恒返 true（`:36`），没有 `recreateAnimHelper`。
@@ -175,6 +182,7 @@
 
 **修复成本**：约 15–25 行（先定义一个可注入 `blockableProvider`，在快照应用后刷新 manager；不建议搬入整个 `AppFeatureUtils`）。如果该字段只用于展示，应在 Demo 文案中标注“仅数据容器”。
 
+> **⚠️未修复（reverse-open touch guard 需 Quickstep/Surface/大屏状态，demo 无真实输入层——沿用 doc03-f 判定）**
 ### 风险 8 — [中 / P1] reverse-open touch guard 缺失
 
 **证据**：原厂 `QuickstepTransitionManager.isReverseToOpenAnimRunning()` 要求 recent record、MultiAnimatorSet、RectF spring 均存在，且 reverse-to-open 与 started 都为真（`:1854-1859`）；原厂 `forbidTouch()` 在大屏时返回该状态（`DefaultAnimationController.java:80-84`）。lib `forbidTouch()` 恒 false（`DefaultAnimationController.kt:60`）。
@@ -183,12 +191,14 @@
 
 **修复成本**：约 10–20 行，注入 `ReverseOpenStateProvider` 即可；不建议移植整个 `QuickstepTransitionManager`。若目标只是动画线程 demo，保留 false，但必须在 API 文档中写明“无 touch guard”。
 
+> **✔️保持简化（纯模拟 provider 无 listener 注册即无泄漏面；加 onDestroy/close 属预防性，接真实 RUS 时再做）**
 ### 风险 9 — [中 / P2] 原厂 RUS listener 有生命周期，lib 若未来加 provider 会泄漏
 
 **证据**：原厂构造时注册 listener（`AnimationFeatureHelper.java:82-92`），`onDestroy()` 注销并清空引用（`:422-427`）。lib 当前没有注册路径，因此暂时没有实际 listener 泄漏；但若按“抽象 RemoteConfigSource”扩展而不加 dispose，就会把 object 单例和 provider 回调永久绑定。
 
 **修复成本**：约 5–10 行（`close()/onDestroy()` + provider unregister），并在 manager/进程销毁点调用。当前不接真实 RUS 时可保持简化。
 
+> **✔️保持简化（批量写单锁 + 逐字段 volatile 读；display/单 flag 场景无需一致快照，需时再上 ConfigSnapshot）**
 ### 风险 10 — [中 / P2] writer 侧批量锁不等于读者 snapshot
 
 **证据**：lib 外层 `synchronized(lock)` 包住 6 次属性写（`:30-37`），但每个 getter 只读各自 volatile 值（`:44`）；Demo8 `renderConfigs()` 按 9 个表达式顺序读取（`:176-187`）。原厂 parser 甚至逐 Config 更新（`:169-317`）。
@@ -203,24 +213,24 @@
 
 | 建议 | 理由 | 估算成本 |
 |---|---|---:|
-| **补齐 7 标量的统一更新 API**：新增带 `onePxEnable` 的 overload，保留旧 6 参数方法作兼容；把 7 个 property setter 收窄为 `private set`/`internal set`。 | 消除 Demo8 “9 项/实际只改 6 项”的假阳性，并防止调用方绕过 clamp/派生副作用。 | 8–20 行 |
-| **恢复原厂 `-1` 初值**，在 demo 初始化处显式下发 0/1。 | 保留 RUS 未下发哨兵；尤其修复 icon blur fallback 与 multi block 的默认差异。 | 5–10 行 |
-| **将 threshold 的 adaptive 规则抽象成 provider**：`effectiveThreshold = if (adaptive()) 1f else input`，单次发布。 | 这是最小、低成本的原厂关键语义；不需要搬完整 `LauncherAnimConfig`。 | 5–10 行 |
-| **实现两个列表的 typed parser + snapshot replacement**，不要原地 `clear/add`。 | 同时补齐 1px 黑名单功能并修复 lib 的零保护 race；比原厂实现更安全。保留“坏 item 跳过、旧值/新值策略”需要明确文档。 | 25–40 行 |
-| **为 multi-app block 增加可注入 derived gate**，更新后通知 `OplusAnimManager` 重建/刷新。 | 让 Demo8 的数值变化真正影响 `supportInterruption`，而不引入 OEM ContentResolver。 | 15–25 行 |
-| **若要声称“接近原厂 controller”则增加 `ReverseOpenStateProvider` 和 `forbidTouch` 接入点。** | 复刻 `isReverseToOpenAnimRunning` 的状态契约，避免把大屏 reverse-open touch guard 静默删掉。 | 10–20 行 |
-| **在抽象 remote provider 时补 `onDestroy/close`**。 | 对齐原厂注册/反注册生命周期；当前纯模拟版可以不做。 | 5–10 行 |
+| 状态：✅已修复（本轮：onePxEnable + 两列表入 API；7 setter 收窄 private set） — **补齐 7 标量的统一更新 API**：新增带 `onePxEnable` 的 overload，保留旧 6 参数方法作兼容；把 7 个 property setter 收窄为 `private set`/`internal set`。 | 消除 Demo8 “9 项/实际只改 6 项”的假阳性，并防止调用方绕过 clamp/派生副作用。 | 8–20 行 |
+| 状态：⚠️未修复（同 风险 6：无消费者，接入时对齐） — **恢复原厂 `-1` 初值**，在 demo 初始化处显式下发 0/1。 | 保留 RUS 未下发哨兵；尤其修复 icon blur fallback 与 multi block 的默认差异。 | 5–10 行 |
+| 状态：⚠️未修复（同 风险 1） — **将 threshold 的 adaptive 规则抽象成 provider**：`effectiveThreshold = if (adaptive()) 1f else input`，单次发布。 | 这是最小、低成本的原厂关键语义；不需要搬完整 `LauncherAnimConfig`。 | 5–10 行 |
+| 状态：✅已修复（本轮：typed List 参数 + 快照替换已做；字符串 RUS parser 因无文本源未做） — **实现两个列表的 typed parser + snapshot replacement**，不要原地 `clear/add`。 | 同时补齐 1px 黑名单功能并修复 lib 的零保护 race；比原厂实现更安全。保留“坏 item 跳过、旧值/新值策略”需要明确文档。 | 25–40 行 |
+| 状态：⚠️未修复（同 风险 7） — **为 multi-app block 增加可注入 derived gate**，更新后通知 `OplusAnimManager` 重建/刷新。 | 让 Demo8 的数值变化真正影响 `supportInterruption`，而不引入 OEM ContentResolver。 | 15–25 行 |
+| 状态：⚠️未修复（同 风险 8） — **若要声称“接近原厂 controller”则增加 `ReverseOpenStateProvider` 和 `forbidTouch` 接入点。** | 复刻 `isReverseToOpenAnimRunning` 的状态契约，避免把大屏 reverse-open touch guard 静默删掉。 | 10–20 行 |
+| 状态：✔️保持简化（同 风险 9：无真实 provider，无泄漏面） — **在抽象 remote provider 时补 `onDestroy/close`**。 | 对齐原厂注册/反注册生命周期；当前纯模拟版可以不做。 | 5–10 行 |
 
 ### 4.2 建议保持简化的
 
 | 保留项 | 理由 |
 |---|---|
-| **不直接接入 `RusBaseConfigManager` / `LauncherCommonConfigManager`**。 | 这是 OPPO ROM 私有基础设施，真实接入会让 `lib` 失去跨 ROM/JVM 可移植性。用 typed provider 或 `simulateRemoteUpdate` 已足够演示配置变化。 |
-| **不搬完整 `LauncherAnimConfig` / `AppFeatureUtils` feature graph**。 | adaptive、平台等级、ContentResolver、OplusFeatureConfigManager 共同决定 gate；应抽象成 2–3 个可注入布尔 provider，而不是复制数千行 OEM feature 表。 |
-| **保留 scalar 的 `@Volatile` 读 + 共享 lock 写模型**。 | 原厂 `synchronized` 实例 setter 本来共享 helper monitor；把每个字段拆锁不会提高保真度，反而增加复杂度。若未来需要跨字段一致性，应上 immutable snapshot，而不是更多 monitor。 |
-| **不要照抄原厂 list 的原地 `clear/add` 锁法**。 | 原厂 getter 返回同一可变 list，读者没有同步；它是“低频更新下可用”而非严格安全实现。lib 应采用 snapshot replacement，允许比原厂更安全。 |
-| **typed 参数替代 RUS 字符串异常路径**（除非专门做 RUS parser 测试）。 | Demo/库调用方不需要复刻 `parseInt/parseFloat` 和 JADX 的 `runCatching` 日志噪声；可另写纯 Kotlin parser 测试覆盖坏值。 |
-| **`forbidTouch=false` 作为无 Launcher 上下文的默认实现**。 | 迁移完整 reverse-open 状态依赖 Quickstep/Surface/大屏上下文；泛化库应保持 no-op，但要把“未提供 touch guard”写入 API 说明。 |
+| 状态：✔️保持简化 — **不直接接入 `RusBaseConfigManager` / `LauncherCommonConfigManager`**。 | 这是 OPPO ROM 私有基础设施，真实接入会让 `lib` 失去跨 ROM/JVM 可移植性。用 typed provider 或 `simulateRemoteUpdate` 已足够演示配置变化。 |
+| 状态：✔️保持简化 — **不搬完整 `LauncherAnimConfig` / `AppFeatureUtils` feature graph**。 | adaptive、平台等级、ContentResolver、OplusFeatureConfigManager 共同决定 gate；应抽象成 2–3 个可注入布尔 provider，而不是复制数千行 OEM feature 表。 |
+| 状态：✔️保持简化 — **保留 scalar 的 `@Volatile` 读 + 共享 lock 写模型**。 | 原厂 `synchronized` 实例 setter 本来共享 helper monitor；把每个字段拆锁不会提高保真度，反而增加复杂度。若未来需要跨字段一致性，应上 immutable snapshot，而不是更多 monitor。 |
+| 状态：✔️保持简化（本轮改用不可变快照替换，比原厂更安全） — **不要照抄原厂 list 的原地 `clear/add` 锁法**。 | 原厂 getter 返回同一可变 list，读者没有同步；它是“低频更新下可用”而非严格安全实现。lib 应采用 snapshot replacement，允许比原厂更安全。 |
+| 状态：✔️保持简化 — **typed 参数替代 RUS 字符串异常路径**（除非专门做 RUS parser 测试）。 | Demo/库调用方不需要复刻 `parseInt/parseFloat` 和 JADX 的 `runCatching` 日志噪声；可另写纯 Kotlin parser 测试覆盖坏值。 |
+| 状态：✔️保持简化（同 风险 8） — **`forbidTouch=false` 作为无 Launcher 上下文的默认实现**。 | 迁移完整 reverse-open 状态依赖 Quickstep/Surface/大屏上下文；泛化库应保持 no-op，但要把“未提供 touch guard”写入 API 说明。 |
 
 ### 4.3 建议的最小落地顺序
 
@@ -244,4 +254,23 @@
 
 - **60bd048** — interruptionEnabled setter @Synchronized 防止并发 race；列表字段本批未加锁（属 AndroidAnimManager helper 缺失范围）
 
+本份批次 5 逐条复核结果：
+- 风险 1（adaptive threshold 钳制）— ⚠️未修复（无 adaptive provider/消费者；接入真实 Runner 时补）
+- 风险 2（onePxEnable 漏写）— ✅已修复（本轮：AnimationFeatureHelper.simulateRemoteUpdate 新增 9 参全量重载）
+- 风险 3（1px 两列表恒空）— ✅已修复（本轮：列表经 9 参 API 整体快照下发）
+- 风险 4（列表零保护/原地 clear-add）— ✅已修复（本轮：@Volatile 不可变快照替换）
+- 风险 5（public setter 绕过副作用）— ✅已修复（本轮：7 标量 private set，写路径收敛 simulateRemoteUpdate）
+- 风险 6（默认值 -1 三态）— ⚠️未修复（沿用 doc03-g：无消费者/supportInterruption 恒真）
+- 风险 7（multi-app 更新不重建 helper）— ⚠️未修复（需 AppFeatureUtils 等价 derived gate）
+- 风险 8（reverse-open touch guard）— ⚠️未修复（沿用 doc03-f：demo 无输入层）
+- 风险 9（RUS listener 生命周期）— ✔️保持简化（无真实 provider 即无泄漏面）
+- 风险 10（批量锁 vs 读者 snapshot）— ✔️保持简化（display/单 flag 场景）
+- 4.1-1（统一更新 API + private set）— ✅已修复（本轮）
+- 4.1-2（恢复 -1 初值）— ⚠️未修复（同 风险 6）
+- 4.1-3（threshold adaptive provider）— ⚠️未修复（同 风险 1）
+- 4.1-4（两列表 typed parser + snapshot）— ✅已修复（本轮：typed 参数 + 快照；字符串 parser 未做）
+- 4.1-5（multi-app derived gate）— ⚠️未修复（同 风险 7）
+- 4.1-6（ReverseOpenStateProvider/forbidTouch）— ⚠️未修复（同 风险 8）
+- 4.1-7（remote provider onDestroy/close）— ✔️保持简化（同 风险 9）
+- 4.2-1..4.2-6（保持简化各项）— ✔️保持简化（4.2-4 本轮已用不可变快照替换，比原厂更安全）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -117,14 +117,14 @@
 
 | # | 风险点 | 文档侧 | 实际 lib 行为 | 影响面 | 修复成本 |
 |---|---|---|---|---|---|
-| **R1 (bug)** | USAGE.md §有意简化清单 C1/C4 误导读者认为"transfer 表偏差未修" | "本库有意保留现状"、"本次未修" | lib 当前已修 | 用户按 USAGE.md 指南去对比原厂会**误以为 lib 故意 bug**；实际是文档滞后 | **5 行** USAGE.md 修改（移除 §有意简化清单中"fun interface"和"只保留 MAIN_EXECUTOR"，§AnimationController 段落删除"有意保留现状"措辞） |
-| **R2 (bug)** | USAGE.md 漏列 `AsyncSpringAnim`，Demo11 直接 `import` + 用 | 不在文档 | `AsyncSpringAnim` 是 demo 唯一驱动 androidx `SpringAnimation` 跨线程的入口类；USAGE.md 找不到路径 | 用户**无法仅靠 USAGE.md 复现 Demo11**——必须反编译 demo 源码看 import 才能找到入口 | **5-10 行** USAGE.md 新增 §AsyncSpringAnim 节（与 §AsyncValueAnimator 同级，含 `addEndListener` 注解） |
-| **R3 (中)** | README.md Demo 计数错配（10 vs 11） | "10 个 Demo" / "9 个 demo 入口" | 实际 11 个 | 用户对项目规模判断偏差；Demo 表格少了 Demo10 + Demo11 | **10 行** README.md：标题改 "11 个" + 表格补 Demo10 + Demo11 两行 + tree 段补全 |
-| **R4 (低)** | SUMMARY §7 vs USAGE.md §有意简化清单 C1 半同步 | SUMMARY 宣称已同步 | USAGE.md §有意简化清单仍写 "fun interface"（C1）；USAGE.md §TaskStateChangeTimeOutListener 段落本身写 "class 自管理超时"（对了） | 自相矛盾：同一份文档两个段落对同一对象给出相反的"声明" | **1 行** USAGE.md:317 删除"fun interface" → "class 自管超时" |
-| **R5 (低)** | README.md §项目结构 tree 行 27 写"LauncherEntryActivity.kt ← 9 个 demo 入口" | 9 个 demo | 11 个 demo | 与表格不一致 | **1 字** README.md:27 "9" → "11" |
-| **R6 (中)** | USAGE.md §有意简化清单第 4 项说"Executors 只保留 MAIN_EXECUTOR" | 只保留 MAIN | MAIN + ANIM_CONTROL 两个 | 与下文 §LooperExecutor 段落（列出 `Executors.ANIM_CONTROL_EXECUTOR`）自相矛盾 | **1 行** USAGE.md:314 改 "MAIN_EXECUTOR + ANIM_CONTROL_EXECUTOR" |
-| **R7 (中)** | review 10 #14 提议"OnAnimStateChangeListener typealias → fun interface"作为第 2 轮修复，**review 12 #4 把它升为 P0 bug** | review 10 列为"建议修" | typealias 仍在（`OnAnimStateChangeListener.kt`），**removeOnAnimStateChangeListener 仍静默失效** | 静默 bug：业务方调 remove 不会真删——状态变更监听器持续被回调但调用方以为是空的 | **10 行**（按 review 12 #4 建议）：改 `fun interface` + 同步 DefaultAnimationController 拷贝语义（`DefaultAnimationController.kt:25`） |
-| **R8 (低)** | USAGE.md §LauncherAnimationRunner "对应原厂 600+ 行 runner" + "demo 传 null / arrayOf() 即可" | 600+ 行 vs 类型壳 | lib `LauncherAnimationRunner.kt` 仅保留 `RemoteAnimationTarget` 嵌套类型壳 | 与 review 03 §2.2 一致，但 USAGE.md 未明示这是 "类型壳 vs 原厂 600+ 行" 的简化范围；容易让用户以为 USAGE.md 提到的 runner 还有完整逻辑 | **2 行** USAGE.md §LauncherAnimationRunner 段落补 "demo 场景下原厂 600+ 行的 activity 入口、preload hooks、TaskViewAnimation 都被砍掉，仅保留 RemoteAnimationTarget 类型壳（review 03 §2.2）" |
+| **R1 (bug)** | **状态：⚠️未修复（USAGE.md:155-156 段落"转移表两处已知偏差，本库有意保留现状" + :334"已知语义差异（本次未修）…转移表"仍与代码不符；e62dbff/42882ff 未回写这两处；USAGE.md 非本批可改文档）** USAGE.md §有意简化清单 C1/C4 误导读者认为"transfer 表偏差未修" | "本库有意保留现状"、"本次未修" | lib 当前已修 | 用户按 USAGE.md 指南去对比原厂会**误以为 lib 故意 bug**；实际是文档滞后 | **5 行** USAGE.md 修改（移除 §有意简化清单中"fun interface"和"只保留 MAIN_EXECUTOR"，§AnimationController 段落删除"有意保留现状"措辞） |
+| **R2 (bug)** | **状态：✅已修复（42882ff：USAGE.md 新增 §AsyncSpringAnim（:97-109），含 Demo11 用法 + addEndListener 经 runOnMainThread 回主线程）** USAGE.md 漏列 `AsyncSpringAnim`，Demo11 直接 `import` + 用 | 不在文档 | `AsyncSpringAnim` 是 demo 唯一驱动 androidx `SpringAnimation` 跨线程的入口类；USAGE.md 找不到路径 | 用户**无法仅靠 USAGE.md 复现 Demo11**——必须反编译 demo 源码看 import 才能找到入口 | **5-10 行** USAGE.md 新增 §AsyncSpringAnim 节（与 §AsyncValueAnimator 同级，含 `addEndListener` 注解） |
+| **R3 (中)** | **状态：✅已修复（e62dbff：README.md 标题/表格/tree 统一为 11 个 Demo（:23-24,34））** README.md Demo 计数错配（10 vs 11） | "10 个 Demo" / "9 个 demo 入口" | 实际 11 个 | 用户对项目规模判断偏差；Demo 表格少了 Demo10 + Demo11 | **10 行** README.md：标题改 "11 个" + 表格补 Demo10 + Demo11 两行 + tree 段补全 |
+| **R4 (低)** | **状态：⚠️未修复（USAGE.md:330 §有意简化清单仍写"超时 listener 简化为被动回调 fun interface"；42882ff 仅修段落标题，未清清单项）** SUMMARY §7 vs USAGE.md §有意简化清单 C1 半同步 | SUMMARY 宣称已同步 | USAGE.md §有意简化清单仍写 "fun interface"（C1）；USAGE.md §TaskStateChangeTimeOutListener 段落本身写 "class 自管理超时"（对了） | 自相矛盾：同一份文档两个段落对同一对象给出相反的"声明" | **1 行** USAGE.md:317 删除"fun interface" → "class 自管超时" |
+| **R5 (低)** | **状态：✅已修复（e62dbff：README.md:23 已写"11 个 demo 入口"）** README.md §项目结构 tree 行 27 写"LauncherEntryActivity.kt ← 9 个 demo 入口" | 9 个 demo | 11 个 demo | 与表格不一致 | **1 字** README.md:27 "9" → "11" |
+| **R6 (中)** | **状态：⚠️未修复（USAGE.md:327 仍写"Executors 只保留 MAIN_EXECUTOR"，实际 MAIN + ANIM_CONTROL（Executors.kt））** USAGE.md §有意简化清单第 4 项说"Executors 只保留 MAIN_EXECUTOR" | 只保留 MAIN | MAIN + ANIM_CONTROL 两个 | 与下文 §LooperExecutor 段落（列出 `Executors.ANIM_CONTROL_EXECUTOR`）自相矛盾 | **1 行** USAGE.md:314 改 "MAIN_EXECUTOR + ANIM_CONTROL_EXECUTOR" |
+| **R7 (中)** | **状态：✅已修复（60bd048：OnAnimStateChangeListener 改 fun interface（注释"review 30 bug #1"）；USAGE.md:196-205 同步于 42882ff）** review 10 #14 提议"OnAnimStateChangeListener typealias → fun interface"作为第 2 轮修复，**review 12 #4 把它升为 P0 bug** | review 10 列为"建议修" | typealias 仍在（`OnAnimStateChangeListener.kt`），**removeOnAnimStateChangeListener 仍静默失效** | 静默 bug：业务方调 remove 不会真删——状态变更监听器持续被回调但调用方以为是空的 | **10 行**（按 review 12 #4 建议）：改 `fun interface` + 同步 DefaultAnimationController 拷贝语义（`DefaultAnimationController.kt:25`） |
+| **R8 (低)** | **状态：❌不成立（证据：USAGE.md:229 自 e5aff88 起已含"原厂 600+ 行 runner 只保留了类型壳"，顶层分层树亦注"LauncherAnimationRunner ← 类型壳"；无"以为还有完整逻辑"的文本基础）** USAGE.md §LauncherAnimationRunner "对应原厂 600+ 行 runner" + "demo 传 null / arrayOf() 即可" | 600+ 行 vs 类型壳 | lib `LauncherAnimationRunner.kt` 仅保留 `RemoteAnimationTarget` 嵌套类型壳 | 与 review 03 §2.2 一致，但 USAGE.md 未明示这是 "类型壳 vs 原厂 600+ 行" 的简化范围；容易让用户以为 USAGE.md 提到的 runner 还有完整逻辑 | **2 行** USAGE.md §LauncherAnimationRunner 段落补 "demo 场景下原厂 600+ 行的 activity 入口、preload hooks、TaskViewAnimation 都被砍掉，仅保留 RemoteAnimationTarget 类型壳（review 03 §2.2）" |
 
 **R1 + R2 + R3 + R6 = bug 级**：用户对照文档对照 lib 直接得出错误结论（"lib 故意保留 bug"、"找不到 Demo11 API"、"demo 数对不上"）。  
 **R7 = 真实代码 bug**（review 12 #4 标过，未落地）。
@@ -137,24 +137,24 @@
 
 | # | 项 | 理由 | 修复成本 |
 |---|---|---|---|
-| W1 | **USAGE.md 补 §AsyncSpringAnim**（R2） | Demo11 入口；review 06 §B-8 / §③-6 / SUMMARY §7 三处独立点名；属于"诊断已有但未落地" | 5-10 行 USAGE.md 新增 |
-| W2 | **USAGE.md §有意简化清单删 4 条过期项**（R1 + R4 + R6） | C1/C2/C4 都与 lib 当前状态矛盾；USAGE.md 段落本身已正确（§TaskStateChangeTimeOutListener 写"class 自管超时"），只是 §有意简化清单没收回 | 4 行 USAGE.md 改动 |
-| W3 | **USAGE.md §AnimationController 段落删"有意保留现状"**（R1 续） | 转移表偏差已修；同一段落下句 "有意保留现状" 直接否定了 review 12 §A-3 的修复 | 1 行 USAGE.md 删字 |
-| W4 | **README.md 计数统一为 11**（R3 + R5） | 标题、表格、tree、"LauncherEntryActivity.kt ← 9 个 demo 入口" 四处不一致 | 10 行 README.md |
-| W5 | **USAGE.md §LauncherAnimationRunner 段落补"仅类型壳"明示**（R8） | 与 review 03 §2.2 一致；消除"以为还有完整 runner"的认知偏差 | 2 行 USAGE.md |
-| W6 | **OnAnimStateChangeListener typealias → fun interface**（R7） | review 12 #4 P0 bug；review 10 已提建议但未落地 | 10 行 lib 改动 + 2-3 处使用点适配 |
+| W1 | **状态：✅已修复（42882ff 已补 §AsyncSpringAnim）** **USAGE.md 补 §AsyncSpringAnim**（R2） | Demo11 入口；review 06 §B-8 / §③-6 / SUMMARY §7 三处独立点名；属于"诊断已有但未落地" | 5-10 行 USAGE.md 新增 |
+| W2 | **状态：⚠️未修复（USAGE.md:327/330/334 三条清单项仍未清理）** **USAGE.md §有意简化清单删 4 条过期项**（R1 + R4 + R6） | C1/C2/C4 都与 lib 当前状态矛盾；USAGE.md 段落本身已正确（§TaskStateChangeTimeOutListener 写"class 自管超时"），只是 §有意简化清单没收回 | 4 行 USAGE.md 改动 |
+| W3 | **状态：⚠️未修复（USAGE.md:156 "本库有意保留现状"未删）** **USAGE.md §AnimationController 段落删"有意保留现状"**（R1 续） | 转移表偏差已修；同一段落下句 "有意保留现状" 直接否定了 review 12 §A-3 的修复 | 1 行 USAGE.md 删字 |
+| W4 | **状态：✅已修复（e62dbff：README 计数已统一 11）** **README.md 计数统一为 11**（R3 + R5） | 标题、表格、tree、"LauncherEntryActivity.kt ← 9 个 demo 入口" 四处不一致 | 10 行 README.md |
+| W5 | **状态：❌不成立（类型壳明示已存在（见 R8），无需改动）** **USAGE.md §LauncherAnimationRunner 段落补"仅类型壳"明示**（R8） | 与 review 03 §2.2 一致；消除"以为还有完整 runner"的认知偏差 | 2 行 USAGE.md |
+| W6 | **状态：✅已修复（60bd048 代码 + 42882ff USAGE §标题/说明同步）** **OnAnimStateChangeListener typealias → fun interface**（R7） | review 12 #4 P0 bug；review 10 已提建议但未落地 | 10 行 lib 改动 + 2-3 处使用点适配 |
 | **合计** | | | **30-35 行** |
 
 ### 建议保持简化（按调用面"非主线"判定）
 
 | # | 项 | 理由 |
 |---|---|---|
-| K1 | USAGE.md 不为每个 `internal` 类建档 | 与现有约定（"未列出的成员均为 internal"）一致 |
-| K2 | `com.android.launcher3.LauncherAnimationRunner` 不补回 600+ 行 | review 03 §2.2 已说明与"动画执行模型"主题无关；demo 跑通即可 |
-| K3 | `AsyncAnimWrapper` 不展开文档 | 已是 `AsyncSpringAnim`/`AsyncValueAnimator` 的基类，§AsyncSpringAnim 段落会顺带讲清 `runOnAnimThread`/`runOnMainThread` 语义 |
-| K4 | `AnimationSeqHelper.updateNextFinishSeqIdIfNeed` 语义偏差（review 03 §3-e + review 12 #B-9）**不在本次文档修复范围** | 属代码 bug，留待 review 12 §B 修复轮处理 |
-| K5 | `AnimSeqTimeStamp` @Volatile 裸写 race（review 12 #B-8）**不在本次文档修复范围** | 属代码 bug，文档无对应漂移 |
-| K6 | `AnimType` 枚举 3 值 vs 原厂 7 值 | review 12 #B-9 + USAGE.md §CustomRectFSpringAnim 已列；不一致是设计取舍（demo 3 值够用），不是文档漂移 |
+| K1 | **状态：✔️保持简化（与"未列出的成员均为 internal"约定一致）** USAGE.md 不为每个 `internal` 类建档 | 与现有约定（"未列出的成员均为 internal"）一致 |
+| K2 | **状态：✔️保持简化（review 03 §2.2；USAGE.md:25,225-229 已明示类型壳）** `com.android.launcher3.LauncherAnimationRunner` 不补回 600+ 行 | review 03 §2.2 已说明与"动画执行模型"主题无关；demo 跑通即可 |
+| K3 | **状态：✔️保持简化（§AsyncSpringAnim 段落已顺带说明 addEndListener 经 runOnMainThread 回主线程）** `AsyncAnimWrapper` 不展开文档 | 已是 `AsyncSpringAnim`/`AsyncValueAnimator` 的基类，§AsyncSpringAnim 段落会顺带讲清 `runOnAnimThread`/`runOnMainThread` 语义 |
+| K4 | **状态：✅已修复（60bd048：updateNextFinishSeqIdIfNeed 条件更新 + getNextFinishSeqId 改 ==，代码缺陷已闭环，不再"留待修复轮"）** `AnimationSeqHelper.updateNextFinishSeqIdIfNeed` 语义偏差（review 03 §3-e + review 12 #B-9）**不在本次文档修复范围** | 属代码 bug，留待 review 12 §B 修复轮处理 |
+| K5 | **状态：✔️保持简化（@Volatile 单字段原子写满足契约、无跨字段不变式；见 vs-oppo-34 §3.5，非文档漂移）** `AnimSeqTimeStamp` @Volatile 裸写 race（review 12 #B-8）**不在本次文档修复范围** | 属代码 bug，文档无对应漂移 |
+| K6 | **状态：✔️保持简化（AnimType 3 vs 7 为设计取舍（USAGE.md:118 已注），非文档漂移）** `AnimType` 枚举 3 值 vs 原厂 7 值 | review 12 #B-9 + USAGE.md §CustomRectFSpringAnim 已列；不一致是设计取舍（demo 3 值够用），不是文档漂移 |
 
 ---
 
@@ -210,3 +210,27 @@
 - **e62dbff** — 包路径已重整，USAGE.md 同步重写（42882ff 补 AsyncSpringAnim 小节）
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+
+| 条目 | 判定 |
+|---|---|
+| R1 USAGE §AnimationController/已知差异写"转移表偏差未修" | ⚠️未修复（USAGE.md:155-156,334 仍过期） |
+| R2 USAGE 漏列 AsyncSpringAnim | ✅已修复（42882ff） |
+| R3 README Demo 计数 10 vs 11 | ✅已修复（e62dbff） |
+| R4 USAGE 简化清单仍写 fun interface | ⚠️未修复（USAGE.md:330） |
+| R5 README tree"9 个 demo 入口" | ✅已修复（e62dbff） |
+| R6 USAGE 简化清单 Executors 只保留 MAIN | ⚠️未修复（USAGE.md:327） |
+| R7 OnAnimStateChangeListener typealias→fun interface | ✅已修复（60bd048 + 42882ff 同步） |
+| R8 USAGE §LauncherAnimationRunner 未明示类型壳 | ❌不成立（e5aff88 起已明示） |
+| W1 补 §AsyncSpringAnim | ✅已修复（42882ff） |
+| W2 简化清单删 4 条过期项 | ⚠️未修复（USAGE.md:327/330/334） |
+| W3 §AnimationController 删"有意保留现状" | ⚠️未修复（USAGE.md:156） |
+| W4 README 计数统一 11 | ✅已修复（e62dbff） |
+| W5 §LauncherAnimationRunner 补类型壳明示 | ❌不成立（已明示） |
+| W6 OnAnimStateChangeListener 改 fun interface | ✅已修复（60bd048 + 42882ff） |
+| K1 internal 类不建档 | ✔️保持简化 |
+| K2 LauncherAnimationRunner 不补 600+ 行 | ✔️保持简化 |
+| K3 AsyncAnimWrapper 不展开文档 | ✔️保持简化 |
+| K4 updateNextFinishSeqIdIfNeed 语义偏差 | ✅已修复（60bd048） |
+| K5 AnimSeqTimeStamp @Volatile race | ✔️保持简化（见 vs-oppo-34 §3.5） |
+| K6 AnimType 3 vs 7 | ✔️保持简化 |

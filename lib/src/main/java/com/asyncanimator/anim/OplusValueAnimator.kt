@@ -136,7 +136,7 @@ internal class OplusValueAnimator<T>(
             }
             val f = anim.param.currentFraction
             if (f < 0f || f >= 1f) {
-                Trace.traceBegin(8L, "Continuation-fail")
+                Trace.traceBegin(8L, "Continuation-fail f=$f")
                 Trace.traceEnd(8L)
                 return null
             }

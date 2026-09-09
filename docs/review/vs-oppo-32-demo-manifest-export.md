@@ -114,16 +114,16 @@
 
 | # | 等级 | 风险描述 | 触发场景 | 触发条件 |
 |---|---|---|---|---|
-| 1 | **bug 级** | **`LauncherEntryActivity` `exported=true` + MAIN+LAUNCHER 暴露给所有应用**——任何安装到设备的应用都能通过 `PackageManager.getLaunchIntentForPackage("com.asyncanimator.demo")` 启动 demo entry，再观察 11 个 demo activity 名称（虽未 exported），但若 OEM 厂商或恶意 root 工具能拿到 `dumpsys package` 输出，仍可推断内部子系统调用模式 → **间接暴露 lib 的体系结构** | 设备装任何第三方 App + 设备 root 或 OEM 内置分析工具 | demo apk 安装到生产设备 |
-| 2 | **bug 级** | **Demo9 用 `stage.openApp(i)` 直接驱动 `LauncherStageView`，不走真 `LauncherAnimationRunner` 构造 → `ActivityOptions.makeRemoteAnimation(...)` 通路**——所有 9 个原厂 entry 路径的 `mHandler.postAsyncCallback`/`postAtFrontOfQueueAsynchronously` 排队语义、`mInputCallback` 拦截语义、`AnimationResult.mFinished` 状态机都**完全没被触发**。review 12 §"真机回归时"如果有人想用 Demo9 替代真 launcher 做 A/B 测，会得到"动画跑得通但场景语义不对"的结论。 | 真机回归 / 性能对比 / A/B | Demo9 单独跑（最常见 demo 模式） |
-| 3 | **高** | **11 个 demo activity 全默认 `exported=false`，但 `Intent(ctx, demo.activityClass)` 用 class literal 引用**——一旦未来想做"扫码打开某个 demo"或"通知栏 deep-link 跳到 Demo7"这类 UX，需要给 demo activity 加 intent-filter，**会同时变 exported=true**，触发 #1 的安全风险再放大。 | UX 扩展（未来） | demo 加 deep-link |
-| 4 | **高** | **`ActivityEntryBinding.inflate(layoutInflater)` 用 `viewBinding` 强绑定到 lib `databinding/ActivityEntryBinding` 自动生成类**（`LauncherEntryActivity.kt:21` import `com.asyncanimator.demo.databinding.ActivityEntryBinding`）——一旦 lib 的 buildFeatures 关掉 `viewBinding`（`demo/build.gradle:30` `buildFeatures { viewBinding true }`），demo entry 直接 NPE。 | 任何 build 配置修改 | buildFeatures 改 |
-| 5 | **中** | **`redirectTraceToLogView()` 重定向 `System.setErr`**（`DemoBaseActivity.kt:122-141`）——每个 demo activity `onCreate` 都会调一次，**多次进入同一个 demo 会叠加多个 PrintStream 包装**（`originalErr` 永远指上一代 wrap，最终 fallback 到第一个 `System.err`），导致 log 输出**嵌套 N 次**。同一个 demo 旋转屏幕 3 次后 stderr 输出会慢 ~3 倍。 | 多次进出同一个 demo / 旋转屏幕 | 真机 demo 操作 |
-| 6 | **中** | **`DemoAdapter` 持 `demos: List<DemoInfo>`（`LauncherEntryActivity.kt:81`）是 immutable，但 `DemoInfo` 的 `activityClass: Class<*>` 是强引用**——**类不会被回收**，即使 demo activity `finish()` 后栈清空，class 对象仍驻留 → 11 个 `Class<*>` 实例常驻堆。这是 Android Activity 正常行为，但 demo 11 个 Class 全加载等于**进程一启动就持 11 个额外 Activity 元数据**（每个 ~10KB），比最小 launcher 多 ~110KB RSS。 | demo apk 启动 | 设备内存紧张 |
-| 7 | **中** | **Demo6 用 `seqHandler = Handler(Looper.getMainLooper())` 做状态机演示**（`Demo6StateMachineActivity.kt:46`），但 demo 自身的状态图 `StateGraphView` 与 lib `AnimationController` 是**两套独立状态机**——`graphCurrent: String?` 字段（`Demo6.kt:48`）只更新到 stage 视图，**不会反向同步**回 controller。如果业务方用 demo 6 做控制器调试，看图以为到了 `WAITING` 但 controller 实际还在 `OPEN`，会得到错误结论。 | Demo6 状态机演示 | demo 调试 |
-| 8 | **中** | **`demo/build.gradle` `compileSdk 37` + `minSdk 36`**（`build.gradle:6-8`）——Android API 36+ 对 `exported` 行为更严格（强制声明，否则编译失败）。demo 11 个 demo activity **省略** `android:exported` 但因为 Android 12+ 默认行为兼容所以编译 OK；未来切到 API 38+ 如果默认行为变化会突然失败。 | API 升级 | compileSdk ≥ 38 |
-| 9 | **低** | **`android:label="@string/demoN_title"` 11 个引用**（`AndroidManifest.xml:22-32`）——所有 demo 都依赖 `strings.xml` 的 `demo1_title...demo11_title`，如果某个 demo 漏配 string 资源，**编译器不会报错**（lint 会警告），运行时该 demo 在 launcher 里显示 app_name 而不是 demoN_title，造成 UX 混乱。 | demo 资源漏配 | 新增 demo 时 |
-| 10 | **低** | **`onBackPressed()` `@Deprecated` 标注**（`Demo9AllAppsTransitionActivity.kt:94` `@Deprecated("demo 用旧回调拦截返回键")`）——Android 13+ 推荐 `OnBackInvokedDispatcher` 而不是 `onBackPressed()`，demo 用 deprecated API 是有意保持向后兼容，但**linter warning 必现**。 | Android 13+ 真机 | 真机回归 |
+| 1 | **bug 级** | **状态：✔️保持简化（launcher 入口 exported 是桌面 App 必需契约；本文 §安全影响聚焦 自证"无安全 bug"）** **`LauncherEntryActivity` `exported=true` + MAIN+LAUNCHER 暴露给所有应用**——任何安装到设备的应用都能通过 `PackageManager.getLaunchIntentForPackage("com.asyncanimator.demo")` 启动 demo entry，再观察 11 个 demo activity 名称（虽未 exported），但若 OEM 厂商或恶意 root 工具能拿到 `dumpsys package` 输出，仍可推断内部子系统调用模式 → **间接暴露 lib 的体系结构** | 设备装任何第三方 App + 设备 root 或 OEM 内置分析工具 | demo apk 安装到生产设备 |
+| 2 | **bug 级** | **状态：✔️保持简化（Demo9 概念演示是 review 06 §2.2-1 / 本文 §4.2-2 声明的有意裁剪；无真机 A/B 需求）** **Demo9 用 `stage.openApp(i)` 直接驱动 `LauncherStageView`，不走真 `LauncherAnimationRunner` 构造 → `ActivityOptions.makeRemoteAnimation(...)` 通路**——所有 9 个原厂 entry 路径的 `mHandler.postAsyncCallback`/`postAtFrontOfQueueAsynchronously` 排队语义、`mInputCallback` 拦截语义、`AnimationResult.mFinished` 状态机都**完全没被触发**。review 12 §"真机回归时"如果有人想用 Demo9 替代真 launcher 做 A/B 测，会得到"动画跑得通但场景语义不对"的结论。 | 真机回归 / 性能对比 / A/B | Demo9 单独跑（最常见 demo 模式） |
+| 3 | **高** | **状态：❌不成立（当前无 deep-link 需求，纯未来假设；届时显式控制 exported 即可）** **11 个 demo activity 全默认 `exported=false`，但 `Intent(ctx, demo.activityClass)` 用 class literal 引用**——一旦未来想做"扫码打开某个 demo"或"通知栏 deep-link 跳到 Demo7"这类 UX，需要给 demo activity 加 intent-filter，**会同时变 exported=true**，触发 #1 的安全风险再放大。 | UX 扩展（未来） | demo 加 deep-link |
+| 4 | **高** | **状态：❌不成立（证据：viewBinding 关闭 → ActivityEntryBinding 缺失是编译期错误，非运行期 NPE；binding 由 demo 自身 build.gradle 固定，与 lib 无关）** **`ActivityEntryBinding.inflate(layoutInflater)` 用 `viewBinding` 强绑定到 lib `databinding/ActivityEntryBinding` 自动生成类**（`LauncherEntryActivity.kt:21` import `com.asyncanimator.demo.databinding.ActivityEntryBinding`）——一旦 lib 的 buildFeatures 关掉 `viewBinding`（`demo/build.gradle:30` `buildFeatures { viewBinding true }`），demo entry 直接 NPE。 | 任何 build 配置修改 | buildFeatures 改 |
+| 5 | **中** | **状态：⚠️未修复（真实 demo bug：DemoBaseActivity.redirectTraceToLogView 每 onCreate 叠一层 System.setErr 包装；~5 行去重即可；demo 模块非本批 lib 修复范围）** **`redirectTraceToLogView()` 重定向 `System.setErr`**（`DemoBaseActivity.kt:122-141`）——每个 demo activity `onCreate` 都会调一次，**多次进入同一个 demo 会叠加多个 PrintStream 包装**（`originalErr` 永远指上一代 wrap，最终 fallback 到第一个 `System.err`），导致 log 输出**嵌套 N 次**。同一个 demo 旋转屏幕 3 次后 stderr 输出会慢 ~3 倍。 | 多次进出同一个 demo / 旋转屏幕 | 真机 demo 操作 |
+| 6 | **中** | **状态：✔️保持简化（Class 引用为 demo 网格必需，ART 共享 dex 元数据；"额外 ~110KB RSS"无实测依据）** **`DemoAdapter` 持 `demos: List<DemoInfo>`（`LauncherEntryActivity.kt:81`）是 immutable，但 `DemoInfo` 的 `activityClass: Class<*>` 是强引用**——**类不会被回收**，即使 demo activity `finish()` 后栈清空，class 对象仍驻留 → 11 个 `Class<*>` 实例常驻堆。这是 Android Activity 正常行为，但 demo 11 个 Class 全加载等于**进程一启动就持 11 个额外 Activity 元数据**（每个 ~10KB），比最小 launcher 多 ~110KB RSS。 | demo apk 启动 | 设备内存紧张 |
+| 7 | **中** | **状态：✔️保持简化（Demo6 已显式标注"lib 内部态"并在日志同步 controller 真实状态；WAITING/REVERSE_OPEN 无公开入口，"双向同步"本不可行）** **Demo6 用 `seqHandler = Handler(Looper.getMainLooper())` 做状态机演示**（`Demo6StateMachineActivity.kt:46`），但 demo 自身的状态图 `StateGraphView` 与 lib `AnimationController` 是**两套独立状态机**——`graphCurrent: String?` 字段（`Demo6.kt:48`）只更新到 stage 视图，**不会反向同步**回 controller。如果业务方用 demo 6 做控制器调试，看图以为到了 `WAITING` 但 controller 实际还在 `OPEN`，会得到错误结论。 | Demo6 状态机演示 | demo 调试 |
+| 8 | **中** | **状态：⚠️待复核（Android 12+ 无 intent-filter 组件默认 exported=false、当前编译合法；API≥38 行为变化属推测，显式声明加固是否执行待定）** **`demo/build.gradle` `compileSdk 37` + `minSdk 36`**（`build.gradle:6-8`）——Android API 36+ 对 `exported` 行为更严格（强制声明，否则编译失败）。demo 11 个 demo activity **省略** `android:exported` 但因为 Android 12+ 默认行为兼容所以编译 OK；未来切到 API 38+ 如果默认行为变化会突然失败。 | API 升级 | compileSdk ≥ 38 |
+| 9 | **低** | **状态：❌不成立（证据：manifest 引用缺失的 @string 资源在 AAPT2 链接期即报编译错误，非 lint 警告/运行期降级为 app_name）** **`android:label="@string/demoN_title"` 11 个引用**（`AndroidManifest.xml:22-32`）——所有 demo 都依赖 `strings.xml` 的 `demo1_title...demo11_title`，如果某个 demo 漏配 string 资源，**编译器不会报错**（lint 会警告），运行时该 demo 在 launcher 里显示 app_name 而不是 demoN_title，造成 UX 混乱。 | demo 资源漏配 | 新增 demo 时 |
+| 10 | **低** | **状态：✔️保持简化（demo 有意兼容旧 onBackPressed 回调，已 @Deprecated 标注；仅 linter warning，无行为影响）** **`onBackPressed()` `@Deprecated` 标注**（`Demo9AllAppsTransitionActivity.kt:94` `@Deprecated("demo 用旧回调拦截返回键")`）——Android 13+ 推荐 `OnBackInvokedDispatcher` 而不是 `onBackPressed()`，demo 用 deprecated API 是有意保持向后兼容，但**linter warning 必现**。 | Android 13+ 真机 | 真机回归 |
 
 ### 安全影响聚焦
 
@@ -142,33 +142,33 @@
 
 | # | 建议 | 改动规模 | 价值 | 不补的后果 |
 |---|---|---|---|---|
-| 1 | **补 `LauncherAnimationRunner` 最小 `AnimationResult` 壳**——lib stub 加上 1 个 inner class `AnimationResult(mSyncFinishRunnable, mASyncFinishRunnable, mFinished, mAnimator) + fun setAnimation(anim: AnimatorSet, ctx: Context) + fun finish()`，让 demo 能模拟完整的入口契约 | ~30 行 | **高**——review 03 §3-b + review 11 §4.2-4 都点名 | Demo9 永远是"概念演示"，不能接 `ActivityOptions.makeRemoteAnimation(...)` 做真端到端 A/B |
-| 2 | **补 `RemoteAnimationFactory` 接口 5 个最常用 default 方法**：`appLaunchAnimStartOrEnd(isEnd, targets)` + `getAnimation()` + `supportInterruption()` + `tryFinishOpenRemote(runnable)` + `preLoadIcon()`（覆盖 9 个原厂 default 中的 5 个，其余 4 个与动画无关） | ~25 行 | **高**——补齐后 Demo8 可演示 `tryFinishOpenRemote`，Demo9 可演示 `appLaunchAnimStartOrEnd` 真通路 | demo 与原厂的 `Factory` 接口形状继续不一致，跨设备可移植性差 |
-| 3 | **Demo9 加 `LauncherAnimationRunner` 真构造路径**（最小版本）——`val runner = LauncherAnimationRunner(handler, factory, true)` + `val options = ActivityOptions.makeRemoteAnimation(RemoteAnimationAdapter(runner, 500L, 0L, null), ...)` + 通过 `Launcher` 风格的 `startActivity(intent, options.toBundle())` 启动 | ~40 行 | **高**——review 06 §2.2-1 列出的"Demo9 只能概念演示"补完 | 性能数字偏差、 语义失真 |
-| 4 | **修 `redirectTraceToLogView` 多次进入叠加 bug**——改成检查"是否已经包装过"，避免 `System.setErr` 嵌套 | ~5 行 | **中**——风险 5 | 旋转屏幕/进出 demo 后日志变慢 |
-| 5 | **`Demo6StateMachineActivity` 加 `controller.animState` 真实订阅**——把 `graphCurrent` 与 `controller.animState` 双向同步，业务方在 demo 上看到的图与 controller 状态完全一致 | ~10 行 | **中**——风险 7 | Demo6 不能用作控制器调试 |
-| 6 | **`AndroidManifest.xml` 显式声明 11 个 demo activity `android:exported="false"`**——为未来 API 38+ 兼容（Android 14+ 已强制显式声明） | 11 行修改 | **低**——风险 8 | 编译失败在 API ≥ 38 时 |
+| 1 | **状态：⚠️待复核（与 §4.2-1"不移植完整 runner"矛盾：AnimationResult 壳仅对真 RemoteAnimation 通路有意义，demo 无 Binder 通路；其价值列引用的 review 03 end 通路已由 cdd125e/60bd048 落地）** **补 `LauncherAnimationRunner` 最小 `AnimationResult` 壳**——lib stub 加上 1 个 inner class `AnimationResult(mSyncFinishRunnable, mASyncFinishRunnable, mFinished, mAnimator) + fun setAnimation(anim: AnimatorSet, ctx: Context) + fun finish()`，让 demo 能模拟完整的入口契约 | ~30 行 | **高**——review 03 §3-b + review 11 §4.2-4 都点名 | Demo9 永远是"概念演示"，不能接 `ActivityOptions.makeRemoteAnimation(...)` 做真端到端 A/B |
+| 2 | **状态：✔️保持简化（9 个 default 方法依赖的 merge/icon/leash 通路 lib 均未移植，补 default 方法无可执行路径）** **补 `RemoteAnimationFactory` 接口 5 个最常用 default 方法**：`appLaunchAnimStartOrEnd(isEnd, targets)` + `getAnimation()` + `supportInterruption()` + `tryFinishOpenRemote(runnable)` + `preLoadIcon()`（覆盖 9 个原厂 default 中的 5 个，其余 4 个与动画无关） | ~25 行 | **高**——补齐后 Demo8 可演示 `tryFinishOpenRemote`，Demo9 可演示 `appLaunchAnimStartOrEnd` 真通路 | demo 与原厂的 `Factory` 接口形状继续不一致，跨设备可移植性差 |
+| 3 | **状态：⚠️待复核（与 §4.2-2 矛盾；+40 行真 RemoteAnimation 构造是否值得取决于真机 A/B 需求）** **Demo9 加 `LauncherAnimationRunner` 真构造路径**（最小版本）——`val runner = LauncherAnimationRunner(handler, factory, true)` + `val options = ActivityOptions.makeRemoteAnimation(RemoteAnimationAdapter(runner, 500L, 0L, null), ...)` + 通过 `Launcher` 风格的 `startActivity(intent, options.toBundle())` 启动 | ~40 行 | **高**——review 06 §2.2-1 列出的"Demo9 只能概念演示"补完 | 性能数字偏差、 语义失真 |
+| 4 | **状态：⚠️未修复（demo 侧 redirectTraceToLogView 叠加 bug；~5 行；非本批 lib 修复范围，见 ③#5）** **修 `redirectTraceToLogView` 多次进入叠加 bug**——改成检查"是否已经包装过"，避免 `System.setErr` 嵌套 | ~5 行 | **中**——风险 5 | 旋转屏幕/进出 demo 后日志变慢 |
+| 5 | **状态：⚠️待复核（WAITING/REVERSE_OPEN 为 lib 内部态、无公开 setter，"controller.animState 双向同步"不可行，建议需重定义）** **`Demo6StateMachineActivity` 加 `controller.animState` 真实订阅**——把 `graphCurrent` 与 `controller.animState` 双向同步，业务方在 demo 上看到的图与 controller 状态完全一致 | ~10 行 | **中**——风险 7 | Demo6 不能用作控制器调试 |
+| 6 | **状态：⚠️待复核（11 行显式 exported=false 属低成本加固；当前平台默认已 false，是否执行待主线程定）** **`AndroidManifest.xml` 显式声明 11 个 demo activity `android:exported="false"`**——为未来 API 38+ 兼容（Android 14+ 已强制显式声明） | 11 行修改 | **低**——风险 8 | 编译失败在 API ≥ 38 时 |
 
 ### 4.2 建议保持简化（lib 当前选择合理）
 
 | # | 内容 | 简化理由 |
 |---|---|---|
-| 1 | **不移植完整 `LauncherAnimationRunner` 600+ 行**——`AnimationResult`/`Scenes` 枚举/`mInputCallback`/`interceptKeyEvent`/`handleAnimationMerged` 等都是 launcher 业务专属，与"动画线程方案"主线无关 | review 06 §4.2-4 + review 11 §4.2-4 已建议"仅保留类型壳"——demo 已够演示 |
-| 2 | **Demo9 仍走"概念演示"路径，不接真 `ActivityOptions.makeRemoteAnimation`**——除非有真机 A/B 需求，否则 +40 行不值得 | demo apk 是演示 app，不需要做 launcher 真入口 |
-| 3 | **不补 `AppLaunchAnimationRunner` 6 方法 + `MultiAnimatorSet` 主装配器** | review 06 §4.2-1 + review 11 §4.2-5 已建议"保持简化" |
-| 4 | **不补 `ActivityInitListener` 异步等待通路**——demo 不需要等 launcher 异步初始化完成 | OPPO launcher 启动链路专属 |
-| 5 | **不补 `Scenes.APP_TO_OVERVIEW_BY_VIRTUAL_KEY` + `OplusRemoteAnimationProvider`** | 虚拟键模式是 OPPO 内部态，与演示动画线程方案无关 |
-| 6 | **不补 BACK 键拦截 + `mInputCallback`**（`LauncherAnimationRunner.interceptKeyEvent` + `OplusAnimManager.getInterceptKeyHelper().sendBackKeyEvent`） | review 11 §4.2-4 已建议"不移植 InterceptKeyEventHelper 反射"——依赖 OEM 私有 `OplusWindowManager` |
-| 7 | **demo manifest 的 `LauncherEntryActivity` 保持 exported=true**——这是 Android launcher 入口契约，demo 必须 | 改成 unexported 就装不上 launcher 图标 |
+| 1 | **状态：✔️保持简化（review 06 §4.2-4 + review 11 §4.2-4 同判）** **不移植完整 `LauncherAnimationRunner` 600+ 行**——`AnimationResult`/`Scenes` 枚举/`mInputCallback`/`interceptKeyEvent`/`handleAnimationMerged` 等都是 launcher 业务专属，与"动画线程方案"主线无关 | review 06 §4.2-4 + review 11 §4.2-4 已建议"仅保留类型壳"——demo 已够演示 |
+| 2 | **状态：✔️保持简化（demo 无真机 A/B 需求）** **Demo9 仍走"概念演示"路径，不接真 `ActivityOptions.makeRemoteAnimation`**——除非有真机 A/B 需求，否则 +40 行不值得 | demo apk 是演示 app，不需要做 launcher 真入口 |
+| 3 | **状态：✔️保持简化（review 06 §4.2-1 + review 11 §4.2-5 同判）** **不补 `AppLaunchAnimationRunner` 6 方法 + `MultiAnimatorSet` 主装配器** | review 06 §4.2-1 + review 11 §4.2-5 已建议"保持简化" |
+| 4 | **状态：✔️保持简化（launcher 启动链路专属，与动画线程主线无关）** **不补 `ActivityInitListener` 异步等待通路**——demo 不需要等 launcher 异步初始化完成 | OPPO launcher 启动链路专属 |
+| 5 | **状态：✔️保持简化（虚拟键模式为 OPPO 内部态）** **不补 `Scenes.APP_TO_OVERVIEW_BY_VIRTUAL_KEY` + `OplusRemoteAnimationProvider`** | 虚拟键模式是 OPPO 内部态，与演示动画线程方案无关 |
+| 6 | **状态：✔️保持简化（依赖 OEM 私有 OplusWindowManager；review 11 §4.2-4 同判）** **不补 BACK 键拦截 + `mInputCallback`**（`LauncherAnimationRunner.interceptKeyEvent` + `OplusAnimManager.getInterceptKeyHelper().sendBackKeyEvent`） | review 11 §4.2-4 已建议"不移植 InterceptKeyEventHelper 反射"——依赖 OEM 私有 `OplusWindowManager` |
+| 7 | **状态：✔️保持简化（exported=true 为 launcher 入口契约必需）** **demo manifest 的 `LauncherEntryActivity` 保持 exported=true**——这是 Android launcher 入口契约，demo 必须 | 改成 unexported 就装不上 launcher 图标 |
 
 ### 4.3 文档同步（强烈建议，本 review 发现的新文档遗漏）
 
 | # | 文档改动 |
 |---|---|
-| 1 | **USAGE.md 加一节"Demo 模块入口契约"**——明示 `LauncherEntryActivity` 是 launcher 入口（exported=true），11 demo activity 是 unexported（同 task 跳转），demo build.gradle `applicationId = "com.asyncanimator.demo"`（独立包名） |
-| 2 | **USAGE.md 加 "LauncherAnimationRunner 类型壳" 一节**——说明 lib 故意保留 `com.android.launcher3.LauncherAnimationRunner` 类名作 `RemoteAnimationTarget` 类型的容器（避免破坏 demo 代码里 `import com.android.launcher3.LauncherAnimationRunner` 的稳定性），同时真正的 `RemoteAnimationFactory` 接口抽到 `com.asyncanimator.launcher.controller.RemoteAnimationFactory` 方便 demo 引用 |
-| 3 | **USAGE.md 补 Demo9 "概念演示 vs 真入口" 警示**——明示 demo 9 不构造真 `LauncherAnimationRunner` + `ActivityOptions.makeRemoteAnimation(...)`，是舞台侧仿真，不能用作 launcher 真入口回归 |
-| 5 | **README.md**（`D:\AsyncAnimator\README.md`）如果有"如何集成到真 launcher"章节，加一段"集成方需自己补 `LauncherAnimationRunner` + `ActivityOptions.makeRemoteAnimation` 真链路" |
+| 1 | **状态：⚠️未修复（USAGE.md 无 demo 章节，未补"Demo 模块入口契约"；文档改动非本批范围）** **USAGE.md 加一节"Demo 模块入口契约"**——明示 `LauncherEntryActivity` 是 launcher 入口（exported=true），11 demo activity 是 unexported（同 task 跳转），demo build.gradle `applicationId = "com.asyncanimator.demo"`（独立包名） |
+| 2 | **状态：✅已修复（USAGE.md §RemoteAnimationFactory/LauncherAnimationRunner 已明示"原厂 600+ 行 runner 只保留了类型壳"（:225-229，e5aff88 起即有））** **USAGE.md 加 "LauncherAnimationRunner 类型壳" 一节**——说明 lib 故意保留 `com.android.launcher3.LauncherAnimationRunner` 类名作 `RemoteAnimationTarget` 类型的容器（避免破坏 demo 代码里 `import com.android.launcher3.LauncherAnimationRunner` 的稳定性），同时真正的 `RemoteAnimationFactory` 接口抽到 `com.asyncanimator.launcher.controller.RemoteAnimationFactory` 方便 demo 引用 |
+| 3 | **状态：⚠️未修复（USAGE.md 无 demo 章节，未补 Demo9 警示）** **USAGE.md 补 Demo9 "概念演示 vs 真入口" 警示**——明示 demo 9 不构造真 `LauncherAnimationRunner` + `ActivityOptions.makeRemoteAnimation(...)`，是舞台侧仿真，不能用作 launcher 真入口回归 |
+| 5 | **状态：❌不成立/已过期（README 无"如何集成到真 launcher"章节，建议前提不满足；已知限制 #2 已含接口重定义警示）** **README.md**（`D:\AsyncAnimator\README.md`）如果有"如何集成到真 launcher"章节，加一段"集成方需自己补 `LauncherAnimationRunner` + `ActivityOptions.makeRemoteAnimation` 真链路" |
 
 ---
 
@@ -228,3 +228,30 @@ Demo AndroidManifest 的 12 个 activity 契约（11 unexported + 1 exported）�
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+
+| 条目 | 判定 |
+|---|---|
+| ③-1 LauncherEntryActivity exported=true 暴露面 | ✔️保持简化（launcher 契约必需；本文自证无安全 bug） |
+| ③-2 Demo9 不走真 LauncherAnimationRunner/makeRemoteAnimation | ✔️保持简化（review 06 §2.2-1 / §4.2-2 有意裁剪） |
+| ③-3 demo 加 deep-link 放大 exported | ❌不成立（未来假设，无当前 deep-link） |
+| ③-4 viewBinding 强绑定致 NPE | ❌不成立（编译期缺类错误，非 NPE） |
+| ③-5 redirectTraceToLogView 多次叠加 | ⚠️未修复（demo 模块，~5 行） |
+| ③-6 DemoAdapter 持 11 个 Class 强引用 | ✔️保持简化（无 RSS 实测依据） |
+| ③-7 Demo6 状态图与 controller 不同步 | ✔️保持简化（已标注 lib 内部态 + 日志同步） |
+| ③-8 manifest 省略 exported 未来编译失败 | ⚠️待复核（未来 API 行为未定） |
+| ③-9 @string/demoN_title 漏配只警告 | ❌不成立（AAPT2 编译期错误） |
+| ③-10 onBackPressed @Deprecated | ✔️保持简化（有意兼容） |
+| ④4.1-1 补 AnimationResult 最小壳 | ⚠️待复核（与 4.2-1 矛盾） |
+| ④4.1-2 补 RemoteAnimationFactory 5 default 方法 | ✔️保持简化（通路未移植） |
+| ④4.1-3 Demo9 加真构造路径 | ⚠️待复核（与 4.2-2 矛盾） |
+| ④4.1-4 修 redirectTraceToLogView 叠加 | ⚠️未修复（demo 模块，~5 行） |
+| ④4.1-5 Demo6 加 controller.animState 订阅 | ⚠️待复核（内部态不可达，建议需重定义） |
+| ④4.1-6 manifest 显式 exported=false | ⚠️待复核（加固项） |
+| ④4.2-1..7 保持简化 7 项 | ✔️保持简化 |
+| ④4.3-1 USAGE 加 Demo 入口契约节 | ⚠️未修复（USAGE.md 无 demo 章节） |
+| ④4.3-2 USAGE 加类型壳一节 | ✅已修复（USAGE.md:225-229 已明示类型壳） |
+| ④4.3-3 USAGE 补 Demo9 警示 | ⚠️未修复（USAGE.md 无 demo 章节） |
+| ④4.3-5 README 补"集成方补真链路" | ❌不成立（README 无集成章节，前提不满足） |
+
+本批对 doc 32 未改任何 lib/demo 代码：风险全部落在 demo/manifest/文档层，无 ≤30 行的 lib 真 bug。

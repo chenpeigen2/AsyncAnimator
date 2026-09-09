@@ -281,22 +281,27 @@ override fun onLooperPrepared() {
 
 ### 4-B. 建议保持简化的
 
+> **状态：✔️保持简化（OPPO 私有跨进程 uifirst 服务；AOSP 无合法替代）**
 #### 4-B-1. `LauncherBooster.getCpu().setUxThreadValue` 不补
 
 理由：OPPO 私有，跨进程 `uifirst` 服务。AOSP 公开层无合法替代。lib 是 AOSP 公开 API 库，不应该硬编码 `com.oplus.*` 引用。**保持简化**。
 
+> **状态：✔️保持简化（绑核由 OPPO ROM 决定，AOSP 无法做到）**
 #### 4-B-2. `LauncherBooster.CpuBoost.reportKeyThreadToUAF(handlerThread, eventId)` 不补
 
 理由：同 4-B-1。绑核由 OPPO ROM 决定，lib 无法在 AOSP 上做到。
 
+> **状态：✔️保持简化（lib 调用方只用 Handler.post；executeBlockWait 是 ANR 风险）**
 #### 4-B-3. `LooperExecutor` 包装层 / `executeBlockWait` / `executeWithUx` 不补
 
 理由：lib 调用方只用 `Handler.post`，不需要 ExecutorService 类型持有 / 阻塞等待 / 单任务 UX 标记。**保持简化**。
 
+> **状态：✔️保持简化（AnimationControlThread.instance + Handler(looper) 已够）**
 #### 4-B-4. `OplusExecutors.getANIM_EXECUTOR()` 访问器模式不补
 
 理由：lib 没引入 `OplusExecutors` 概念。访问 `AnimationControlThread.instance` 已足够。**保持简化**。
 
+> **状态：⚠️未修复（与 4-A-1 同：runCatching 冗余行仍在 AnimationControlThread.onLooperPrepared，建议删除未做——非阻塞清理项）**
 #### 4-B-5. `runCatching { Process.setThreadPriority(...) }` 兜底不补（删除，详见 4-A-1）
 
 理由：构造参数已生效，再设一次无意义。
@@ -305,10 +310,12 @@ override fun onLooperPrepared() {
 
 ### 4-C. 风险监控项（建议保留但加文档）
 
+> **状态：✔️保持简化（监控项保留；若启用 UAF，eventId=2016 建议补入文档）**
 #### 4-C-1. `THREAD_NAME` / `PRIORITY` 字面量必须与原厂字面量同值
 
 理由：未来若启用 `LauncherBooster.reportKeyThreadToUAF`，`"launcher.anim"` + `2016` (`LAUNCHER_STATIC_LAUNCHER_ANIM`) 是注册表 key。lib 已经固化（`AnimationControlThread.kt:73, 78`），但 `LAUNCHER_STATIC_LAUNCHER_ANIM = 2016` 这条事件 ID 还没在 lib 任何地方记录。建议在文档里补一行："若以后调 UAF，eventId 用 2016。"
 
+> **状态：✔️保持简化（监控项；SYNCHRONIZED 模式已正确，start() 只跑一次）**
 #### 4-C-2. `by lazy(SYNCHRONIZED)` 单例的并发触发点
 
 理由：lib 的 `instance` 是 lazy，若 lib 被多线程触发加载，需要 `SYNCHRONIZED` 模式（已用）。`PUBLICATION` / `NONE` 模式不适用——`HandlerThread.start()` 必须只跑一次。**已正确**，加注释提示即可。
@@ -348,3 +355,5 @@ override fun onLooperPrepared() {
 - §4 4-C-1/2 — ✔️已保留为监控项
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+批次 2 补记（2026-09-09）：§3 R-1..R-6 与 §4 4-A-1/2 维持 6428b10 标记（复核一致：runCatching 仍在 AnimationControlThread.onLooperPrepared）；本轮补标 §4 4-B-1..4 ✔️保持简化、4-B-5 ⚠️未修复（同 4-A-1）、4-C-1/2 ✔️监控项保留。

@@ -15,26 +15,55 @@ object AnimationFeatureHelper {
     private val lock = Any()
 
     var asyncEnable by SyncedVar(lock, 1)
+        private set
     var rtUnlockEnable by SyncedVar(lock, 1)
+        private set
     var multiAppBlockEnable by SyncedVar(lock, 0)
+        private set
     var iconBlurEnable by SyncedVar(lock, 1)
+        private set
     var onePxEnable by SyncedVar(lock, 1)
+        private set
     var interruptThreshold by SyncedVar(lock, 1.0f)
+        private set
     var limtSize by SyncedVar(lock, -1)
+        private set
 
-    val onePxPkgDisableList: List<String> = mutableListOf()
-    val onePxCardDisableList: List<Int> = mutableListOf()
+    @Volatile
+    private var onePxPkgDisableSnapshot: List<String> = emptyList()
 
-    /** 模拟远程配置下发：批量更新所有字段。 */
+    @Volatile
+    private var onePxCardDisableSnapshot: List<Int> = emptyList()
+
+    /** Read-only snapshot view; updated only via [simulateRemoteUpdate] whole-snapshot replace. */
+    val onePxPkgDisableList: List<String> get() = onePxPkgDisableSnapshot
+
+    val onePxCardDisableList: List<Int> get() = onePxCardDisableSnapshot
+
+    /** Full remote-update simulation: 7 scalars + 2 disable lists. Lists are replaced as
+     * immutable whole snapshots (never in-place clear/add); null list keeps the previous value.
+     * Mirrors OPPO RUS parser writing onePxEnable + both 1px ItemArrays, which the old
+     * 6-arg overload could not express. */
     fun simulateRemoteUpdate(async: Int, rtUnlock: Int, multiApp: Int, iconBlur: Int,
-                             threshold: Float, limtSize: Int) = synchronized(lock) {
-        this.asyncEnable = async
-        this.rtUnlockEnable = rtUnlock
-        this.multiAppBlockEnable = multiApp
-        this.iconBlurEnable = iconBlur
-        this.interruptThreshold = threshold
-        this.limtSize = limtSize
-    }
+                             onePx: Int, threshold: Float, limtSize: Int,
+                             onePxPkgDisableList: List<String>?, onePxCardDisableList: List<Int>?) =
+        synchronized(lock) {
+            this.asyncEnable = async
+            this.rtUnlockEnable = rtUnlock
+            this.multiAppBlockEnable = multiApp
+            this.iconBlurEnable = iconBlur
+            this.onePxEnable = onePx
+            this.interruptThreshold = threshold
+            this.limtSize = limtSize
+            if (onePxPkgDisableList != null) onePxPkgDisableSnapshot = onePxPkgDisableList.toList()
+            if (onePxCardDisableList != null) onePxCardDisableSnapshot = onePxCardDisableList.toList()
+        }
+
+    /** Backward-compatible 6-scalar variant: leaves onePxEnable and both lists untouched. */
+    fun simulateRemoteUpdate(async: Int, rtUnlock: Int, multiApp: Int, iconBlur: Int,
+                             threshold: Float, limtSize: Int) =
+        simulateRemoteUpdate(async, rtUnlock, multiApp, iconBlur, this.onePxEnable,
+            threshold, limtSize, null, null)
 
     /** 配置项委托：@Volatile 读（无锁）+ 同 [lock] 写（与批量下发互斥）。 */
     private class SyncedVar<T>(private val lock: Any, initial: T) : ReadWriteProperty<Any?, T> {

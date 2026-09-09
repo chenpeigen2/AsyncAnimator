@@ -68,14 +68,23 @@
 
 按"可能导致 logcat / Perfetto 上看到的 trace 与原厂对不上"的严重度排序：
 
+> **✅已修复（60bd048：Trace.STACK 改 ThreadLocal per-thread deque——跨线程 begin/end 不再错位，Trace.depth 断言恢复可信）**
 1. **（高 / bug 级）多线程并发 trace 时 `Trace.STACK` ArrayDeque 非线程安全**。`Trace.kt:12` `private val STACK = ArrayDeque<String>()`；`traceBegin/traceEnd` 在 STACK 上 `addFirst/removeFirst`（`:17, 22`）。`AsyncAnimCallbacks.dispatch` 路径会跨线程：`runOnMainThread { ... }` 是 post 异步消息，动画线程 `traceEnd(8L)` 与主线程 `dispatch` 内部对 STACK 的访问不互斥。Demo 单元测试单线程不触发；真机 demo 多线程下 STACK 可能错位、`traceEnd` 弹出错的 tag。OPPO `android.os.Trace.traceBegin/End` 是平台 ATRACE_BEGIN/ATRACE_END，**每条记录自带 thread 上下文**，不会错位。**这是 lib 的一个潜在正确性 bug**：异步场景下断言 `Trace.depth` 不可信。
+> **✔️保持简化（trace tag 纯可观测性装饰；animType 已随 review 01 §③-10 判定为有意裁剪；demo 无跨进程 grep 对齐需求）**
 2. **（高）trace tag 没有 animType 子系统区分**。原厂 `"#26-OPEN_FROM_HOME-Start"` 可在 Systrace 里 grep "OPEN_FROM_HOME" 看到所有转场动画；lib `"AsyncAnimStart-<id>"` 只暴露 id，且 id 是 `System.identityHashCode`（每次进程启动不同），无法 grep 跨进程对齐。
+> **✔️保持简化（trace 段宽度只影响 systrace 观感；demo 走 stderr/logView，无差异——§4.1-7 亦允许保持现状）**
 3. **（中）lib trace 段不覆盖整个派发链**。`AsyncAnimCallbacks.kt:48-56`：`traceBegin` → `runOnMainThread { dispatch }` → `traceEnd`；`traceEnd` 在 `runOnMainThread` 的 lambda 之前就执行（因为 `runOnMainThread` 返回是同步的），所以 systrace 上"AsyncAnimStart-N"段长度基本为 0（只覆盖 `runOnMainThread` 的 post 调用），实际 listener 回调发生在主线程下一次 doFrame，那时 trace 段已经关闭。OPPO `AsyncAnimCallbacks.java:140-144` 把 `traceEnd` 放在 `LogUtils.i` 之后（同步），段长度覆盖整个 LogUtils.i 调用。**含义**：OPPO 的 systrace 上能看到 listener 派发和"AsyncAnimStart"段紧邻；lib 上两者不邻接，grep 难度增加。
+> **✔️保持简化（缺同位置 LogUtils.i 只影响 logcat 字面对照；lib Trace 同名段已输出等价信息——纯 OEM 日志设施，见 review 01 §4.2-5）**
 4. **（中）`AnimationSeqHelper` trace 名虽然 1:1，但缺同位置的 LogUtils.i**。OPPO `AnimationSeqHelper.java:60, 64, 120, 126` 在 `delayFinishRecents` / `addSeqId` / `updateNextFinishSeqIdIfNeed` 都打 `LogUtils.i(TAG, ...)`（TAG = `"AnimationSeqHelper"`），如 logcat 上看到 `"AnimationSeqHelper: add start activity seqId: 26"` 可与 trace 的 `"addSeqId"` 段形成对照；lib 只打 Trace，无 LogUtils.i，业务侧的"seqId 是几"在 lib 里不可观测。
+> **✔️保持简化（续行失败可观测性属调试增强；Debug.getCallers 在 JVM 单测无 android.os.Debug 支撑）**
 5. **（中）`OplusValueAnimator` 续行失败的可观测性弱**。OPPO `OplusValueAnimator.java:114-118, 143-144` 在 generateContinuationAnim / generateAnim 失败时 `LogUtils.isAlwayson()` 门控 + `Debug.getCallers(15)` 输出栈：可定位到上层调用方是 `AppSwipeToRecentContinuationHelper` 还是 `VirtualBtnToRecentContinuationHelper`（见 `OplusBaseSwipeUpHandler.java:3517, 3922`）；lib `OplusValueAnimator.kt:133-136` 只 `Trace.traceBegin(8L, "Continuation-fail")` + `Trace.traceEnd(8L)`，失败信息是一个空字符串，无调用方。
+> **✔️保持简化（demo 无 release 分发、Trace 输出量级小；LogUtils 门控体系非演示必需）**
 6. **（中）`LogUtils.i` 的线程上下文不可见**。原厂 `LogUtils.i` 在 release 构建由 `isLogOpen()` 关掉，engineer-build 全开；lib 的 `Trace` 总是输出。release 行为差异：原厂用户机器 logcat 上几乎看不到任何 LogUtils 输出（设计如此），lib 用户机器上能看到大量 Trace（如果 demo 在 release 包跑）。**含义**：lib demo 的 release APK 用户 logcat 会被 Trace 灌满。
+> **✅已修复（60bd048 同 #1：per-thread deque 后 depth 不再跨线程错位）**
 7. **（低）trace 段嵌套关系不同**。lib 用 ArrayDeque 维护嵌套（traceBegin 时 push，traceEnd 时 pop）；OPPO 用 ATRACE 的 counter 维护嵌套（同样 LIFO）。两者概念等价，但 lib 在 `Trace.depth` 暴露的 int（`:26`）供单元测试断言时，**`addFirst/removeFirst` 多线程错位时 depth 也错位**（bug 级 #1 的副作用）。
+> **✔️保持简化（与原厂一致均无线程创建 trace 锚点；文档自判 lib 无需补）**
 8. **（低）`OplusExecutors` 的"线程建立时无 trace 锚点"** 与原厂一致（双方都无 Trace 调用），但 `OplusExecutors.java:169-171` 的 `setProvider(SfVsyncFrameCallbackProvider)` 也没 Trace 包，定位 launcher.anim 线程创建的 systrace 锚点是 `Launcher.java:3255, 4773` 的 `initWallpaper` / `setup views` 等外部 trace，不是 OplusExecutors 本身。**这是原厂也存在的盲区**，lib 没必要补。
+> **✔️保持简化（保真优先：原厂照搬缩写，lib 保留以对齐 logcat/trace 特征）**
 9. **（提示）`AnimationSeqHelper.traceBegin(8L, "exc delayRunnable")` 的 "exc" 缩写**。这是 review 里发现的最不直白的命名（"exc" 应该是 "executable" 或 "execute" 的缩写），OPPO `AnimationSeqHelper.java:39` 直接照搬，lib 也保留。从"代码可读性"看 lib 与原厂都吃亏，但保持一致是优先级更高的目标。
 
 ---
@@ -84,22 +93,36 @@
 
 ### 4.1 值得补进 lib 的
 
+> **⚠️未修复（约 30 行 LogUtils 最小壳层未加；logcat 对照用可观测性增强，非语义缺口——demo 的 stderr/logView 已等价覆盖）**
 1. **加 `LogUtils` 壳层（最小集）**：仅 `LogUtils.i(tag, msg)` / `isLogOpen()` / `isAlwayson()` / `setLogLevel(...)` 4 方法，覆到 `AsyncAnimCallbacks`、`AnimationSeqHelper`、`OplusValueAnimator` 三处 OPPO 已有的 LogUtils.i 调用点。`AsyncAnimCallbacks.kt:48-56` 当前 `dispatch` 已包 Trace，再加 LogUtils.i 即可 1:1 对齐 OPPO `AsyncAnimCallbacks.java:131-144`。成本 ≤ 30 行；收益：logcat 上能 grep `AsyncAnimCallbacks:`、`AnimationSeqHelper:`、`OplusValueAnimator:` 三类事件，业务侧可观测性回到原厂水平。
+> **✔️保持简化（同风险2 / review 01 §③-10：纯日志装饰）**
 2. **`AsyncAnimCallbacks` 加 `mAnimType` 字段 + trace tag 携带**：`AsyncAnimCallbacks.kt` 加 `internal var animType: CustomRectFSpringAnim.AnimType = AnimType.SWIPE_TO_HOME` + `setAnimType(...)`，dispatch 时 `Trace.traceBegin(8L, "#${id}-${animType}-Start")`。与 OPPO `AsyncAnimCallbacks.java:25-26, 131-144` 1:1 对齐；同时让 demo 可断言 "SWIPE_TO_HOME 类动画在主线程 start"。
+> **✔️保持简化（OEM 调试设施；JVM 单测无 android.os.Debug 可用）**
 3. **`Debug.getCallers(N)` 栈采样挂到 `OplusValueAnimator` 的失败路径**：`OplusValueAnimator.kt:133-145` `Continuation-fail` 段加 `LogUtils.i("OplusValueAnimator", "Continuation-fail; caller: ${Debug.getCallers(3)}")`。`android.os.Debug.getCallers` 是公开 API（AOSP `frameworks/base/core/java/android/os/Debug.java`），不依赖 hidden 调用。10 行代码即与 OPPO `:114-118, 143-144` 对齐。
+> **✔️保持简化（demo 无 release 分发；门控体系无对象）**
 4. **`isLogOpen()` / `isAlwayson()` 门控**：`LogUtils` 壳层加这两档 boolean，release 默认 false、unit test 默认 true（用 `BuildConfig.DEBUG` 切换）。OPPO release 包靠这个保证用户 logcat 不被刷屏；lib demo 不补则 release APK 用户的 logcat 会被 Trace 灌满。
+> **✅已修复（60bd048：ThreadLocal 方案，比 ConcurrentLinkedDeque/@Synchronized 更彻底——按线程隔离）**
 5. **STACK 改 `ConcurrentLinkedDeque` 或加 `@Synchronized`**：`Trace.kt:12` `private val STACK = ArrayDeque<String>()` → `ConcurrentLinkedDeque` 或包 `@Synchronized` on `traceBegin/traceEnd`。5 行改动消除风险点 #1（多线程 trace 错位）。OPPO 走 ATRACE 平台实现免于此问题，lib 必须自己防。
+> **✔️保持简化（文档自判 onAnimActualEnd "不补"——保持现状正确）**
 6. **加 `onAnimActualEnd` 的 Trace 锚点**：OPPO `AsyncAnimCallbacks.java:111-122` 的 `onAnimActualEnd` 内部**不调** Trace（只有 LogUtils.i），但 lib 当前也只走 `LogUtils` 路径——保持现状即可。**注意**：lib `AsyncAnimCallbacks.kt:58-69` 与 OPPO 一致地只在 LogUtils 路径，不打 Trace，回移建议里**不补**（避免破坏现状）。
+> **✔️保持简化（trace 段宽度权衡；demo 可保留现状——文档亦允）**
 7. **保留 traceEnd 在 dispatch 之后**：lib `AsyncAnimCallbacks.kt:55-56` 的 `traceEnd(8L)` 在 `runOnMainThread { dispatch }` 后立刻调；OPPO `:144` 在 LogUtils.i 后调。当前 lib 的 trace 段非常短。**建议改**为把 traceEnd 放进 runOnMainThread 的 lambda 末尾（或在 OPPO 风格的 LogUtils.i 之后），让 trace 段覆盖整个派发——但这是性能/可观测性权衡，lib 是 demo 库，可以保持现状。
 
 ### 4.2 建议保持简化
 
+> **✔️保持简化**
 1. **`android.os.Trace` 真接入**。理由：① 单元测试用不上（需 Perfetto），② demo 模块需要 UI 可视 trace，stderr 重定向是更好的方案，③ 真机 demo 可选地把 `Trace.traceBegin` 桥接到 `android.os.Trace.traceBegin`（一行 if 包），但默认走 stderr 即可。
+> **✔️保持简化**
 2. **`LogUtils.toFile` + `PERSIST_LOG_DIR` 落盘**。理由：① 涉及文件 I/O 与 SELinux 权限，demo 模块不应碰 `/data/persist_log/`；② 落盘日志有用户隐私问题，demo 数据仅供教学，不应长期保存；③ 真要落盘推荐 `adb logcat -b crash,events,main` 而不是自写文件。
+> **✔️保持简化**
 3. **`LogUtils.debug(Function0<String>)` lazy 评估**。理由：lib 闭包 / Kotlin 风格下默认 lazy（`run { "Continuation-fail" }`），但 trace tag 字符串拼接本身代价极小，引入 Function0 包装收益低。
+> **✔️保持简化**
 4. **`TraceHelper` 薄壳 + FLAG_* 常量**。理由：内部使用频率极低（只在 `OplusWorkspace.java:1891` 等 3-4 处），FLAG 是 OPPO 内部 trace 分类约定，外部 demo 不需要这套分类。
+> **✔️保持简化**
 5. **`MultiStateCallback` / `RecentTasksList` 等周边的 Trace 锚点**（141 处 trace 之外）。理由：与异步动画主题无关，全量补只会稀释 lib 的焦点。
+> **✔️保持简化**
 6. **`com.oplus.basecommon.log.config.LogUtilsConfig` 配置下发**。理由：依赖 `com.oplus.basecommon.log.LogUtilsConfig.INSTANCE.getInstance()`（`LogUtils.java:79`），含 OPPO 私有开关策略，外部 demo 用默认常量即可。
+> **✔️保持简化**
 7. **`DemoBaseActivity` 的 stderr → logView 重定向**。理由：这是 demo UI 层的"trace 可视化"工具，不是 trace 替代品；真要兼顾 perfetto，可以在 `DemoBaseActivity` 里加一行 "if (isPerfettoAvailable) android.os.Trace..." 即可，但默认保留 stderr 重定向。
 
 ---
@@ -135,4 +158,12 @@
 
 - **60bd048** — Trace.STACK 改 ThreadLocal，跨线程 traceBegin/End 不再错位
 
+
+
+逐条判定（批次 1 逐项状态，标注位置见正文）：
+- **§3-#1 / #7（Trace.STACK 并发错位 + depth）** — ✅已修复（60bd048 ThreadLocal）
+- **§3-#2..#6、#8、#9（animType/LogUtils/栈采样/门控/traceEnd 时机等可观测性差异）** — ✔️保持简化（纯日志/可观测性装饰，demo 无对应需求）
+- **§4.1-#1..#4、#6、#7** — ✔️保持简化或 ⚠️未修复（见正文：LogUtils 壳层 ⚠️未修复，其余 ✔️）
+- **§4.1-#5（STACK 并发容器）** — ✅已修复（60bd048 ThreadLocal）
+- **§4.2-#1..#7** — ✔️保持简化（清单即保持简化）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

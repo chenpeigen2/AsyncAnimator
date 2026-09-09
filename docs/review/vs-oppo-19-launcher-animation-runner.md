@@ -133,7 +133,9 @@
 ### 4.3 文档同步
 
 `USAGE.md:210-216` §"RemoteAnimationFactory / LauncherAnimationRunner" 章节目前只说"类型壳 + 2 方法 demo 接口"，**与本文档 R1-R5 修复方案不一致**。补完 R1-R5 后需同步更新：
+> **✔️保持简化（条件不成立：R2/B2 tryFinishOpenRemote 未回移，USAGE 无需补该行；现状与类型壳描述一致）**
 - `USAGE.md:154` 表加 `tryFinishOpenRemote(Runnable)` 行
+> **✔️保持简化（条件不成立：R1-R5 全部保持简化未实施，无需列 default 方法；42882ff 已加 AsyncSpringAnim 节）**
 - `USAGE.md:213` 增补 `RemoteAnimationFactory` 9 个 default 方法列表（含 `supportInterruption()`、`onAnimationCancelled()`、`handleAnimationMerged(...)` 等），标注哪些是 demo 演示用、哪些与原厂 default body 等价
 
 ---
@@ -173,3 +175,5 @@ demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:172
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
 - **B1-B5/R1-R5 (§3.1 + §4.1)** — 全部保持简化（JVM demo 不示宜完整 binder 通道），未在已知 commit 范围，本批不修；下一批如需补 Quickstep 全栈路径（Demo9 multi-app / Demo11 弹簨）则按 1+5+3+20=29 行一次性补齐
 - **N1-N4/K1-K6** — 经独立验证均为合理简化（demo 不示宜 binder keyevent、不示宜 GC race、不示宜 launcher 实例化场景）
+按条目补记：
+- **§4.3 文档同步两 bullets** — ✔️保持简化（R1-R5 未实施 ⇒ USAGE 无需同步；42882ff 已补 AsyncSpringAnim 节）

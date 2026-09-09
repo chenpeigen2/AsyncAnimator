@@ -38,7 +38,7 @@ class AsyncAnimCallbacks {
         if (l != null && !animListeners.contains(l)) animListeners.add(l)
     }
 
-    internal fun removeListener(l: NullableAnimatorListener?) {
+    fun removeListener(l: NullableAnimatorListener?) {
         val idx = animListeners.indexOf(l)
         if (idx >= 0) animListeners[idx] = null
     }

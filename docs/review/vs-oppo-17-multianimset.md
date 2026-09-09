@@ -307,32 +307,32 @@ else:
 
 | # | 问题 | 触发条件 | 修复成本 |
 |---|---|---|---|
-| **B1** | **`maybeOnEnd()` 4 通道等齐协议缺失**——lib `isAnimFinished` 仅看 AnimatorSet 自身，spring / rectF 还在飞时错误报 "全部结束"，导致 `AnimationSeqHelper.canFinishRecentsAnim(animRecord)` 误判、TaskStateChangeTimeOutListener 提前收尾、launcher 提早进入 NORMAL 态 | 所有 demo 在 spring 路径或 rectF 路径未结束但 AnimatorSet 已结束的场景；Demo4/11 弹簧场景 | **80 行**（新建 `MultiAnimatorSet.kt`：4 字段 + 4 boolean + start/cancel/end bitmask + maybeOnEnd 等齐） |
-| **B2** | **`mHasRequestCancel: volatile boolean` 缺失**——TaskViewUtils `:1411` 在 apply SurfaceControl.Transaction 前检查 `getMHasRequestCancel()`，避免 cancel 后还写 transaction。lib 无此信号，**cancel 后 frame N 的 transaction 仍会 apply → 帧撕裂 / 黑屏闪** | TaskViewUtils.composeRecentsLaunchAnimator 调用路径；用户上滑到 recents 后立刻下拉取消 | **5 行**（`PendingAnimation` 加 `@Volatile var hasRequestCancel: Boolean = false`，cancel 时翻 true） |
-| **B3** | **`cancel(int)` / `end(int)` bitmask 协议缺失**——调用方按 bit 选通道取消的能力全无；`cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` 两个 helper API 也无。LauncherAnimationRunner `:438-466` "只取消非 spring 通道" 模式 lib 无法表达 | LauncherAnimationController backAnimation 路径；调用方希望 "spring 继续跑到 AnimType 指定位置、其他瞬停" 的场景 | **30 行**（MultiAnimatorSet 加 bitmask 参数 + TYPE 常量 + 2 helper） |
-| **B4** | **`play(Animator, boolean)` sync/async 分支缺失**——调用方按 feature flag 选 sync vs async 通道（TaskViewUtils `:1074` `multiAnimatorSet.play(z10, ...)`）的协议 lib 无；所有动画只能走单一 AnimatorSet，无法利用 ANIM_EXECUTOR 跨线程优势 | TaskViewUtils.composeRecentsLaunchAnimator `AppFeatureUtils.enableAsyncTaskViewLaunchWindowAnim()` 路径 | **50 行**（MultiAnimatorSet 加 mAsyncAnimatorSet 字段 + ANIM_EXECUTOR.execute(start) + mAsync end listener post 回主线程） |
-| **B5** | **`cancel(1)` 同步 + 异步混合 cancel 协议**——OPPO 同时在主线程 `mAnimatorSet.cancel()` + 通过 `ANIM_EXECUTOR.execute(cancel$lambda$6)` 取消 `mAsyncAnimatorSet`，保证两通道同一时刻被打断；lib 单一 AnimatorSet 只能同步 cancel | TaskViewUtils / LauncherAnimationRunner 任一使用 async 通道的路径 | **10 行**（在 B4 实现后，cancel(1) 路径里加 ANIM_EXECUTOR post） |
-| **B6** | **`end(2)` 走 `canSkipToEnd()` + `skipToEnd()`** 而 cancel(2) 走 `springAnimation.cancel()`，两者语义不同；end 必须校验欠阻尼否则 `UnsupportedOperationException`（`SpringAnimation.java:117`）。lib 单一 `va.end()` 无法做此区分 | 调用方希望 "spring 瞬到终点" 但传了过阻尼 spring；OPPO 抛异常，lib 静默成功 | **10 行**（`AsyncSpringAnim.end()` 加 dampingRatio > 0 校验） |
+| **B1** | ⚠️未修复（MultiAnimatorSet 4 通道整体未回移 ~250 行（见 ⑥ R1）；单通道 PendingAnimation 无并行 spring/rectF，等齐协议无触发面） — **`maybeOnEnd()` 4 通道等齐协议缺失**——lib `isAnimFinished` 仅看 AnimatorSet 自身，spring / rectF 还在飞时错误报 "全部结束"，导致 `AnimationSeqHelper.canFinishRecentsAnim(animRecord)` 误判、TaskStateChangeTimeOutListener 提前收尾、launcher 提早进入 NORMAL 态 | 所有 demo 在 spring 路径或 rectF 路径未结束但 AnimatorSet 已结束的场景；Demo4/11 弹簧场景 | **80 行**（新建 `MultiAnimatorSet.kt`：4 字段 + 4 boolean + start/cancel/end bitmask + maybeOnEnd 等齐） |
+| **B2** | ⚠️未修复（lib 无 SurfaceControl.Transaction 写表层，无 cancel-后-apply 路径；flag 属 R1 回移配套（见 ⑥ R5）） — **`mHasRequestCancel: volatile boolean` 缺失**——TaskViewUtils `:1411` 在 apply SurfaceControl.Transaction 前检查 `getMHasRequestCancel()`，避免 cancel 后还写 transaction。lib 无此信号，**cancel 后 frame N 的 transaction 仍会 apply → 帧撕裂 / 黑屏闪** | TaskViewUtils.composeRecentsLaunchAnimator 调用路径；用户上滑到 recents 后立刻下拉取消 | **5 行**（`PendingAnimation` 加 `@Volatile var hasRequestCancel: Boolean = false`，cancel 时翻 true） |
+| **B3** | ⚠️未修复（bitmask API 依赖 MultiAnimatorSet 本体（未回移）；demo 无分通道取消调用方） — **`cancel(int)` / `end(int)` bitmask 协议缺失**——调用方按 bit 选通道取消的能力全无；`cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` 两个 helper API 也无。LauncherAnimationRunner `:438-466` "只取消非 spring 通道" 模式 lib 无法表达 | LauncherAnimationController backAnimation 路径；调用方希望 "spring 继续跑到 AnimType 指定位置、其他瞬停" 的场景 | **30 行**（MultiAnimatorSet 加 bitmask 参数 + TYPE 常量 + 2 helper） |
+| **B4** | ⚠️未修复（async 通道 + ANIM_EXECUTOR 装配未回移（R1）；lib 单 AnimatorSet） — **`play(Animator, boolean)` sync/async 分支缺失**——调用方按 feature flag 选 sync vs async 通道（TaskViewUtils `:1074` `multiAnimatorSet.play(z10, ...)`）的协议 lib 无；所有动画只能走单一 AnimatorSet，无法利用 ANIM_EXECUTOR 跨线程优势 | TaskViewUtils.composeRecentsLaunchAnimator `AppFeatureUtils.enableAsyncTaskViewLaunchWindowAnim()` 路径 | **50 行**（MultiAnimatorSet 加 mAsyncAnimatorSet 字段 + ANIM_EXECUTOR.execute(start) + mAsync end listener post 回主线程） |
+| **B5** | ⚠️未修复（同 B4，依赖 async 通道；lib 无 mAsyncAnimatorSet） — **`cancel(1)` 同步 + 异步混合 cancel 协议**——OPPO 同时在主线程 `mAnimatorSet.cancel()` + 通过 `ANIM_EXECUTOR.execute(cancel$lambda$6)` 取消 `mAsyncAnimatorSet`，保证两通道同一时刻被打断；lib 单一 AnimatorSet 只能同步 cancel | TaskViewUtils / LauncherAnimationRunner 任一使用 async 通道的路径 | **10 行**（在 B4 实现后，cancel(1) 路径里加 ANIM_EXECUTOR post） |
+| **B6** | ❌不成立/已过期（lib 侧无 end()/canSkipToEnd 语境：PendingAnimation 无 end/cancel 方法、AsyncSpringAnim 仅 cancel/skipToEnd；欠阻尼校验属 OPPO fork SpringAnimation，随 MultiAnimatorSet 回移才有意义） — **`end(2)` 走 `canSkipToEnd()` + `skipToEnd()`** 而 cancel(2) 走 `springAnimation.cancel()`，两者语义不同；end 必须校验欠阻尼否则 `UnsupportedOperationException`（`SpringAnimation.java:117`）。lib 单一 `va.end()` 无法做此区分 | 调用方希望 "spring 瞬到终点" 但传了过阻尼 spring；OPPO 抛异常，lib 静默成功 | **10 行**（`AsyncSpringAnim.end()` 加 dampingRatio > 0 校验） |
 
 ### 5.2 中等风险
 
 | # | 问题 | 触发条件 | 修复成本 |
 |---|---|---|---|
-| **M1** | **`SpringHolder.mStartDelay` 倒计时缺失**——`SpringHolder.java:108-114` 在 `updateValueAndVelocity(deltaT, endRequest)` 倒计时 `mStartDelay -= deltaT`，归零前 spring 不积分（即使每帧 onUpdate 也不动）。lib `AsyncSpringAnim.kt` 走 androidx SpringAnimation 没有 delay 概念 | 调用方希望 "spring 延迟 N ms 启动" 的场景；CustomRectFSpringAnim 在 OPEN_FROM_HOM 时 mAlphaStartDelay 路径（review 13 §2.1） | **30 行**（在 SpringHolder-style node 类里加 mStartDelay + 倒计时；或 fork androidx SpringAnimation） |
-| **M2** | **`removeSpringAnimFromSet()` 清理路径缺失**——cancel(无 2 bit) 路径上的 spring removeEndListener + clear + mViewSpringAnimEnded=true + maybeOnEnd + mAnimEndCallback=null 整套清理 lib 无 | 任何调 cancel(5) 的场景（spring 通道不清干净可能 listener 泄漏 / 多发 end 回调） | **15 行**（B1 实现后随之带出） |
-| **M3** | **`play(SpringAnimation...)` vararg + "started 后 live-add" 路径缺失**——`MultiAnimatorSet.play(SpringAnimation)`:453-465` 有 `if (mStarted && !springAnimation.isRunning())` 分支，启动期外能再 add spring 并 start；lib 启动期外不能再加 spring | 调用方希望 "动画跑了一半再叠加一条 spring" 的场景 | **20 行**（B1 实现后随之带出） |
-| **M4** | **`mAnimEndCallback: Consumer<Integer>` 单一结束回调 + `mAnimationId` ID 协议缺失**——回调签名 `accept(mAnimationId)`，调用方能用 id 区分多次连续动画；lib `AnimationSeqHelper` 提供类似 callback 但签名/语义不同 | 多次连续启动 MultiAnimatorSet（同一 view 多次打开应用），区分第几次回调的场景 | **5 行**（`MultiAnimatorSet` 加 animationId + callback） |
-| **M5** | **`isRunning()` 任一通道未结束返回 true 的契约缺失**——lib 仅 AnimatorSet.isRunning；spring 还在飞但 AnimatorSet 已结束，OPPO 报 true，lib 报 false | TaskViewUtils `:181, 266` `appCloseAnimRecord.getMMultiAnimatorSet().isRunning()` 的判定 | **5 行**（B1 实现后随之带出） |
-| **M6** | **`mSpringAnimEndListener: OnAnimationEndListener` 懒建共享 end listener 缺失**——每条 spring 用同一个 OnAnimationEndListener；lib 路径上各自 addEndListener | 性能（多个 spring 时 listener 数量）；非 bug，但 listener 数翻倍 | **10 行**（B1 实现后随之带出） |
-| **M7** | **`addListener(NullableAnimatorListener)` 传 `null` animator 的契约缺失**——OPPO listener 收到 `null`（`MultiAnimatorSet.java:114, 174`），lib listener 收到真实 Animator；listener 实现若依赖 `animator == null` 分支会错 | listener 实现有 `if (animator != null) animator.cancel()` 之类的 null-safe 写法时 | **3 行**（`PendingAnimation.addListener` 路径上加 `NullableAnimatorListenerAdapter` 包装，传 null） |
+| **M1** | ⚠️未修复（SpringHolder 未回移（review 13 R2/R3）；androidx SpringAnimation 无 mStartDelay 倒计时 API） — **`SpringHolder.mStartDelay` 倒计时缺失**——`SpringHolder.java:108-114` 在 `updateValueAndVelocity(deltaT, endRequest)` 倒计时 `mStartDelay -= deltaT`，归零前 spring 不积分（即使每帧 onUpdate 也不动）。lib `AsyncSpringAnim.kt` 走 androidx SpringAnimation 没有 delay 概念 | 调用方希望 "spring 延迟 N ms 启动" 的场景；CustomRectFSpringAnim 在 OPEN_FROM_HOM 时 mAlphaStartDelay 路径（review 13 §2.1） | **30 行**（在 SpringHolder-style node 类里加 mStartDelay + 倒计时；或 fork androidx SpringAnimation） |
+| **M2** | ⚠️未修复（依赖 B1/R1 的 spring 通道清理路径，未回移） — **`removeSpringAnimFromSet()` 清理路径缺失**——cancel(无 2 bit) 路径上的 spring removeEndListener + clear + mViewSpringAnimEnded=true + maybeOnEnd + mAnimEndCallback=null 整套清理 lib 无 | 任何调 cancel(5) 的场景（spring 通道不清干净可能 listener 泄漏 / 多发 end 回调） | **15 行**（B1 实现后随之带出） |
+| **M3** | ✔️保持简化（doc ⑥ 6.2 已列不补：demo 不演示"动画跑一半再叠加 spring"） — **`play(SpringAnimation...)` vararg + "started 后 live-add" 路径缺失**——`MultiAnimatorSet.play(SpringAnimation)`:453-465` 有 `if (mStarted && !springAnimation.isRunning())` 分支，启动期外能再 add spring 并 start；lib 启动期外不能再加 spring | 调用方希望 "动画跑了一半再叠加一条 spring" 的场景 | **20 行**（B1 实现后随之带出） |
+| **M4** | ⚠️未修复（mAnimationId/mAnimEndCallback 需 MultiAnimatorSet 语境；lib AnimationSeqHelper.seqId 承担近似语义） — **`mAnimEndCallback: Consumer<Integer>` 单一结束回调 + `mAnimationId` ID 协议缺失**——回调签名 `accept(mAnimationId)`，调用方能用 id 区分多次连续动画；lib `AnimationSeqHelper` 提供类似 callback 但签名/语义不同 | 多次连续启动 MultiAnimatorSet（同一 view 多次打开应用），区分第几次回调的场景 | **5 行**（`MultiAnimatorSet` 加 animationId + callback） |
+| **M5** | ⚠️未修复（依赖 R1；单通道下 isRunning==AnimatorSet.isRunning 自洽） — **`isRunning()` 任一通道未结束返回 true 的契约缺失**——lib 仅 AnimatorSet.isRunning；spring 还在飞但 AnimatorSet 已结束，OPPO 报 true，lib 报 false | TaskViewUtils `:181, 266` `appCloseAnimRecord.getMMultiAnimatorSet().isRunning()` 的判定 | **5 行**（B1 实现后随之带出） |
+| **M6** | ✔️保持简化（doc ⑥ 6.2 已列不补：性能优化，demo 无多 spring 共享 listener 场景） — **`mSpringAnimEndListener: OnAnimationEndListener` 懒建共享 end listener 缺失**——每条 spring 用同一个 OnAnimationEndListener；lib 路径上各自 addEndListener | 性能（多个 spring 时 listener 数量）；非 bug，但 listener 数翻倍 | **10 行**（B1 实现后随之带出） |
+| **M7** | ✔️保持简化（lib 直挂 AnimatorSet + NullableAnimatorListenerAdapter 已容空，行为等价（doc-01 §4.2-2 已判可接受）） — **`addListener(NullableAnimatorListener)` 传 `null` animator 的契约缺失**——OPPO listener 收到 `null`（`MultiAnimatorSet.java:114, 174`），lib listener 收到真实 Animator；listener 实现若依赖 `animator == null` 分支会错 | listener 实现有 `if (animator != null) animator.cancel()` 之类的 null-safe 写法时 | **3 行**（`PendingAnimation.addListener` 路径上加 `NullableAnimatorListenerAdapter` 包装，传 null） |
 
 ### 5.3 低风险
 
 | # | 问题 | 触发条件 | 修复成本 |
 |---|---|---|---|
-| L1 | `isAppOpenType()` / `isGestureToDrag()` 业务谓词缺失 | 业务方用 mAnimType 做谓词；lib 无 AnimType | 5 行 |
-| L2 | `setAnimationId(int)` / `getMAnimationId()` 调试 API 缺失 | trace / log 需要 mAnimationId | 2 行 |
-| L3 | `cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` helper API 缺失 | 调用方用 helper 而非裸 bitmask | 2 行 |
+| L1 | ✔️保持简化（doc ⑥ 6.2 已列不补：demo 无 AnimType 业务谓词需求） — `isAppOpenType()` / `isGestureToDrag()` 业务谓词缺失 | 业务方用 mAnimType 做谓词；lib 无 AnimType | 5 行 |
+| L2 | ✔️保持简化（doc ⑥ 6.2 已列不补：Trace 已有 trace id，不依赖 mAnimationId） — `setAnimationId(int)` / `getMAnimationId()` 调试 API 缺失 | trace / log 需要 mAnimationId | 2 行 |
+| L3 | ✔️保持简化（doc ⑥ 6.2 已列不补：等价 cancel(5)/end(5)，不实现 R1 用不上） — `cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` helper API 缺失 | 调用方用 helper 而非裸 bitmask | 2 行 |
 
 ---
 
@@ -342,28 +342,31 @@ else:
 
 | # | 缺口 | 业务影响 | 修复成本 |
 |---|---|---|---|
-| **R1** | **新建 `MultiAnimatorSet` 4 通道调度器** | **B1-B7 + M1-M7 全部覆盖**；Demo9 从概念演示升级到真实转场；TaskViewUtils / LauncherAnimationRunner / LauncherContentAnimManager 路径全打通 | **~250 行**（4 字段 + 4 boolean + 1 volatile + 2 构造器 + play 6 重载 + start + cancel + end + addListener + maybeOnEnd + removeSpringAnimFromSet + initSpringAnimEndListener + 5 getter + 5 TYPE 常量 + 2 helper API） |
-| **R2** | **SpringHolder-style node 类（含 `mStartDelay` 倒计时 + 半步分裂积分）** | 配合 R1，让 4 通道中 spring 通道走自定义帧循环；补 review 13 的 6 自由度 RectF 弹簧 | **~200 行**（review 13 §1.2 已列） |
-| **R3** | **`MultiDynamicAnimation` 帧循环载体** | 配合 R2，让 spring 通道独立帧循环 | **~150 行**（review 13 §1.2 已列） |
-| **R4** | **`canSkipToEnd()` 校验** | B6 修复；防止欠阻尼 spring 调 end() 抛异常 | 5 行 |
-| **R5** | **`mHasRequestCancel: volatile boolean` 跨线程信号** | B2 修复；即使不实现 R1，也能挂在 `PendingAnimation` 上避免帧撕裂 | 5 行 |
+| **R1** | ⚠️未修复（未回移 ~250 行；Demo9 保持概念演示；与 review-01 §4.2 / review-11 §4.2 保持简化决定一致） — **新建 `MultiAnimatorSet` 4 通道调度器** | **B1-B7 + M1-M7 全部覆盖**；Demo9 从概念演示升级到真实转场；TaskViewUtils / LauncherAnimationRunner / LauncherContentAnimManager 路径全打通 | **~250 行**（4 字段 + 4 boolean + 1 volatile + 2 构造器 + play 6 重载 + start + cancel + end + addListener + maybeOnEnd + removeSpringAnimFromSet + initSpringAnimEndListener + 5 getter + 5 TYPE 常量 + 2 helper API） |
+| **R2** | ⚠️未修复（未回移 ~200 行；review 13 配套项） — **SpringHolder-style node 类（含 `mStartDelay` 倒计时 + 半步分裂积分）** | 配合 R1，让 4 通道中 spring 通道走自定义帧循环；补 review 13 的 6 自由度 RectF 弹簧 | **~200 行**（review 13 §1.2 已列） |
+| **R3** | ⚠️未修复（未回移 ~150 行；review 13 配套项） — **`MultiDynamicAnimation` 帧循环载体** | 配合 R2，让 spring 通道独立帧循环 | **~150 行**（review 13 §1.2 已列） |
+| **R4** | ⚠️未修复（AsyncSpringAnim 无 end()/canSkipToEnd 校验路径；无 over-damped 调用面） — **`canSkipToEnd()` 校验** | B6 修复；防止欠阻尼 spring 调 end() 抛异常 | 5 行 |
+| **R5** | ⚠️未修复（lib 无 transaction 写表层，flag 无消费方；随 R1 回移补） — **`mHasRequestCancel: volatile boolean` 跨线程信号** | B2 修复；即使不实现 R1，也能挂在 `PendingAnimation` 上避免帧撕裂 | 5 行 |
 
 ### 6.2 建议保持简化（不补）
 
 | 项 | 不补理由 |
 |---|---|
-| `isAppOpenType()` / `isGestureToDrag()` 业务谓词 | 业务谓词；demo 不演示此类业务逻辑 |
-| `setAnimationId(int)` / `getMAnimationId()` 调试 API | lib `Trace.kt` 自有 trace id，不依赖 mAnimationId |
-| `cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` helper API | helper API 命名问题；调用方用 `cancel(5)` / `end(5)` 等价（且不实现 R1 就用不上） |
-| `mSpringAnimEndListener` 懒建共享 listener | 性能优化；demo 不演示多 spring 共享 listener |
-| `play(SpringAnimation...)` vararg + live-add 路径 | demo 不演示 "动画跑一半再叠加 spring" |
+| ✔️保持简化 — `isAppOpenType()` / `isGestureToDrag()` 业务谓词 | 业务谓词；demo 不演示此类业务逻辑 |
+| ✔️保持简化 — `setAnimationId(int)` / `getMAnimationId()` 调试 API | lib `Trace.kt` 自有 trace id，不依赖 mAnimationId |
+| ✔️保持简化 — `cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` helper API | helper API 命名问题；调用方用 `cancel(5)` / `end(5)` 等价（且不实现 R1 就用不上） |
+| ✔️保持简化 — `mSpringAnimEndListener` 懒建共享 listener | 性能优化；demo 不演示多 spring 共享 listener |
+| ✔️保持简化 — `play(SpringAnimation...)` vararg + live-add 路径 | demo 不演示 "动画跑一半再叠加 spring" |
 
 ### 6.3 实施建议
 
 按 P0 + 性价比分 3 轮：
 
+> **⚠️未修复（未实施：R4/R5/B6 均未落地，见 ⑥ 6.1 各条）**
 1. **第一轮（修复 bug 级，~60 行）**——R4 + R5 + B6：补 canSkipToEnd 校验 + mHasRequestCancel volatile 信号 + AsyncSpringAnim.end() 区分 cancel/end；无需新建 MultiAnimatorSet，可挂在 PendingAnimation 上
+> **⚠️未修复（未实施：MultiAnimatorSet 未回移（R1））**
 2. **第二轮（建主调度器骨架，~250 行）**——R1：新建 `launcher/manager/MultiAnimatorSet.kt`，4 通道 + bitmask + maybeOnEnd 等齐协议；让 Demo9 升级为真实 4 通道转场
+> **⚠️未修复（未实施：SpringHolder/MultiDynamicAnimation 未回移（R2/R3））**
 3. **第三轮（建 spring 节点 + 帧循环，~350 行）**——R2 + R3：建 `launcher/async/SpringHolder.kt` + `launcher/async/MultiDynamicAnimation.kt`，让 spring 通道独立帧循环；与 review 13 的 CustomRectFSpringAnim 升级配套
 
 如果只做第 1 轮，lib 能修复 2 个 bug 级问题（B2 + B6）；做完第 2 轮能解决 Demo9 转场概念演示；做完第 3 轮能把 review 11/13 标注的弹簧链缺口一并补齐。
@@ -412,3 +415,10 @@ else:
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+按条目补记：
+- **⑤5.1 B1/B2/B3/B4/B5** — ⚠️未修复：依赖 MultiAnimatorSet 4 通道回移（R1）；B6 — ❌不成立/已过期（lib 无 end()/canSkipToEnd 语境）
+- **⑤5.2 M1/M2/M4/M5** — ⚠️未修复（随 R1/R2/R3 或 spring 通道回移）；M3/M6/M7 — ✔️保持简化（doc ⑥6.2 自列；NullableAnimatorListenerAdapter 容空）
+- **⑤5.3 L1/L2/L3** — ✔️保持简化（demo 无业务谓词/调试 API/helper 需求）
+- **⑥6.1 R1/R2/R3** — ⚠️未修复（未回移 ~250/~200/~150 行）；R4/R5 — ⚠️未修复（无调用面/无写表层）
+- **⑥6.2 五条** — ✔️保持简化（doc 自列）
+- **⑥6.3 三轮实施计划** — ⚠️未修复（未实施）

@@ -192,6 +192,7 @@ private class SyncedVar<T>(private val lock: Any, initial: T) : ReadWritePropert
 
 按风险从高到低，每条标注"修复成本估算"。
 
+> **✅已修复（60bd048：typealias→fun interface，lambda 引用相等性恢复，remove 不静默失效）**
 ### 【bug 级】1. `typealias OnAnimStateChangeListener` 改坏 lambda 引用相等性
 
 **问题**：lib `OnAnimStateChangeListener.kt:8` 是 `(A, B, C) -> Unit` 函数类型。Kotlin 函数类型在 JVM 上对应 `kotlin.jvm.functions.Function3`（**没有 SAM 等价**）——每次 lambda 是 `Function3` 实例，对象身份不保证。
@@ -223,6 +224,7 @@ fun interface OnAnimStateChangeListener {
 
 **修复成本**：1 文件、10 行（含 `@JvmFunctionalInterface` + 文档注释）。
 
+> **✅已修复（本轮：LooperExecutor 补 shutdown/shutdownNow/isShutdown/isTerminated/awaitTermination，均按原厂抛 UnsupportedOperationException + @Deprecated）**
 ### 【bug 级】2. `LooperExecutor.shutdown()` 未抛 `UnsupportedOperationException`
 
 **问题**：原厂 `LooperExecutor.java:71-73` 的 `shutdown()` 抛 `UnsupportedOperationException`（带 `@Deprecated`）。lib `LooperExecutor.kt` **未实现** `ExecutorService` 任何方法。Java 调用方按 AOSP 习惯写 `executor.shutdown()` → **得到 `AbstractMethodError`**（而非 `UnsupportedOperationException`）——异常信息难诊断，但实际效果都是"永不 quit"。
@@ -246,6 +248,7 @@ class LooperExecutor internal constructor(...) {
 
 **修复成本**：1 文件、6 行。
 
+> **✔️保持简化（supportInterruption 恒 true：3 条件依赖 LauncherAnimConfig/TaskAnimationManager/AppFeatureUtils，demo 无 launcher 上下文——doc ②-1/④4.2-6 同判）**
 ### 【bug 级】3. `OplusAnimManager.supportInterruption()` 硬编码 `true`，丢失 4 条件组合
 
 **问题**：原厂 `OplusAnimManager.java:232-234`：
@@ -285,6 +288,7 @@ fun supportInterruption(): Boolean {
 ```
 **修复成本**：1 文件、5~15 行（含三种条件的 facade 接口）。
 
+> **✅已修复（60bd048：@set:Synchronized 防并发双建；本轮补两字段 @Volatile 读可见性）**
 ### 【bug 级】4. `OplusAnimManager.interruptionEnabled` setter 无锁保护，并发切换 race
 
 **问题**：lib `OplusAnimManager.kt:48-58`：
@@ -330,6 +334,7 @@ var interruptionEnabled: Boolean
 ```
 **修复成本**：1 文件、6 行（2 字段 @Volatile + lock 包裹 setter）。
 
+> **✔️保持简化（doc 自判"建议保持简化"：demo 单线程，7 字段共享锁吞吐非问题）**
 ### 【中】5. `AnimationFeatureHelper.SyncedVar` 共享 lock → 并发吞吐收窄
 
 见 §C-5。**当前 demo 单线程无影响**，但若接入 RUS 多线程推送场景（1 个 RUS 监听线程写 + 业务线程读），7 个字段共享锁会使并发写吞吐下降为 1/7。
@@ -347,6 +352,7 @@ var asyncEnable by SyncedVar(1)  // 每个 SyncedVar 实例自带锁
 ```
 **修复成本**：1 文件、12 行。**建议保持简化**（demo 单线程，吞吐不是问题），文档明示"7 字段共享锁"即可。
 
+> **✔️保持简化（demo 全 Kotlin 无 Java 调用方；Java ABI 为未来集成场景——doc ④4.2-5 同判）**
 ### 【中】6. `OnAnimStateChangeListener` / 回调字段用 Kotlin 函数类型 → Java 调用方 ABI 损失
 
 见 §C-4。
@@ -372,6 +378,7 @@ fun delayStartActivityIfNeed(context: Any?, intent: Intent?,
 
 **修复成本**：1 文件、25 行（2 个函数 × 2 个签名）。**建议保持简化 + 文档明示**。
 
+> **✔️保持简化（同 ③-6；Runnable 重载引入 Kotlin 尾 lambda SAM 歧义，收益低）**
 ### 【低】7. `AnimationSeqHelper.delayFinishRecents(action: (() -> Unit)?)` 用函数类型
 
 见 §1.4。原厂用 `Runnable runnable`（`AnimationSeqHelper.java:87`）。lib `AnimationSeqHelper.kt:64-74`。
@@ -380,6 +387,7 @@ fun delayStartActivityIfNeed(context: Any?, intent: Intent?,
 
 **修复成本**：若按 §③-6 一起补，重载 + 适配 5 行。
 
+> **✔️保持简化（lib 全 Kotlin 调用；@JvmStatic 仅在 Java 调用方集成时需要）**
 ### 【低】8. `@JvmStatic` / `@JvmOverloads` 兼容性拐杖全无
 
 lib **完全无** `@JvmStatic` / `@JvmOverloads` / `@JvmField` / `@JvmName`（grep 验证：lib 全树 0 命中）。原厂 OPPO 大量使用 `@JvmStatic`（`OplusAnimManager.java:120`、`AnimationFeatureHelper.java:76, 94`），目的是让 Java 调用方写 `OplusAnimManager.getAnimController()` 而非 `OplusAnimManager.INSTANCE.getAnimController()`。
@@ -399,6 +407,7 @@ object OplusAnimManager {
 ```
 **修复成本**：1 文件、5 行。**建议保持简化** + 文档明示。
 
+> **✅已修复（本轮：AsyncAnimCallbacks.removeListener internal→public，与 public addListener 对称）**
 ### 【低】9. `AsyncAnimCallbacks.removeListener` 改成 `internal`
 
 原厂 `AsyncAnimCallbacks.java:147-151` 的 `removeListener` 是 `public final`；lib `AsyncAnimCallbacks.kt:31` 改成 `internal fun removeListener`。Java 调用方拿不到。
@@ -407,6 +416,7 @@ object OplusAnimManager {
 
 **修复成本**（**建议补**，1 行）：把 `internal` 改 `fun`（公开）。
 
+> **✔️保持简化（demo 直用 Handler.sendEmptyMessageDelayed；postDelayed 按需 4 行可补）**
 ### 【低】10. `LooperExecutor` 缺 `postDelayed(Runnable, long)` 公开方法
 
 原厂 `LooperExecutor.java:61-63` 提供 `postDelayed`，lib 不暴露。**当前 demo 全用 `Handler.sendEmptyMessageDelayed`**（`AnimationSeqHelper.kt:69`），零影响。
@@ -421,17 +431,17 @@ object OplusAnimManager {
 
 | # | 修补内容 | 文件 | 成本 | 对应风险 |
 |---|---|---|---|---|
-| 1 | **【必补】`OnAnimStateChangeListener` 改 `fun interface` + `@JvmFunctionalInterface`** | `controller/OnAnimStateChangeListener.kt` | 10 行 | §③-1 bug #1 |
-| 2 | **【必补】`LooperExecutor.shutdown()` / `shutdownNow()` / `isShutdown` / `isTerminated` / `awaitTermination` 全补 + `@Deprecated` + `throws UnsupportedOperationException`** | `async/LooperExecutor.kt` | 6 行 | §③-2 bug #2 |
-| 3 | **【必补】`OplusAnimManager.supportInterruption()` 改成 4 条件 AND 组合（注释 TODO + 默认 true 兜底）** | `manager/OplusAnimManager.kt` | 15 行 | §③-3 bug #3 |
-| 4 | **【必补】`OplusAnimManager.animationControllerImpl` / `animationSeqHelperImpl` 加 `@Volatile`，`interruptionEnabled` setter 加 `@Synchronized` 锁** | `manager/OplusAnimManager.kt` | 6 行 | §③-4 bug #4 |
-| 5 | **【建议补】`delayStartActivityIfNeed` 加 `Supplier<Boolean> + Runnable` 重载版本（适配 Java）** | `controller/AnimationController.kt` | 25 行 | §③-6 中 #6 |
-| 6 | **【建议补】`OplusAnimManager.animController` / `animationSeqHelper` / `featureHelper` 加 `@JvmStatic`** | `manager/OplusAnimManager.kt` + `feature/AnimationFeatureHelper.kt` | 5 行 | §③-8 低 #8 |
-| 7 | **【建议补】`AsyncAnimCallbacks.removeListener` 改 `fun`（public）** | `async/AsyncAnimCallbacks.kt` | 1 行 | §③-9 低 #9 |
-| 8 | **【建议补】`AnimationSeqHelper.delayFinishRecents` 加 `Runnable` 重载** | `seq/AnimationSeqHelper.kt` | 5 行 | §③-7 低 #7 |
-| 9 | **【建议补】`AnimationFeatureHelper.SyncedVar` 改成每个字段自带锁（独立 SyncedVar 实例）** | `feature/AnimationFeatureHelper.kt` | 12 行 | §③-5 中 #5 |
-| 10 | **【可选】`LooperExecutor.postDelayed(Runnable, long)` 公开方法** | `async/LooperExecutor.kt` | 4 行 | §③-10 低 #10 |
-| 11 | **【可选】`USAGE.md` 补一节"Kotlin 化兼容性契约"**：明示 lambda 引用相等性、Java 调用方需用 `Function0` 适配、`OplusAnimManager.supportInterruption` 当前为 true（demo 简化）、`shutdown()` 永不 quit | `docs/USAGE.md` | 30 行 | 文档兜底 |
+| 1 | 状态：✅已修复（60bd048：OnAnimStateChangeListener.kt 已改 fun interface） — **【必补】`OnAnimStateChangeListener` 改 `fun interface` + `@JvmFunctionalInterface`** | `controller/OnAnimStateChangeListener.kt` | 10 行 | §③-1 bug #1 |
+| 2 | 状态：✅已修复（本轮：LooperExecutor 补 ExecutorService 契约壳，抛 UOE） — **【必补】`LooperExecutor.shutdown()` / `shutdownNow()` / `isShutdown` / `isTerminated` / `awaitTermination` 全补 + `@Deprecated` + `throws UnsupportedOperationException`** | `async/LooperExecutor.kt` | 6 行 | §③-2 bug #2 |
+| 3 | 状态：✔️保持简化（supportInterruption 保持 true——见 ③-3） — **【必补】`OplusAnimManager.supportInterruption()` 改成 4 条件 AND 组合（注释 TODO + 默认 true 兜底）** | `manager/OplusAnimManager.kt` | 15 行 | §③-3 bug #3 |
+| 4 | 状态：✅已修复（60bd048 @set:Synchronized + 本轮 @Volatile） — **【必补】`OplusAnimManager.animationControllerImpl` / `animationSeqHelperImpl` 加 `@Volatile`，`interruptionEnabled` setter 加 `@Synchronized` 锁** | `manager/OplusAnimManager.kt` | 6 行 | §③-4 bug #4 |
+| 5 | 状态：✔️保持简化（demo 全 Kotlin；重载会引入 SAM 歧义） — **【建议补】`delayStartActivityIfNeed` 加 `Supplier<Boolean> + Runnable` 重载版本（适配 Java）** | `controller/AnimationController.kt` | 25 行 | §③-6 中 #6 |
+| 6 | 状态：✔️保持简化（lib 全 Kotlin，无 Java 调用方） — **【建议补】`OplusAnimManager.animController` / `animationSeqHelper` / `featureHelper` 加 `@JvmStatic`** | `manager/OplusAnimManager.kt` + `feature/AnimationFeatureHelper.kt` | 5 行 | §③-8 低 #8 |
+| 7 | 状态：✅已修复（本轮：AsyncAnimCallbacks.removeListener 公开） — **【建议补】`AsyncAnimCallbacks.removeListener` 改 `fun`（public）** | `async/AsyncAnimCallbacks.kt` | 1 行 | §③-9 低 #9 |
+| 8 | 状态：✔️保持简化（同 ③-7） — **【建议补】`AnimationSeqHelper.delayFinishRecents` 加 `Runnable` 重载** | `seq/AnimationSeqHelper.kt` | 5 行 | §③-7 低 #7 |
+| 9 | 状态：✔️保持简化（同 ③-5：共享锁吞吐 demo 无感） — **【建议补】`AnimationFeatureHelper.SyncedVar` 改成每个字段自带锁（独立 SyncedVar 实例）** | `feature/AnimationFeatureHelper.kt` | 12 行 | §③-5 中 #5 |
+| 10 | 状态：✔️保持简化（同 ③-10） — **【可选】`LooperExecutor.postDelayed(Runnable, long)` 公开方法** | `async/LooperExecutor.kt` | 4 行 | §③-10 低 #10 |
+| 11 | 状态：⚠️未修复（docs/USAGE.md 非本批文档未改；如需"Kotlin 化兼容性契约"小节由主线程补） — **【可选】`USAGE.md` 补一节"Kotlin 化兼容性契约"**：明示 lambda 引用相等性、Java 调用方需用 `Function0` 适配、`OplusAnimManager.supportInterruption` 当前为 true（demo 简化）、`shutdown()` 永不 quit | `docs/USAGE.md` | 30 行 | 文档兜底 |
 
 **总成本**：bug 级 4 项 ≈ **40 行** + 建议 6 项 ≈ 50 行 + 文档 30 行 ≈ **120 行**。
 
@@ -439,12 +449,12 @@ object OplusAnimManager {
 
 | # | 简化 | 理由 |
 |---|---|---|
-| 1 | `object AnimationFeatureHelper`（不还原为 `class + companion + by lazy`） | 当前类初始化时机在 demo 单线程场景下与 `by lazy` 等价（都只是"何时构造"的差异，无副作用）；demo 无 RUS 接入；改 `class + companion + by lazy` 会引入 30+ 行样板，无收益 |
-| 2 | `OplusAnimManager` 6 个 observable delegate → 2 个裸 var | demo 不需要 `afterChange` 回调；observable delegate 在 JVM 上每个字段多一个 `t4.a` 实例 + `afterChange` 闭包，省掉 6 套是合理简化 |
-| 3 | `AnimationFeatureHelper` 7 个 SyncedVar 共享 lock | demo 单线程；多线程 RUS 接入场景吞吐下降为 1/7，但不会脏读——按需补独立锁即可，无需现在就回移 |
-| 4 | `LooperExecutor` 不 `extends AbstractExecutorService` | 已通过 `shutdown() throws UnsupportedOperationException` 兜底契约（§4.1 #2）；不需要补全 5 个 `ExecutorService` 方法 |
-| 5 | `Supplier<Boolean>` / `Runnable` → Kotlin 函数类型 | demo 全 Kotlin；Java 调用方场景按 §4.1 #5 加重载即可，不需要把函数类型改回 Java 接口形态（会损失 Kotlin 调用方的简洁性） |
-| 6 | `internal class AnimationHandler` / `internal class HandlerTickScheduler` | lib 模块化设计：内部类不暴露给 demo / Java 调用方，符合"lib 是实现细节"定位 |
+| 1 | 状态：✔️保持简化 — `object AnimationFeatureHelper`（不还原为 `class + companion + by lazy`） | 当前类初始化时机在 demo 单线程场景下与 `by lazy` 等价（都只是"何时构造"的差异，无副作用）；demo 无 RUS 接入；改 `class + companion + by lazy` 会引入 30+ 行样板，无收益 |
+| 2 | 状态：✔️保持简化 — `OplusAnimManager` 6 个 observable delegate → 2 个裸 var | demo 不需要 `afterChange` 回调；observable delegate 在 JVM 上每个字段多一个 `t4.a` 实例 + `afterChange` 闭包，省掉 6 套是合理简化 |
+| 3 | 状态：✔️保持简化 — `AnimationFeatureHelper` 7 个 SyncedVar 共享 lock | demo 单线程；多线程 RUS 接入场景吞吐下降为 1/7，但不会脏读——按需补独立锁即可，无需现在就回移 |
+| 4 | 状态：✔️保持简化（本轮已补抛 UOE 契约，不 extends AbstractExecutorService 保持） — `LooperExecutor` 不 `extends AbstractExecutorService` | 已通过 `shutdown() throws UnsupportedOperationException` 兜底契约（§4.1 #2）；不需要补全 5 个 `ExecutorService` 方法 |
+| 5 | 状态：✔️保持简化 — `Supplier<Boolean>` / `Runnable` → Kotlin 函数类型 | demo 全 Kotlin；Java 调用方场景按 §4.1 #5 加重载即可，不需要把函数类型改回 Java 接口形态（会损失 Kotlin 调用方的简洁性） |
+| 6 | 状态：❌不成立/已过期（215ecb5 已删 HandlerTickScheduler；AnimationHandler internal 保持成立） — `internal class AnimationHandler` / `internal class HandlerTickScheduler` | lib 模块化设计：内部类不暴露给 demo / Java 调用方，符合"lib 是实现细节"定位 |
 
 ---
 
@@ -475,4 +485,17 @@ object OplusAnimManager {
 
 - **60bd048** — OnAnimStateChangeListener typealias→fun interface（lambda 引用相等性 + remove 不静默失效）
 
+本份批次 5 逐条复核结果：
+- §③-1（OnAnimStateChangeListener typealias）— ✅已修复（60bd048：fun interface）
+- §③-2（LooperExecutor shutdown 契约）— ✅已修复（本轮：补 shutdown/shutdownNow/isShutdown/isTerminated/awaitTermination 抛 UOE）
+- §③-3（supportInterruption 4 条件）— ✔️保持简化（demo 无 launcher 配置类）
+- §③-4（interruptionEnabled 并发 race）— ✅已修复（60bd048 @set:Synchronized + 本轮 @Volatile 字段）
+- §③-5（SyncedVar 共享锁）— ✔️保持简化
+- §③-6（Java ABI/函数类型）— ✔️保持简化
+- §③-7（delayFinishRecents 函数类型）— ✔️保持简化
+- §③-8（@JvmStatic 缺失）— ✔️保持简化
+- §③-9（removeListener internal）— ✅已修复（本轮：AsyncAnimCallbacks.kt 改 public）
+- §③-10（postDelayed 缺失）— ✔️保持简化
+- §④4.1-1 — ✅（60bd048）；4.1-2/4/7 — ✅（本轮）；4.1-3/5/6/8/9/10 — ✔️保持简化；4.1-11（USAGE.md）— ⚠️未修复（非本批文档）
+- §④4.2-1..5 — ✔️保持简化；4.2-6 — ❌不成立/已过期（215ecb5 删 HandlerTickScheduler）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

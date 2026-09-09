@@ -291,31 +291,31 @@
 
 | # | 风险 | 触发场景 | 修复成本 |
 |---|---|---|---|
-| 1 | **（bug）`OplusAnimManager.init` 块并发首访 race**：`init` 块在首次访问 OplusAnimManager 时执行，并发线程同时 `animController` getter 会触发 2 个 helper 同时初始化（**`OplusAnimManager` 不是 `by lazy`**）。原厂 `static{}` 块在类加载期由 JVM 保证线程安全。 | demo 启动时若多线程同时访问 `OplusAnimManager.animController` | 5 行（`by lazy` 替换裸 `var`）|
-| 2 | **（bug）`OplusAnimManager` 6 个 helper 中只 2 个被 init**，其余 4 个字段未声明 → `OplusAnimManager.getAppOpenAnimMergeHelper()` 编译错（**不是 NPE，是编译失败**）—— 任何业务调用 merge helper 路径**根本无法编译** | 任何想演示 multi-app / recents-merge / 按键拦截的场景 | 4 行（加 4 个 `private var` 字段，默认 null）|
+| 1 | 状态：❌不成立/已过期（Kotlin object 的 init 编译为 JVM <clinit>，类初始化互斥、并发首访只执行一次；原厂 static{} 同理——不存在双建 race，by lazy 非必需） — **（bug）`OplusAnimManager.init` 块并发首访 race**：`init` 块在首次访问 OplusAnimManager 时执行，并发线程同时 `animController` getter 会触发 2 个 helper 同时初始化（**`OplusAnimManager` 不是 `by lazy`**）。原厂 `static{}` 块在类加载期由 JVM 保证线程安全。 | demo 启动时若多线程同时访问 `OplusAnimManager.animController` | 5 行（`by lazy` 替换裸 `var`）|
+| 2 | 状态：⚠️未修复（其余 4 个 merge/pre-start/拦截 helper 工厂缺失 = feature 缺口；lib 内无引用方故无编译错，接入时按 4.1-3~6 补，30~200 行/依赖 OPPO 平台 API） — **（bug）`OplusAnimManager` 6 个 helper 中只 2 个被 init**，其余 4 个字段未声明 → `OplusAnimManager.getAppOpenAnimMergeHelper()` 编译错（**不是 NPE，是编译失败**）—— 任何业务调用 merge helper 路径**根本无法编译** | 任何想演示 multi-app / recents-merge / 按键拦截的场景 | 4 行（加 4 个 `private var` 字段，默认 null）|
 
 ### 3.2 helper 级风险
 
 | # | 风险 | 触发场景 | 修复成本 |
 |---|---|---|---|
-| 1 | **（bug）`AppOpenAnimMergeHelper` 缺失**：`tryFinishOpenRemote` 永远走 `runnable.run()` 直接路径，**recents-merge-open 场景不挂起**；`onRemoteAnimationMerged` 入口不存在，**recents→app 转场合并动画不触发** | recents→app 启动 | ~80 行（含 150 行真实逻辑的语义桩）|
-| 2 | **（bug）`MultiAppAnimMergeHelper` 缺失**：`setRecentsAnimEndState` 整段 NPE；`prepareMultiAppOpenAnim()=false` 永远成立，"两个图标先后点击只起一次 recents 转场"语义丢失 | multi-app 启动 | ~50 行 |
-| 3 | **（bug）`AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()` 缺失**：`delayStartActivityIfNeed` 第三层用 100ms 时间窗代替运行态，**误挂/漏挂** | swipe-to-recents 后的 startActivity | ~30 行（运行态查询桩）|
-| 4 | **（bug）`InterceptKeyEventHelper` 缺失**：BACK 键在 recents 转场期间不拦截，**`OplusBaseSwipeUpHandler.notifyInterceptKeyEvent$1$1` 调 `sendBackKeyEvent` NPE** | recents 转场中按 BACK | ~30 行（Default 基类 + 反射 try-catch）|
-| 5 | **（bug）`MultiOpenPreStartHelper` 缺失**：`OplusAnimManager.getMultiOpenPreStartHelper()` NPE → `Launcher.onResume`/`onStop` 调 `resetRecentsFinishToHomeFlag` 即崩；多 app 启动 pre-start SurfaceControl 事务合并完全不可用 | multi-app 启动；Launcher 生命周期 | ~200 行（13 个 public 方法 + 5 并发原语 + 2 Transaction 字段）|
-| 6 | **（bug）`appLaunchAnimStartOrEnd` 缺 `MESSAGE_RELEASE_TOUCH(101)` + 600ms 闸门**（review 12 §3-B6 重提）：原厂通过 `mOpenWindowAnimRunning` 在打开动画期间禁止触摸；lib 完全没这层，`forbidTouch()` 恒 false | OPEN_FROM_HOME 的 600ms 内 onClick 触发 startActivity | ~30 行（`mHandler` + 101 消息 + `mOpenWindowAnimRunning` 字段）|
-| 7 | **（bug）`AnimationFeatureHelper` 默认值 1/0 而非 -1**（review 03 §3-g 重提）：业务侧对 -1 应走独立分支（`isAdaptiveAnimation` 钳制）——lib 直接生效会破坏业务默认行为 | demo 中所有 RUS 配置读取点 | 7 行 |
-| 8 | **（bug）`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair**（review 12 §3-D10）：lib 每次 `++seqId` 并覆盖；原厂仅当 pair 为空或 controller 变更才更新。**seqId 单调性语义不一致** | D7 `Demo7SeqIdDedupActivity` 重复调用时 lib 会误判为新一轮 | 5 行 |
-| 9 | **（高）`addRecentsAnim` 状态转移无 "Error animation state" 日志**（review 12 §3-D11）：lib `else → UNKNOWN` 无日志，**状态机异常路径静默** | 任何 else 分支命中 | 1 行 |
-| 10 | **（高）`TaskStateChangeTimeOutListener` 绑到主线程 Handler 而非 `URGENT_TRANSACTION_EXECUTOR`**（review 12 §3-A2）：主线程满载时 timeout 推迟 | 真机主线程满载时原厂超时更早发生 | 5 行（换 Handler 来源）|
-| 11 | **（高）`TaskStateChangeTimeOutListener` 缺全局事件总线 + type-specific callback**（review 12 §3-A1）：原厂 `TaskStateHelper.globalListeners` 集中 dispatch + 3 个独立 callback；lib 合并成 `onTimeOut(type, duration)` 且无人调用 | "事件触发"路径全废 | ~60 行（单例总线 + 3 callback 拆分）|
-| 12 | **（高）`delayStartActivityIfNeed` 第一层漏 `!isTablet()`**（review 12 §3-B4）：平板 landscape 场景原厂不挂起，lib 挂起——**平板用户体验分支反转** | 平板模拟器跑 D6 | 1 行（`&& !isTablet()`）|
-| 13 | **（中）`delayStartActivityIfNeed` 第二层漏 `isSpecialAppScene(intent)`**（review 12 §3-B5）：搜索入口场景原厂等 transition finish，lib 直接放行——**搜索框可能闪一下** | D6/D9 用搜索入口 intent 触发 | ~10 行 + 注入接口 |
-| 14 | **（中）`OplusAnimManager.recreateAnimHelper()` 缺失**：feature flag 切换场景下无法重置 helper 状态 | demo 用 `interruptionEnabled` 替代部分，但**漏显式重置** | ~5 行（4 helper 重置）|
-| 15 | **（中）`OplusAnimManager.reset()` 缺失**：helper 状态在多次转场后可能脏 | 反复触发 multi-app 启动 | ~5 行（3 helper 清理）|
-| 16 | **（低）`OplusAnimManager.matchAnimationId` 缺失** | cross-Animation-Controller 协作场景 | ~5 行 |
-| 17 | **（低）`OplusAnimManager.supportInterruption(ItemInfo)` 缺失** | split-screen 缩放窗口启动 | ~15 行（zoomWindowPkg + SplitScreen 复合判定）|
-| 18 | **（低）`cleanUpRecentsAnimation` 漏调 2 个 merge helper** | 多次转场后 merge helper 状态脏 | 2 行（在 `OplusAnimManager.kt:51-53` 调 2 个 helper）|
+| 1 | 状态：⚠️未修复（AppOpenAnimMergeHelper ~80 行桩未补；onRemoteAnimationMerged 150 行因 JADX 反编译不可靠只能语义桩；依赖 SurfaceControl/TransitionInfo） — **（bug）`AppOpenAnimMergeHelper` 缺失**：`tryFinishOpenRemote` 永远走 `runnable.run()` 直接路径，**recents-merge-open 场景不挂起**；`onRemoteAnimationMerged` 入口不存在，**recents→app 转场合并动画不触发** | recents→app 启动 | ~80 行（含 150 行真实逻辑的语义桩）|
+| 2 | 状态：⚠️未修复（MultiAppAnimMergeHelper ~50 行未补；依赖 TaskAnimationManager/RecentsAnimationTargets 平台类型） — **（bug）`MultiAppAnimMergeHelper` 缺失**：`setRecentsAnimEndState` 整段 NPE；`prepareMultiAppOpenAnim()=false` 永远成立，"两个图标先后点击只起一次 recents 转场"语义丢失 | multi-app 启动 | ~50 行 |
+| 3 | 状态：⚠️未修复（isAppSwipeToRecentContinuationRunning() 运行态桩未补；delayStartActivityIfNeed 第三层仍用 100ms 时间窗——同 doc12-A3） — **（bug）`AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()` 缺失**：`delayStartActivityIfNeed` 第三层用 100ms 时间窗代替运行态，**误挂/漏挂** | swipe-to-recents 后的 startActivity | ~30 行（运行态查询桩）|
+| 4 | 状态：⚠️未修复（InterceptKeyEventHelper 反射 OplusWindowManager 未补；跨 ROM 必 NoClassDefFoundError，demo 无按键拦截输入层） — **（bug）`InterceptKeyEventHelper` 缺失**：BACK 键在 recents 转场期间不拦截，**`OplusBaseSwipeUpHandler.notifyInterceptKeyEvent$1$1` 调 `sendBackKeyEvent` NPE** | recents 转场中按 BACK | ~30 行（Default 基类 + 反射 try-catch）|
+| 5 | 状态：⚠️未修复（MultiOpenPreStartHelper ~200 行 + SurfaceControl/SystemUiProxy 依赖，成本最高；demo 无多 app pre-start 场景） — **（bug）`MultiOpenPreStartHelper` 缺失**：`OplusAnimManager.getMultiOpenPreStartHelper()` NPE → `Launcher.onResume`/`onStop` 调 `resetRecentsFinishToHomeFlag` 即崩；多 app 启动 pre-start SurfaceControl 事务合并完全不可用 | multi-app 启动；Launcher 生命周期 | ~200 行（13 个 public 方法 + 5 并发原语 + 2 Transaction 字段）|
+| 6 | 状态：⚠️未修复（MESSAGE_RELEASE_TOUCH 101 + 600ms 闸门属手势/输入层——沿用 doc03-f 判定；forbidTouch 恒 false 有意） — **（bug）`appLaunchAnimStartOrEnd` 缺 `MESSAGE_RELEASE_TOUCH(101)` + 600ms 闸门**（review 12 §3-B6 重提）：原厂通过 `mOpenWindowAnimRunning` 在打开动画期间禁止触摸；lib 完全没这层，`forbidTouch()` 恒 false | OPEN_FROM_HOME 的 600ms 内 onClick 触发 startActivity | ~30 行（`mHandler` + 101 消息 + `mOpenWindowAnimRunning` 字段）|
+| 7 | 状态：⚠️未修复（默认值 1/0 未改 -1——沿用 doc03-g；无 RUS 消费者） — **（bug）`AnimationFeatureHelper` 默认值 1/0 而非 -1**（review 03 §3-g 重提）：业务侧对 -1 应走独立分支（`isAdaptiveAnimation` 钳制）——lib 直接生效会破坏业务默认行为 | demo 中所有 RUS 配置读取点 | 7 行 |
+| 8 | 状态：✅已修复（60bd048：仅当 pair 为空或 controller 变更才更新；getNextFinishSeqId 用 == 判等） — **（bug）`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair**（review 12 §3-D10）：lib 每次 `++seqId` 并覆盖；原厂仅当 pair 为空或 controller 变更才更新。**seqId 单调性语义不一致** | D7 `Demo7SeqIdDedupActivity` 重复调用时 lib 会误判为新一轮 | 5 行 |
+| 9 | 状态：✔️保持简化（行为已对齐 else→UNKNOWN；缺 "Error animation state" 日志仅可观测性，非语义差异） — **（高）`addRecentsAnim` 状态转移无 "Error animation state" 日志**（review 12 §3-D11）：lib `else → UNKNOWN` 无日志，**状态机异常路径静默** | 任何 else 分支命中 | 1 行 |
+| 10 | 状态：✔️保持简化（60bd048 已重构 listener 自管超时 + runCatching；URGENT_TRANSACTION_EXECUTOR 为平台线程无可移植等价，demo 主线程满载场景不存在） — **（高）`TaskStateChangeTimeOutListener` 绑到主线程 Handler 而非 `URGENT_TRANSACTION_EXECUTOR`**（review 12 §3-A2）：主线程满载时 timeout 推迟 | 真机主线程满载时原厂超时更早发生 | 5 行（换 Handler 来源）|
+| 11 | 状态：⚠️未修复（缺 TaskStateHelper 全局事件总线 + type-specific callback——沿用 doc03-d；demo 无任务状态源） — **（高）`TaskStateChangeTimeOutListener` 缺全局事件总线 + type-specific callback**（review 12 §3-A1）：原厂 `TaskStateHelper.globalListeners` 集中 dispatch + 3 个独立 callback；lib 合并成 `onTimeOut(type, duration)` 且无人调用 | "事件触发"路径全废 | ~60 行（单例总线 + 3 callback 拆分）|
+| 12 | 状态：⚠️未修复（第一层缺 !isTablet()——沿用 doc03-c 残留；需设备/平板上下文注入） — **（高）`delayStartActivityIfNeed` 第一层漏 `!isTablet()`**（review 12 §3-B4）：平板 landscape 场景原厂不挂起，lib 挂起——**平板用户体验分支反转** | 平板模拟器跑 D6 | 1 行（`&& !isTablet()`）|
+| 13 | 状态：⚠️未修复（第二层缺 isSpecialAppScene(intent)——沿用 doc03-c 残留；需 search-intent 判定接口） — **（中）`delayStartActivityIfNeed` 第二层漏 `isSpecialAppScene(intent)`**（review 12 §3-B5）：搜索入口场景原厂等 transition finish，lib 直接放行——**搜索框可能闪一下** | D6/D9 用搜索入口 intent 触发 | ~10 行 + 注入接口 |
+| 14 | 状态：✔️保持简化（interruptionEnabled toggle 已提供等价"销毁/重建 helper"演示路径；4-helper recreate 依赖缺失的 merge helpers） — **（中）`OplusAnimManager.recreateAnimHelper()` 缺失**：feature flag 切换场景下无法重置 helper 状态 | demo 用 `interruptionEnabled` 替代部分，但**漏显式重置** | ~5 行（4 helper 重置）|
+| 15 | 状态：✔️保持简化（lib AnimationController.reset() 已存在；manager 级 3-helper reset 依赖缺失 helpers，demo 无多次转场场景） — **（中）`OplusAnimManager.reset()` 缺失**：helper 状态在多次转场后可能脏 | 反复触发 multi-app 启动 | ~5 行（3 helper 清理）|
+| 16 | 状态：✔️保持简化（matchAnimationId 无 cross-controller 调用方；按需 5 行可补） — **（低）`OplusAnimManager.matchAnimationId` 缺失** | cross-Animation-Controller 协作场景 | ~5 行 |
+| 17 | 状态：⚠️未修复（supportInterruption(ItemInfo) 需 SplitScreenUtils/zoomWindowPkg 平台判定；demo 无分屏场景） — **（低）`OplusAnimManager.supportInterruption(ItemInfo)` 缺失** | split-screen 缩放窗口启动 | ~15 行（zoomWindowPkg + SplitScreen 复合判定）|
+| 18 | 状态：⚠️未修复（cleanUpRecentsAnimation 链式清理依赖缺失的 2 个 merge helper；helper 就位后 2 行可补） — **（低）`cleanUpRecentsAnimation` 漏调 2 个 merge helper** | 多次转场后 merge helper 状态脏 | 2 行（在 `OplusAnimManager.kt:51-53` 调 2 个 helper）|
 
 ---
 
@@ -325,36 +325,36 @@
 
 | # | 建议 | 改动规模 | 价值 | 不补的后果 |
 |---|---|---|---|---|
-| 1 | **`OplusAnimManager.init` 改 `by lazy` 替换裸 `var`** | 5 行 | **高（bug 级）**——消除并发首访 race | 并发 demo 启动时可能触发 2 个 helper 同时初始化 |
-| 2 | **补 `AppSwipeToRecentContinuationHelper` 运行态查询桩**：`object` + 静态 `@Volatile var isAppSwipeToRecentContinuationRunning` + `setRunning(boolean)`；`AnimationController.delayStartActivityIfNeed` 第三层改用该查询 | ~30 行 | **高（bug 级）**——review 12 §3-A3 已点名 | swipe-to-recents 后 100ms 内的 startActivity 被错误挂起；窗口外漏挂 |
-| 3 | **补 `AppOpenAnimMergeHelper` 8 方法桩（不含 `onRemoteAnimationMerged` 主体）**：`setAppOpenRemoteTargets` / `isRecentsMergeOpenRemote` / `cleanUpRecentsAnim` / `releaseOpenRemoteTargets` 真做；`onRemoteAnimationMerged` 返回 false 桩；`tryStartRecentsForOpenRemoteMerge` / `gestureTriggerRecentsAnim` / `onRecentsAnimStart` / `checkIfRecentsAnimStarted` 内部存 callback + AtomicBoolean | ~80 行 | **高（bug 级）**——`tryFinishOpenRemote` / `OplusAnimManager.cleanUpRecentsAnimation` 链路 | recents→app 远程动画合并场景无法演示；多次转场后 helper 状态脏 |
-| 4 | **补 `MultiAppAnimMergeHelper` 6 方法**：`prepareMultiAppOpenAnim` (CAS 计数器) / `multiAppOpenAnimStart` (CAS -1) / `setRecentsAnimEndState` (synchronized + 拒绝 closed when >0) / `setOnTaskAppearedTarget` / `updateRecentTargetsIfNeed`（过滤 `activityType==1`）/ `reset` | ~50 行 | **高（bug 级）**——multi-app 启动链路 | 多 app 启动演示丢语义；`AnimationController.checkAllAnimationFinished` 链 NPE |
-| 5 | **补 `InterceptKeyEventHelper` 4 方法**（含反射 try-catch）：`sendBackKeyEvent` 用 `InputManager.injectInputEvent`；`setInterceptKeyEventEnabled` 两套签名都做反射（`Class.forName("android.view.OplusWindowManager")`），**try-catch 兜底 NoClassDefFoundError** | ~30 行 | **高（bug 级）**——BACK 键拦截 + `notifyInterceptKeyEvent$1$1` NPE | recents 转场中 BACK 键穿透 |
-| 6 | **补 `MultiOpenPreStartHelper` 13 方法 + 5 并发原语 + 2 Transaction 字段**：`preStartMultiOpenAnim` / `onTaskAppearedCallbackOnPreAnimStart` / `onRecentsFinish` / `waitMultiOpenPreStart` 用 ReentrantLock + Condition + ArrayMap + AtomicInteger 真做；其余 9 个 no-op 桩；保留 `AppFeatureUtils.isSupportPreStart()` 门控（demo 化 true） | ~200 行 | **高（bug 级）**——多 app 启动 pre-start SurfaceControl 事务合并 | `Launcher.onResume`/`onStop` 调 `resetRecentsFinishToHomeFlag` NPE；多 app 启动演示完全不可用 |
-| 7 | **补 `OplusAnimManager.recreateAnimHelper()` + `reset()` + `matchAnimationId()`** | ~15 行 | **中**——helper 状态管理 | 多次转场后 helper 状态脏；cross-Animation-Controller 协作场景无判定 |
-| 8 | **补 `OplusAnimManager.tryFinishOpenRemote(Runnable)` 桩**：调 `getAppOpenAnimMergeHelper().isRecentsMergeOpenRemote()` 决定 `setAppLaunchAnimFinishCallback` 或 `runnable.run()` | ~10 行 | **中**——remote-merge 完成回调语义 | 远程动画合并完成回调无人调 |
-| 9 | **补 `OplusAnimManager.supportInterruption(ItemInfo)` 桩**：demo 化 zoomWindowPkg + SplitScreen 复合判定 | ~15 行 | **中**——split-screen 启动场景 | split-screen 缩放窗口启动走错路径 |
-| 10 | **补 `appLaunchAnimStartOrEnd` 101 消息闸门**：加 `mHandler` (URGENT_TRANSACTION_EXECUTOR) + `mOpenWindowAnimRunning` + 101 消息 + `forbidTouch()` override | ~30 行 | **中**——可移植性 | OPEN_FROM_HOME 600ms 内触摸不被压制 |
-| 11 | **修正 `cleanUpRecentsAnimation` 链路**：在 `OplusAnimManager.kt:51-53` 调 `getMultiAppAnimMergeHelper()?.setOnTaskAppearedTarget(null)` + `getAppOpenAnimMergeHelper()?.cleanUpRecentsAnim()` | 2 行 | **中**——清理完整性 | 多次转场后 merge helper 状态脏 |
-| 12 | **`AnimationFeatureHelper` 默认值改 -1** + 补 `getRadiusAnimationEnable()` + `setInterruptThreshold` 内 `isAdaptiveAnimation` 钳制 | ~10 行 | **中**——"未配置"三态 | 业务对 -1 走独立分支的代码路径失效 |
-| 13 | **修 `updateNextFinishSeqIdIfNeed` 语义**：仅当 pair 为空或 controller 变更时更新 | 5 行 | **低**——seqId 单调性 | 消费方按"seqId 单调递增"做去重的场景误判 |
-| 14 | **补 `addRecentsAnim` else 日志** | 1 行 | **低**——可观测性 | 状态机异常路径静默 |
-| 15 | **修 `delayStartActivityIfNeed` 第一层加 `!isTablet()`** | 1 行 | **中**——平板反转 | 平板 landscape 场景错挂起 |
-| 16 | **修 `delayStartActivityIfNeed` 第二层加 `isSpecialAppScene(intent)` 桩** | ~10 行 | **中**——搜索入口 | 搜索框可能闪一下 |
-| 17 | **修 `TaskStateChangeTimeOutListener` handler 改 `URGENT_TRANSACTION_EXECUTOR`** | 5 行 | **中**——主线程满载时 timeout 不推迟 | 真机主线程满载时原厂超时更早发生 |
+| 1 | 状态：❌不成立/已过期（同 3.1-1：object init = <clinit> 互斥，无并发 race） — **`OplusAnimManager.init` 改 `by lazy` 替换裸 `var`** | 5 行 | **高（bug 级）**——消除并发首访 race | 并发 demo 启动时可能触发 2 个 helper 同时初始化 |
+| 2 | 状态：⚠️未修复（同 3.2-3：运行态查询桩未补） — **补 `AppSwipeToRecentContinuationHelper` 运行态查询桩**：`object` + 静态 `@Volatile var isAppSwipeToRecentContinuationRunning` + `setRunning(boolean)`；`AnimationController.delayStartActivityIfNeed` 第三层改用该查询 | ~30 行 | **高（bug 级）**——review 12 §3-A3 已点名 | swipe-to-recents 后 100ms 内的 startActivity 被错误挂起；窗口外漏挂 |
+| 3 | 状态：⚠️未修复（同 3.2-1） — **补 `AppOpenAnimMergeHelper` 8 方法桩（不含 `onRemoteAnimationMerged` 主体）**：`setAppOpenRemoteTargets` / `isRecentsMergeOpenRemote` / `cleanUpRecentsAnim` / `releaseOpenRemoteTargets` 真做；`onRemoteAnimationMerged` 返回 false 桩；`tryStartRecentsForOpenRemoteMerge` / `gestureTriggerRecentsAnim` / `onRecentsAnimStart` / `checkIfRecentsAnimStarted` 内部存 callback + AtomicBoolean | ~80 行 | **高（bug 级）**——`tryFinishOpenRemote` / `OplusAnimManager.cleanUpRecentsAnimation` 链路 | recents→app 远程动画合并场景无法演示；多次转场后 helper 状态脏 |
+| 4 | 状态：⚠️未修复（同 3.2-2） — **补 `MultiAppAnimMergeHelper` 6 方法**：`prepareMultiAppOpenAnim` (CAS 计数器) / `multiAppOpenAnimStart` (CAS -1) / `setRecentsAnimEndState` (synchronized + 拒绝 closed when >0) / `setOnTaskAppearedTarget` / `updateRecentTargetsIfNeed`（过滤 `activityType==1`）/ `reset` | ~50 行 | **高（bug 级）**——multi-app 启动链路 | 多 app 启动演示丢语义；`AnimationController.checkAllAnimationFinished` 链 NPE |
+| 5 | 状态：⚠️未修复（同 3.2-4） — **补 `InterceptKeyEventHelper` 4 方法**（含反射 try-catch）：`sendBackKeyEvent` 用 `InputManager.injectInputEvent`；`setInterceptKeyEventEnabled` 两套签名都做反射（`Class.forName("android.view.OplusWindowManager")`），**try-catch 兜底 NoClassDefFoundError** | ~30 行 | **高（bug 级）**——BACK 键拦截 + `notifyInterceptKeyEvent$1$1` NPE | recents 转场中 BACK 键穿透 |
+| 6 | 状态：⚠️未修复（同 3.2-5，成本最高） — **补 `MultiOpenPreStartHelper` 13 方法 + 5 并发原语 + 2 Transaction 字段**：`preStartMultiOpenAnim` / `onTaskAppearedCallbackOnPreAnimStart` / `onRecentsFinish` / `waitMultiOpenPreStart` 用 ReentrantLock + Condition + ArrayMap + AtomicInteger 真做；其余 9 个 no-op 桩；保留 `AppFeatureUtils.isSupportPreStart()` 门控（demo 化 true） | ~200 行 | **高（bug 级）**——多 app 启动 pre-start SurfaceControl 事务合并 | `Launcher.onResume`/`onStop` 调 `resetRecentsFinishToHomeFlag` NPE；多 app 启动演示完全不可用 |
+| 7 | 状态：✔️保持简化（同 3.2-14/15/16：interruptionEnabled 已等价；reset/matchAnimationId 无调用方） — **补 `OplusAnimManager.recreateAnimHelper()` + `reset()` + `matchAnimationId()`** | ~15 行 | **中**——helper 状态管理 | 多次转场后 helper 状态脏；cross-Animation-Controller 协作场景无判定 |
+| 8 | 状态：⚠️未修复（依赖 AppOpenAnimMergeHelper，同 3.2-1） — **补 `OplusAnimManager.tryFinishOpenRemote(Runnable)` 桩**：调 `getAppOpenAnimMergeHelper().isRecentsMergeOpenRemote()` 决定 `setAppLaunchAnimFinishCallback` 或 `runnable.run()` | ~10 行 | **中**——remote-merge 完成回调语义 | 远程动画合并完成回调无人调 |
+| 9 | 状态：⚠️未修复（同 3.2-17） — **补 `OplusAnimManager.supportInterruption(ItemInfo)` 桩**：demo 化 zoomWindowPkg + SplitScreen 复合判定 | ~15 行 | **中**——split-screen 启动场景 | split-screen 缩放窗口启动走错路径 |
+| 10 | 状态：⚠️未修复（同 3.2-6） — **补 `appLaunchAnimStartOrEnd` 101 消息闸门**：加 `mHandler` (URGENT_TRANSACTION_EXECUTOR) + `mOpenWindowAnimRunning` + 101 消息 + `forbidTouch()` override | ~30 行 | **中**——可移植性 | OPEN_FROM_HOME 600ms 内触摸不被压制 |
+| 11 | 状态：⚠️未修复（同 3.2-18） — **修正 `cleanUpRecentsAnimation` 链路**：在 `OplusAnimManager.kt:51-53` 调 `getMultiAppAnimMergeHelper()?.setOnTaskAppearedTarget(null)` + `getAppOpenAnimMergeHelper()?.cleanUpRecentsAnim()` | 2 行 | **中**——清理完整性 | 多次转场后 merge helper 状态脏 |
+| 12 | 状态：⚠️未修复（同 3.2-7 + doc27 风险 1/6：-1 初值与 adaptive 钳制未做） — **`AnimationFeatureHelper` 默认值改 -1** + 补 `getRadiusAnimationEnable()` + `setInterruptThreshold` 内 `isAdaptiveAnimation` 钳制 | ~10 行 | **中**——"未配置"三态 | 业务对 -1 走独立分支的代码路径失效 |
+| 13 | 状态：✅已修复（60bd048：updateNextFinishSeqIdIfNeed 条件更新） — **修 `updateNextFinishSeqIdIfNeed` 语义**：仅当 pair 为空或 controller 变更时更新 | 5 行 | **低**——seqId 单调性 | 消费方按"seqId 单调递增"做去重的场景误判 |
+| 14 | 状态：✔️保持简化（同 3.2-9：缺日志仅可观测性） — **补 `addRecentsAnim` else 日志** | 1 行 | **低**——可观测性 | 状态机异常路径静默 |
+| 15 | 状态：⚠️未修复（同 3.2-12：缺 !isTablet()） — **修 `delayStartActivityIfNeed` 第一层加 `!isTablet()`** | 1 行 | **中**——平板反转 | 平板 landscape 场景错挂起 |
+| 16 | 状态：⚠️未修复（同 3.2-13：缺 isSpecialAppScene） — **修 `delayStartActivityIfNeed` 第二层加 `isSpecialAppScene(intent)` 桩** | ~10 行 | **中**——搜索入口 | 搜索框可能闪一下 |
+| 17 | 状态：✔️保持简化（同 3.2-10：URGENT executor 不可移植，demo 主线程空闲） — **修 `TaskStateChangeTimeOutListener` handler 改 `URGENT_TRANSACTION_EXECUTOR`** | 5 行 | **中**——主线程满载时 timeout 不推迟 | 真机主线程满载时原厂超时更早发生 |
 
 ### 4.2 建议保持简化（无运行时语义影响或属于合理裁剪）
 
 | # | 内容 | 简化理由 |
 |---|---|---|
-| 1 | **`OplusAnimManager` 类名"DefalutInterceptKeyEventHelper" 拼写错误不改** | 跟随原厂；改名会破坏 `OplusBaseSwipeUpHandler` import 兼容性 |
-| 2 | **`AppOpenAnimMergeHelper.onRemoteAnimationMerged` 150 行真实逻辑不逐行复刻** | JADX 自标"Code decompiled incorrectly"，原始字节码需从 dex 重新提取；与"动画线程方案"主线无关——保留 false 桩即可 |
-| 3 | **`AppSwipeToRecentContinuationHelper` 1372 行完整 5 continuation anim + 2 align eliminate anim + 41 个 public 方法不全部复刻** | 仅保留 §4.1-2 的运行态查询桩即可；其余 40 个方法在 lib 内不触发（demo 不演示真实 RecentsView 续行）|
-| 4 | **`MultiOpenPreStartHelper` 5 个 `SurfaceControl.Transaction` 操作不完整复刻** | 依赖 `SystemUiProxy` 反射 + `RecentsViewAnimUtil` 业务方法，跨 launcher 不可移植；`preStartMultiOpenAnim` 内 `SystemUiProxy.INSTANCE.getNoCreate().getCurrentRecentCallback().onTasksAppearedCallback(...)` 调不到，演示走桩 |
-| 5 | **`InterceptKeyEventHelper` 反射 `OplusWindowManager` 不强求抛异常时优雅降级** | 跨 ROM 必 NoClassDefFoundError，try-catch 已兜底；不需要二次降级（"feature 不支持就静默"）|
-| 6 | **`OplusAnimManager.supportInterruption()` 3 条件复合不还原** | 依赖 `LauncherAnimConfig` / `TaskAnimationManager` / `AppFeatureUtils` 三个 launcher/ROM 私有类；demo 无 launcher 上下文 |
-| 7 | **`DefaultAnimationController` 用 `open class` 而非 factory pattern 不还原** | Kotlin 不需要 factory pattern；形状等价 |
-| 8 | **`MultiOpenPreStartHelper` 工厂的 `AppFeatureUtils.isSupportPreStart()` 二次门控在 lib 内恒 true** | demo 环境无 `AppFeatureUtils`；回移时记得加 |
+| 1 | 状态：✔️保持简化 — **`OplusAnimManager` 类名"DefalutInterceptKeyEventHelper" 拼写错误不改** | 跟随原厂；改名会破坏 `OplusBaseSwipeUpHandler` import 兼容性 |
+| 2 | 状态：✔️保持简化 — **`AppOpenAnimMergeHelper.onRemoteAnimationMerged` 150 行真实逻辑不逐行复刻** | JADX 自标"Code decompiled incorrectly"，原始字节码需从 dex 重新提取；与"动画线程方案"主线无关——保留 false 桩即可 |
+| 3 | 状态：✔️保持简化 — **`AppSwipeToRecentContinuationHelper` 1372 行完整 5 continuation anim + 2 align eliminate anim + 41 个 public 方法不全部复刻** | 仅保留 §4.1-2 的运行态查询桩即可；其余 40 个方法在 lib 内不触发（demo 不演示真实 RecentsView 续行）|
+| 4 | 状态：✔️保持简化 — **`MultiOpenPreStartHelper` 5 个 `SurfaceControl.Transaction` 操作不完整复刻** | 依赖 `SystemUiProxy` 反射 + `RecentsViewAnimUtil` 业务方法，跨 launcher 不可移植；`preStartMultiOpenAnim` 内 `SystemUiProxy.INSTANCE.getNoCreate().getCurrentRecentCallback().onTasksAppearedCallback(...)` 调不到，演示走桩 |
+| 5 | 状态：✔️保持简化 — **`InterceptKeyEventHelper` 反射 `OplusWindowManager` 不强求抛异常时优雅降级** | 跨 ROM 必 NoClassDefFoundError，try-catch 已兜底；不需要二次降级（"feature 不支持就静默"）|
+| 6 | 状态：✔️保持简化 — **`OplusAnimManager.supportInterruption()` 3 条件复合不还原** | 依赖 `LauncherAnimConfig` / `TaskAnimationManager` / `AppFeatureUtils` 三个 launcher/ROM 私有类；demo 无 launcher 上下文 |
+| 7 | 状态：✔️保持简化 — **`DefaultAnimationController` 用 `open class` 而非 factory pattern 不还原** | Kotlin 不需要 factory pattern；形状等价 |
+| 8 | 状态：✔️保持简化 — **`MultiOpenPreStartHelper` 工厂的 `AppFeatureUtils.isSupportPreStart()` 二次门控在 lib 内恒 true** | demo 环境无 `AppFeatureUtils`；回移时记得加 |
 
 ---
 
@@ -425,4 +425,28 @@ lib 当前 `OplusAnimManager.kt`（63 行）只覆盖原厂 `OplusAnimManager.ja
 
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
+本份批次 5 逐条复核结果：
+- §3.1-1（OplusAnimManager init 并发首访 race）— ❌不成立/已过期（Kotlin object init=JVM <clinit>，类初始化互斥）
+- §3.1-2（4 个 helper 工厂字段未声明）— ⚠️未修复（feature 缺口；lib 无引用方无编译错；接入按 4.1-3~6）
+- §3.2-1（AppOpenAnimMergeHelper 缺失）— ⚠️未修复
+- §3.2-2（MultiAppAnimMergeHelper 缺失）— ⚠️未修复
+- §3.2-3（AppSwipeToRecentContinuationHelper 运行态桩缺失）— ⚠️未修复
+- §3.2-4（InterceptKeyEventHelper 缺失）— ⚠️未修复
+- §3.2-5（MultiOpenPreStartHelper 缺失）— ⚠️未修复（成本最高）
+- §3.2-6（101 消息 + 600ms 触摸闸门）— ⚠️未修复（沿用 doc03-f）
+- §3.2-7（AnimationFeatureHelper 默认值 -1）— ⚠️未修复（沿用 doc03-g）
+- §3.2-8（updateNextFinishSeqIdIfNeed 无条件覆盖）— ✅已修复（60bd048）
+- §3.2-9（addRecentsAnim else 日志）— ✔️保持简化
+- §3.2-10（TaskStateChangeTimeOutListener 主线程 Handler）— ✔️保持简化（60bd048 已自管超时+runCatching）
+- §3.2-11（TaskStateHelper 全局事件总线）— ⚠️未修复（沿用 doc03-d）
+- §3.2-12（delayStartActivityIfNeed 缺 !isTablet）— ⚠️未修复（沿用 doc03-c 残留）
+- §3.2-13（缺 isSpecialAppScene）— ⚠️未修复（沿用 doc03-c 残留）
+- §3.2-14（recreateAnimHelper）— ✔️保持简化（interruptionEnabled 已等价）
+- §3.2-15（manager reset）— ✔️保持简化
+- §3.2-16（matchAnimationId）— ✔️保持简化（无调用方）
+- §3.2-17（supportInterruption(ItemInfo)）— ⚠️未修复（平台分屏判定）
+- §3.2-18（cleanUpRecentsAnimation 漏 2 helper）— ⚠️未修复（merge helper 缺失）
+- §4.1-1 — ❌不成立（同 3.1-1）；§4.1-2..6,8..12,15,16 — ⚠️未修复（同对应 3.2 行）
+- §4.1-7 — ✔️保持简化；§4.1-13 — ✅已修复（60bd048）；§4.1-14,17 — ✔️保持简化
+- §4.2-1..8 — ✔️保持简化（与在行标记一致）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

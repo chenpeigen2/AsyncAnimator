@@ -121,6 +121,8 @@
 
 ### 风险 1（高 / bug 级）：Kotlin 接口 SAM 转换让 listener 参数签名不一致
 
+> **✔️有意保留（listener 收真实 animator 是 Kotlin 非空安全的行为改进——review 01 §③-8 已判；非分歧）**
+
 **现象**：原厂 `Animator.AnimatorListener` 接口的回调签名是 `(Animator)`，但 JADX 反编译后 `RuntimeAnimatorListener` 的 `onAnimationEnd(Animator animator)` 接收的可能是 null（因为 `NullableAnimatorListener.onAnimationEnd(@Nullable Animator animator)`）；lib 派发时一律传非 null 真实对象。
 
 **证据**：
@@ -134,6 +136,8 @@
 ---
 
 ### 风险 2（高）：fun interface + typealias 让 listener 形态不匹配
+
+> **✅已修复（60bd048：OnAnimStateChangeListener typealias → fun interface——lambda 引用相等性恢复，removeOnAnimStateChangeListener 可靠命中）**
 
 **现象**：原厂 `OnAnimStateChangeListener` 是 Java `interface`，业务必须写 `implements` 或匿名类；lib `typealias OnAnimStateChangeListener = (AnimationState, AnimationState, Any?) -> Unit` 让业务可以直接传 lambda。
 
@@ -153,6 +157,8 @@
 
 ### 风险 3（高）：Kotlin `var` 公开属性绕过了原厂的 setter 校验
 
+> **⚠️未修复（addAnimatorListener/removeAnimatorListener 兼容 override 约 10 行未补；lib 既定契约 asyncAnimCallbacks.addListener（Demo3 在用）——平台直挂 listener 会绕开 marshal，迁移方需注意）**
+
 **现象**：原厂 `AsyncValueAnimator.setExecutor(LooperExecutor executor)` 包含 `Intrinsics.checkNotNullParameter(executor, "executor")`（`AsyncValueAnimator.java:148`）；lib `var executor: LooperExecutor` 公开属性赋值时同样会做 null 检查（Kotlin 非空类型），但**赋值时机无约束**——start 之后再改 executor 是合法的、原厂如此；start 之后改 listener 是另一回事——listener 在 start 之后改会改变后续派发，行为符合直觉但原厂 setter 不抛异常。
 
 **证据**：
@@ -168,6 +174,8 @@
 
 ### 风险 4（中）：companion object 内的工厂方法签名不一致
 
+> **⚠️未修复（同 review 01 §4.1-2：AsyncValueAnimator.Companion.ofFloat 工厂未补约 5 行；lib OplusValueAnimator.ofFloat 已提供等价入口，demo 无调用点）**
+
 **现象**：原厂 `AsyncValueAnimator.Companion.ofFloat(boolean, float...)` 工厂方法返回 `ValueAnimator`（父类），调用方拿到的可能是 `AsyncValueAnimator`（子类）或 `ValueAnimator`（原版）；lib `OplusValueAnimator.ofFloat(isAsync, vararg values)` 是不同类的工厂（`OplusValueAnimator.kt:117-121`），语义不同。
 
 **证据**：
@@ -182,6 +190,8 @@
 ---
 
 ### 风险 5（中）：Kotlin `object` 单例 vs Java 静态 INSTANCE 的静态初始化时机差异
+
+> **✔️保持简化（object 惰性初始化；lib 内无"类加载即注册 RUS/observable"依赖——与原厂 static 块语义差异仅对依赖类加载即初始化的外部业务可见，demo 无）**
 
 **现象**：原厂 `OplusAnimManager.INSTANCE` 是 `static final` 字段，类加载即创建（`OplusAnimManager.java:35` + `static { ... }` 块在 `:46-105`）；lib `object OplusAnimManager` 也是 lazy 类加载，但**第一次访问任意字段/方法时才初始化**。
 
@@ -199,6 +209,8 @@
 
 ### 风险 6（中）：val/var + `private set` 让原厂的"读 + 写都在调用方线程"约束变模糊
 
+> **✔️保持简化（doc 自证：纯编译期差异、运行期行为与原厂一致——private set 类内可写等价原厂 private 字段+内部方法改）**
+
 **现象**：原厂 `AnimationController.mAnimState` 是 `private` 字段，`public final synchronized void setAnimState(AnimationState state)` + `getAnimState()`（`AnimationController.java`）—— 写操作有同步保护（虽然 OPPO 实际并不保证多线程，原代码 review 03 §3-f 已列）；lib `override var animState: AnimationState = AnimationState.NONE ; private set`（`AnimationController.kt:30`）—— 公开 `var` 只对外部是只读（`private set`），但内部 `updateAnimState` 仍然无锁赋值（`AnimationController.kt:54-58`）。
 
 **证据**：
@@ -213,6 +225,8 @@
 
 ### 风险 7（中）：Kotlin `apply { }` 让 builder 链的方法可以链式调用，原厂不能
 
+> **✔️保持简化（apply 链纯便利性、无功能差异；迁回原厂时展开即可——C-1 同判）**
+
 **现象**：原厂 `PendingAnimation.add(animator)` 返回 void（`PendingAnimation.java:55-59`），业务只能一行行调；lib `fun add(...): PendingAnimation = apply { ... }` 返回 this，可以链式。
 
 **证据**：
@@ -226,6 +240,8 @@
 ---
 
 ### 风险 8（中）：Kotlin `inline fun` + `crossinline lambda` 让 marshal 协议字节码更简洁，但 lambda 闭包变量捕获语义与 Java 不同
+
+> **✔️保持简化（inline marshal 运行行为等价；少一层栈帧仅影响调试观感；lib 无 hook marshal 需求）**
 
 **现象**：lib `private inline fun marshal(crossinline action: () -> Unit)`（`AsyncValueAnimator.kt:42-45`）会让 marshal 函数的字节码**内联到调用点**——`override fun start() = marshal { super@AsyncValueAnimator.start() }`（`AsyncValueAnimator.kt:47`）编译后字节码中**没有 marshal 方法调用**，直接把 `if (isCurrentExecutor) action() else executor.execute { action() }` 内联展开。
 
@@ -245,6 +261,8 @@
 
 ### 风险 9（中）：Kotlin 函数类型 vs Java Consumer/Runnable 的等价性陷阱
 
+> **✔️保持简化（lib 以 Kotlin 业务为主；Java 调用方 SAM 互操作非 demo 目标）**
+
 **现象**：原厂 listener 接口收 `Consumer<Boolean>`（如 `forEndCallback(Consumer<Boolean>)`，`AnimatorListeners.java:64`）；lib 收 `((success: Boolean) -> Unit)?`（`AnimatorListeners.kt:25`）。从 Java 调用方看 Kotlin 函数类型被编译为 `Function1<P1, R>` 接口（`kotlin.jvm.functions.Function1`），**不是** `Consumer<Boolean>`。
 
 **证据**：
@@ -261,6 +279,8 @@
 ---
 
 ### 风险 10（中）：Kotlin `data class` 的 `copy()` vs Java 手动 copy
+
+> **✔️保持简化（data class copy 浅拷贝与原厂手写 copy 同为浅拷贝——doc 自证原厂共享引用、影响有限；建议在注释/USAGE 明示浅拷贝防误导）**
 
 **现象**：原厂 `OplusValueAnimator.AnimParam.copy()` 是手写的方法（`OplusValueAnimator.java:353-360`，8 行），lib `data class AnimParam(var name: String = "default", ...)`（`OplusValueAnimator.kt:82-90`）自动生成 `copy(name = ..., fromValue = ...)`。
 
@@ -279,6 +299,8 @@
 
 ### 风险 11（中）：Kotlin `object : Listener() { ... }` SAM 表达式生成新类 vs Java 匿名类
 
+> **✔️保持简化（两者等价，仅类名/栈帧可读性差异——doc 自判低）**
+
 **现象**：Kotlin 的 `object : Animator.AnimatorListener { override fun onAnimationEnd(a: Animator) { ... } }`（如 `Demo10.kt:142-148`）每次编译都会生成一个新类（除非是 `inline fun` 参数），Java 匿名类每次也是新类——**等价**。
 
 **证据**：略，编译产物可比。
@@ -292,6 +314,8 @@
 ---
 
 ### 风险 12（低）：Kotlin `internal` 修饰符 vs Java package-private（默认）
+
+> **✔️保持简化（internal 是有意 API 边界，USAGE.md 定义暴露面——review 02 §1 已确认）**
 
 **现象**：lib 大量用 `internal class` / `internal fun`（如 `AnimationHandler.kt:36` `internal class AnimationHandler`，`PendingAnimation.kt:24` `internal class PendingAnimation`），Kotlin `internal` 编译为 public + 名字 mangling（`AsmUtilKt` 等）+ module 隔离（JVM 字节码层面是 public，运行时会被 Kotlin 反射/KSP 检查 module 边界）。
 
@@ -311,6 +335,8 @@
 
 ### 风险 13（低）：fun interface 的 SAM 转换需要 Kotlin 1.4+，对 Java 调用方不友好
 
+> **✔️保持简化（无 Java 调用方）**
+
 **现象**：lib `AnimationHandler.kt:38-40` `fun interface AnimationFrameCallback { fun doAnimationFrame(frameTimeMs: Long): Boolean }`、`TickScheduler.kt:18-20` `fun interface FrameCallback { fun doFrame(frameTimeNanos: Long) }`。
 
 **证据**：
@@ -325,6 +351,8 @@
 
 ### 风险 14（低）：typealias 在 JVM 字节码层是 typealias 本身，编译器生成的签名是函数类型 `Function3<...>`
 
+> **✅已修复（60bd048：typealias → fun interface——Function3 函数类型签名随 typealias 删除消失，与风险 2 同源消除）**
+
 **现象**：lib `typealias OnAnimStateChangeListener = (oldState: AnimationState, newState: AnimationState, runningTask: Any?) -> Unit` 在编译期是 `Function3<AnimationState, AnimationState, Any?, Unit>` 的别名。
 
 **证据**：编译产物反编译可见。
@@ -338,6 +366,8 @@
 ---
 
 ### 风险 15（提示）：Kotlin 没有协程/挂起函数的迁移机会
+
+> **✔️保持简化（回调式模型与原厂一致；suspend/Flow 适配属可选现代化，demo 无协程编排调用方）**
 
 **现象**：原厂的 marshal/start/cancel/end 协议都是基于 `LooperExecutor.execute(Runnable)`，回调也是 `Runnable`/`Consumer<Boolean>` 派发。**整个动画领域都在用回调 + Handler.post 模型**，没有 `suspend fun` / `Flow` / `Channel` 的痕迹。
 
@@ -363,50 +393,50 @@
 
 | # | 建议 | 对应风险 | 工作量 | 理由 |
 |---|---|---|---|---|
-| 1 | **`OnAnimStateChangeListener` 改 `fun interface`**（`fun interface OnAnimStateChangeListener { fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) }`） | 风险 2 | 5 行 | typealias 的 lambda 没有引用相等性 + 无法扩展——`fun interface` 既保留 SAM 转换便利，又支持 `class MyListener : ... OnAnimStateChangeListener` 复用；同时 `removeOnAnimStateChangeListener(listener)` 可靠 |
-| 2 | **`DefaultAnimationController.animStateChangeListeners` 改用 `mutableListOf<OnAnimStateChangeListener>()` + 引用相等性** + `removeOnAnimStateChangeListener` 用 `==` 引用比较 | 风险 2 | 5 行 | 配合 #1，让 remove listener 真正能命中 |
-| 3 | **AsyncValueAnimator 加 `@JvmOverloads` + `addAnimatorListener` 兼容方法**：在 lib 加 `fun addAnimatorListener(l: NullableAnimatorListener?) = asyncAnimCallbacks.addListener(l)` 让原厂调用方式直接可用 | 风险 3 | 3 行 | 减少迁移摩擦；同时保留 lib 主流 API `asyncAnimCallbacks.addListener` |
-| 4 | **`AsyncValueAnimator.Companion.ofFloat(isAsync, vararg values)` 工厂**：照原厂 `AsyncValueAnimator.java:43-49` | 缺失 API | 5 行 | demo 调用方直接 `AsyncValueAnimator.ofFloat(true, 0f, 1f)` 拿到 AsyncValueAnimator 子类（带 setExecutor 能力），无需手动 `AsyncValueAnimator().apply { setFloatValues(0f, 1f) }` |
-| 5 | **暴露 `LooperExecutor.getHandler()`/`getLooper()` 访问器**：原厂 `LooperExecutor.java:35-45` | 风险 12 | 3 行 | 业务需要把 AnimatorListenerAdapter 直接挂到目标 Handler 时（demo 中 `AnimationSeqHelper.getOrCreateHandler()` `AnimationSeqHelper.kt:42-46` 就是 lib 自己造的轮子），有原厂 getter 可直接用 |
-| 6 | **`OplusValueAnimator.AnimParam.copy()` 显式深拷贝** lambda 字段（`applicator: ValueApplicator?`） | 风险 10 | 5 行 | 续行动画的"半步接管"对 lambda 共享引用敏感；data class 默认浅拷贝容易让 demo 作者误以为已经隔离 |
-| 7 | **`PendingAnimation` 改 `public class`**（去掉 `internal`） | 风险 12 | 1 行 | USAGE.md 没列 PendingAnimation 是 public，但 demo 实际需要构造它；要么改 public，要么在 USAGE.md 显明"PendingAnimation 不可外部 new，XxxDemo 用 XxxBuilder 替代" |
-| 8 | **公开 `AnimationHandler.instance` + `installThreadScheduler`** 给 demo 做实验 | 缺失 API | 1 行 | 当前是 `internal`（`AnimationHandler.kt:36`），demo 想直接接 tick 测帧间隔时无入口；review 04 §2.3-9 提到 `installThreadScheduler` 时序约束需要让用户感知 |
-| 9 | **补 `Animator.awaitCompletion()` 协程扩展**（suspend fun） + `AnimationController.waitForState(s: AnimationState)` | 风险 15 / 缺失 API | 20 行 | 给 demo 一个 "用协程 chain 动画" 的展示；也是 lib 现代化的契机（v4 §8 已点出"动画库传统是回调式但现代 Kotlin 倾向协程"） |
-| 10 | **`OplusLooperExecutor` 的 `executeBlockWait` 移除后保留警告注释**：在 `Executors.kt` 类注释里说明"原厂 ANIM_EXECUTOR 有 executeBlockWait 扩展（`OplusLooperExecutor.java:46-71`），但带 5s 主线程硬等 ANR 风险，lib 不移植" | 文档补强 | 5 行 | review 01 §3-3 已点出 ANR 风险，但 lib 文档没说为什么不移植；补注释防使用者去翻 OplusLooperExecutor 源码 |
+| 1 | ✅已修复（60bd048：typealias→fun interface） — **`OnAnimStateChangeListener` 改 `fun interface`**（`fun interface OnAnimStateChangeListener { fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) }`） | 风险 2 | 5 行 | typealias 的 lambda 没有引用相等性 + 无法扩展——`fun interface` 既保留 SAM 转换便利，又支持 `class MyListener : ... OnAnimStateChangeListener` 复用；同时 `removeOnAnimStateChangeListener(listener)` 可靠 |
+| 2 | ✅已修复（60bd048：引用相等性恢复后 remove 可靠命中） — **`DefaultAnimationController.animStateChangeListeners` 改用 `mutableListOf<OnAnimStateChangeListener>()` + 引用相等性** + `removeOnAnimStateChangeListener` 用 `==` 引用比较 | 风险 2 | 5 行 | 配合 #1，让 remove listener 真正能命中 |
+| 3 | ⚠️未修复（同风险3：兼容 override 约 10 行；既定契约 asyncAnimCallbacks.addListener） — **AsyncValueAnimator 加 `@JvmOverloads` + `addAnimatorListener` 兼容方法**：在 lib 加 `fun addAnimatorListener(l: NullableAnimatorListener?) = asyncAnimCallbacks.addListener(l)` 让原厂调用方式直接可用 | 风险 3 | 3 行 | 减少迁移摩擦；同时保留 lib 主流 API `asyncAnimCallbacks.addListener` |
+| 4 | ⚠️未修复（同风险4 / review 01 §4.1-2：5 行 ofFloat 工厂；demo 无调用点） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, vararg values)` 工厂**：照原厂 `AsyncValueAnimator.java:43-49` | 缺失 API | 5 行 | demo 调用方直接 `AsyncValueAnimator.ofFloat(true, 0f, 1f)` 拿到 AsyncValueAnimator 子类（带 setExecutor 能力），无需手动 `AsyncValueAnimator().apply { setFloatValues(0f, 1f) }` |
+| 5 | ⚠️未修复（3 行 getHandler/getLooper 访问器；demo 无外部需求——AnimationSeqHelper 自管理 Handler 已够） — **暴露 `LooperExecutor.getHandler()`/`getLooper()` 访问器**：原厂 `LooperExecutor.java:35-45` | 风险 12 | 3 行 | 业务需要把 AnimatorListenerAdapter 直接挂到目标 Handler 时（demo 中 `AnimationSeqHelper.getOrCreateHandler()` `AnimationSeqHelper.kt:42-46` 就是 lib 自己造的轮子），有原厂 getter 可直接用 |
+| 6 | ✔️保持简化（同风险10：原厂同为浅拷贝；深拷贝补强无行为收益，注释说明即可） — **`OplusValueAnimator.AnimParam.copy()` 显式深拷贝** lambda 字段（`applicator: ValueApplicator?`） | 风险 10 | 5 行 | 续行动画的"半步接管"对 lambda 共享引用敏感；data class 默认浅拷贝容易让 demo 作者误以为已经隔离 |
+| 7 | ✔️保持简化（demo 不直接构造 PendingAnimation（Demo9 仅概念日志）；internal 边界成立——review 02 §1） — **`PendingAnimation` 改 `public class`**（去掉 `internal`） | 风险 12 | 1 行 | USAGE.md 没列 PendingAnimation 是 public，但 demo 实际需要构造它；要么改 public，要么在 USAGE.md 显明"PendingAnimation 不可外部 new，XxxDemo 用 XxxBuilder 替代" |
+| 8 | ✔️保持简化（AnimationHandler internal 是有意边界；demo 无直接接 tick 实验——需要时走 AnimationControlThread） — **公开 `AnimationHandler.instance` + `installThreadScheduler`** 给 demo 做实验 | 缺失 API | 1 行 | 当前是 `internal`（`AnimationHandler.kt:36`），demo 想直接接 tick 测帧间隔时无入口；review 04 §2.3-9 提到 `installThreadScheduler` 时序约束需要让用户感知 |
+| 9 | ⚠️未修复（约 20 行 awaitCompletion/waitForState 协程扩展；可选现代化，demo 无协程调用方） — **补 `Animator.awaitCompletion()` 协程扩展**（suspend fun） + `AnimationController.waitForState(s: AnimationState)` | 风险 15 / 缺失 API | 20 行 | 给 demo 一个 "用协程 chain 动画" 的展示；也是 lib 现代化的契机（v4 §8 已点出"动画库传统是回调式但现代 Kotlin 倾向协程"） |
+| 10 | ⚠️未修复（5 行注释未补：executeBlockWait 不移植理由可写入 Executors.kt 类注释） — **`OplusLooperExecutor` 的 `executeBlockWait` 移除后保留警告注释**：在 `Executors.kt` 类注释里说明"原厂 ANIM_EXECUTOR 有 executeBlockWait 扩展（`OplusLooperExecutor.java:46-71`），但带 5s 主线程硬等 ANR 风险，lib 不移植" | 文档补强 | 5 行 | review 01 §3-3 已点出 ANR 风险，但 lib 文档没说为什么不移植；补注释防使用者去翻 OplusLooperExecutor 源码 |
 
 ### B. 建议保持简化（lib 注释中已说明的合理取舍）
 
 | # | 简化内容 | 理由 |
 |---|---|---|
-| 1 | **`@Metadata`/`@SourceDebugExtension`/`JADX DEBUG/WARN` 全部不写** | 这些都是 Kotlin 编译器/JADX 反编译产物，源码侧不存在；lib 编译时编译器会自动生成 |
-| 2 | **`Intrinsics.checkNotNullParameter`/`Intrinsics.checkNotNullExpressionValue` 不写** | Kotlin 编译器在 nullable 表达式后自动 emit，源码干净；运行期仍 emit 等价检查 |
-| 3 | **`lambda$method$N` 静态方法不写** | 用 `inline fun` 让字节码内联，源码侧直接展开 |
-| 4 | **`WhenMappings.$EnumSwitchMapping$0` 枚举映射表不写** | Kotlin 编译器对 `when` 自动生成 switch 表；源码侧 `when (animState) { ... }` 即可 |
-| 5 | **`extends AbstractExecutorService` 移除** | `LooperExecutor` 只暴露 `execute/post/postAsync/isCurrentThread` 最小接口，demo 不需要 ExecutorService 抽象；review 01 §②B-7 已说明 |
-| 6 | **`getLooper()/getHandler()/getThread()/setThreadPriority()` 移除** | lib 内部不暴露，外部不需要 |
-| 7 | **`m` 字段前缀移除** | Kotlin 命名约定无前缀，更符合 idiomatic Kotlin |
-| 8 | **`TAG` 字段移除** | lib 用 `Trace` tag（`AsyncAnimCallbacks.kt:47`）替代 LogUtils.i |
-| 9 | **私有字段 `mAnimLooperExecutor`/`mIsEnd` 改成 `executor`/`isEnd`** | Kotlin 字段命名约定无 `m` 前缀；非空类型保证 null 检查 |
-| 10 | **`extends AbstractExecutorService` 等 Java 抽象基类不实现** | 不实现 `awaitTermination/shutdownNow/isShutdown/isTerminated` 等 boilerplate |
-| 11 | **JVM 单测兜底（`handler` 为 null 时就地执行）保留** | review 01 §②B-7 已说明这是有意设计，注释明示 |
-| 12 | **`internal class` 修饰符保留** | lib 的 API 边界由 USAGE.md 显式列出，避免 demo 业务误用实现细节；与原厂"全部 public"风格不一致但更适合演示库定位 |
-| 13 | **`object` 单例保留（`object Executors`/`object AnimSeqTimeStamp`/`object Interpolators`/`object AnimatorListeners`/`object Trace`）** | Kotlin idiom 比 Java `static final INSTANCE` + `static { }` 块简洁得多 |
-| 14 | **`typealias` 函数类型保留** | review 03 §2.2-4 已确认"OnAnimStateChangeListener 改 typealias"是有意简化，listener 遍历改为快照复制（lib `DefaultAnimationController.kt:26` 用 `ArrayList(...)` 拷贝；原厂 `:158-161` 直接 iterator，遍历中增删会 CME——**lib 更安全**）；但若保留 typealias，应配合 #1 改 `fun interface` 解决 remove 不到的问题 |
+| 1 | ✔️保持简化 — **`@Metadata`/`@SourceDebugExtension`/`JADX DEBUG/WARN` 全部不写** | 这些都是 Kotlin 编译器/JADX 反编译产物，源码侧不存在；lib 编译时编译器会自动生成 |
+| 2 | ✔️保持简化 — **`Intrinsics.checkNotNullParameter`/`Intrinsics.checkNotNullExpressionValue` 不写** | Kotlin 编译器在 nullable 表达式后自动 emit，源码干净；运行期仍 emit 等价检查 |
+| 3 | ✔️保持简化 — **`lambda$method$N` 静态方法不写** | 用 `inline fun` 让字节码内联，源码侧直接展开 |
+| 4 | ✔️保持简化 — **`WhenMappings.$EnumSwitchMapping$0` 枚举映射表不写** | Kotlin 编译器对 `when` 自动生成 switch 表；源码侧 `when (animState) { ... }` 即可 |
+| 5 | ✔️保持简化 — **`extends AbstractExecutorService` 移除** | `LooperExecutor` 只暴露 `execute/post/postAsync/isCurrentThread` 最小接口，demo 不需要 ExecutorService 抽象；review 01 §②B-7 已说明 |
+| 6 | ✔️保持简化 — **`getLooper()/getHandler()/getThread()/setThreadPriority()` 移除** | lib 内部不暴露，外部不需要 |
+| 7 | ✔️保持简化 — **`m` 字段前缀移除** | Kotlin 命名约定无前缀，更符合 idiomatic Kotlin |
+| 8 | ✔️保持简化 — **`TAG` 字段移除** | lib 用 `Trace` tag（`AsyncAnimCallbacks.kt:47`）替代 LogUtils.i |
+| 9 | ✔️保持简化 — **私有字段 `mAnimLooperExecutor`/`mIsEnd` 改成 `executor`/`isEnd`** | Kotlin 字段命名约定无 `m` 前缀；非空类型保证 null 检查 |
+| 10 | ✔️保持简化 — **`extends AbstractExecutorService` 等 Java 抽象基类不实现** | 不实现 `awaitTermination/shutdownNow/isShutdown/isTerminated` 等 boilerplate |
+| 11 | ✔️保持简化 — **JVM 单测兜底（`handler` 为 null 时就地执行）保留** | review 01 §②B-7 已说明这是有意设计，注释明示 |
+| 12 | ✔️保持简化 — **`internal class` 修饰符保留** | lib 的 API 边界由 USAGE.md 显式列出，避免 demo 业务误用实现细节；与原厂"全部 public"风格不一致但更适合演示库定位 |
+| 13 | ✔️保持简化 — **`object` 单例保留（`object Executors`/`object AnimSeqTimeStamp`/`object Interpolators`/`object AnimatorListeners`/`object Trace`）** | Kotlin idiom 比 Java `static final INSTANCE` + `static { }` 块简洁得多 |
+| 14 | ✅已修复（60bd048：typealias 已改 fun interface——"保留 typealias"前提不成立；SAM 便利保留且 remove 可命中） — **`typealias` 函数类型保留** | review 03 §2.2-4 已确认"OnAnimStateChangeListener 改 typealias"是有意简化，listener 遍历改为快照复制（lib `DefaultAnimationController.kt:26` 用 `ArrayList(...)` 拷贝；原厂 `:158-161` 直接 iterator，遍历中增删会 CME——**lib 更安全**）；但若保留 typealias，应配合 #1 改 `fun interface` 解决 remove 不到的问题 |
 
 ### C. lib 独有的现代化 API（值得在 USAGE.md 显式标注为"lib 扩展"，与原厂区分）
 
 | # | 现代化 API | 与原厂对应 | 推荐做法 |
 |---|---|---|---|
-| 1 | `apply { }`/`also { }` builder 链 | 原厂 `void add()` 多行调用 | **保留**——纯 Kotlin 风格化，迁移回去时把 `apply { ... }` 展开即可 |
-| 2 | `data class` 数据载体 | 原厂 `class` + getter/setter + 手动 `copy()` | **保留**——data class 自动 `copy()/toString()/equals/hashCode`，USAGE 注释说明 `copy()` 对引用字段是浅拷贝（避免 reviewer 误以为深拷贝） |
-| 3 | `companion object` 内工厂方法 | 原厂 `Companion` + `@JvmStatic` 双份方法 | **保留**——Kotlin 调用方无需 `@JvmStatic`，Java 调用方需要 `JvmStatic`-annotated 副本时可单独加 |
-| 4 | `inline fun` + `crossinline lambda` 高阶函数 | 原厂 `private static final void xxx$lambda$N` | **保留**——字节码更简洁（无额外函数调用），但调试时栈帧少一层 marshal；USAGE.md 注明"marshal 是 inline 的，栈追踪看不到它" |
-| 5 | `@Volatile var` + `SyncedVar` 委托 | 原厂 `private volatile int mAsyncEnable` + `private final synchronized void setAsyncEnable(int)` | **保留**——`SyncedVar` 是 `ReadWriteProperty<Any?, T>` 实现，`by` 委托一行替换 7 个 getter/setter 方法 |
-| 6 | `by lazy(LazyThreadSafetyMode.SYNCHRONIZED)` | 原厂 `static final` 字段 | **保留**——线程安全的延迟初始化，比 `static { }` 块更声明式 |
-| 7 | `MutableList<T>`/`List<T>` 接口分离 | 原厂 `ArrayList<T>` 引用 | **保留**——Kotlin 的只读 `List<T>` vs 可变 `MutableList<T>` 在 demo 侧能强制不可变（如 `AnimationFeatureHelper.onePxPkgDisableList: List<String> = mutableListOf()` `AnimationFeatureHelper.kt:21-22` 业务不能 add） |
-| 8 | `init { }` 块 + 主构造器 | 原厂字段 + 构造器函数体 | **保留**——`class Foo(...) : Bar { init { ... } }` 比 Java 字段 + 构造器代码清晰得多 |
-| 9 | `data class DemoInfo(...)` 在 Demo 里直接子类化 | 原厂无对应（demo 才有） | **保留**——demo 数据载体 data class 是 idiomatic Kotlin |
-| 10 | `private set` 公开 var | 原厂 `private final AnimationState mAnimState` + `public getAnimState()` + `private setAnimState` | **保留**——单声明完成"外部只读 + 内部可写"，比 Java 三件套（field + getter + setter）少 2 个声明 |
+| 1 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `apply { }`/`also { }` builder 链 | 原厂 `void add()` 多行调用 | **保留**——纯 Kotlin 风格化，迁移回去时把 `apply { ... }` 展开即可 |
+| 2 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `data class` 数据载体 | 原厂 `class` + getter/setter + 手动 `copy()` | **保留**——data class 自动 `copy()/toString()/equals/hashCode`，USAGE 注释说明 `copy()` 对引用字段是浅拷贝（避免 reviewer 误以为深拷贝） |
+| 3 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `companion object` 内工厂方法 | 原厂 `Companion` + `@JvmStatic` 双份方法 | **保留**——Kotlin 调用方无需 `@JvmStatic`，Java 调用方需要 `JvmStatic`-annotated 副本时可单独加 |
+| 4 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `inline fun` + `crossinline lambda` 高阶函数 | 原厂 `private static final void xxx$lambda$N` | **保留**——字节码更简洁（无额外函数调用），但调试时栈帧少一层 marshal；USAGE.md 注明"marshal 是 inline 的，栈追踪看不到它" |
+| 5 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `@Volatile var` + `SyncedVar` 委托 | 原厂 `private volatile int mAsyncEnable` + `private final synchronized void setAsyncEnable(int)` | **保留**——`SyncedVar` 是 `ReadWriteProperty<Any?, T>` 实现，`by` 委托一行替换 7 个 getter/setter 方法 |
+| 6 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `by lazy(LazyThreadSafetyMode.SYNCHRONIZED)` | 原厂 `static final` 字段 | **保留**——线程安全的延迟初始化，比 `static { }` 块更声明式 |
+| 7 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `MutableList<T>`/`List<T>` 接口分离 | 原厂 `ArrayList<T>` 引用 | **保留**——Kotlin 的只读 `List<T>` vs 可变 `MutableList<T>` 在 demo 侧能强制不可变（如 `AnimationFeatureHelper.onePxPkgDisableList: List<String> = mutableListOf()` `AnimationFeatureHelper.kt:21-22` 业务不能 add） |
+| 8 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `init { }` 块 + 主构造器 | 原厂字段 + 构造器函数体 | **保留**——`class Foo(...) : Bar { init { ... } }` 比 Java 字段 + 构造器代码清晰得多 |
+| 9 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `data class DemoInfo(...)` 在 Demo 里直接子类化 | 原厂无对应（demo 才有） | **保留**——demo 数据载体 data class 是 idiomatic Kotlin |
+| 10 | ✔️保持简化（保留：纯 Kotlin 风格化/有意现代化） — `private set` 公开 var | 原厂 `private final AnimationState mAnimState` + `public getAnimState()` + `private setAnimState` | **保留**——单声明完成"外部只读 + 内部可写"，比 Java 三件套（field + getter + setter）少 2 个声明 |
 
 ---
 
@@ -450,4 +480,16 @@
 
 - **60bd048** — OnAnimStateChangeListener typealias→fun interface（lambda 引用相等性恢复）
 
+
+
+逐条判定（批次 1 逐项状态，标注位置见正文）：
+- **③-风险1（SAM/null animator）** — ✔️有意保留（Kotlin 非空行为改进）
+- **③-风险2 / 风险14（typealias listener）** — ✅已修复（60bd048 fun interface）
+- **③-风险3（var setter / addAnimatorListener 命名）** — ⚠️未修复（兼容 override 约 10 行；既定契约 asyncAnimCallbacks.addListener）
+- **③-风险4（ofFloat 工厂）** — ⚠️未修复（同 review 01 §4.1-2）
+- **③-风险5/6/7/8/9/11/12/13/15** — ✔️保持简化（惰性 object/编译期差异/风格差异/回调式——见正文）
+- **③-风险10（data class 浅拷贝）** — ✔️保持简化（原厂同为浅拷贝，影响有限）
+- **④-A 表** — 1/2 ✅（60bd048），3/4/5/9/10 ⚠️未修复，6/7/8 ✔️（见正文）
+- **④-B 表** — 14 ✅已修复（60bd048），其余 ✔️保持简化
+- **④-C 表** — 全部 ✔️保持简化（保留：有意现代化 API）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

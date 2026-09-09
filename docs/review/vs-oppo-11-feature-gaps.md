@@ -86,19 +86,19 @@
 
 | # | 风险等级 | 风险描述 | 触发场景 | 触发条件 |
 |---|---|---|---|---|
-| 1 | **bug 级** | `CustomRectFSpringAnim` 6 自由度独立弹簧 + 中途改终点分裂积分 完全缺失。lib 只能演示单自由度窗口弹簧，无法表达矩形四个自由度独立 stiffness/damping 的真实场景（例如"宽度欠阻尼、位置过阻尼"）。Demo4（Spring Transition）用 `androidx.SpringAnimation` 替代，但语义已偏离。 | Demo4 / Demo9 矩形窗口转场 | 任何依赖多自由度独立弹簧的转场 |
-| 2 | **bug 级** | `LauncherBooster.setUxThreadValue` 缺失 → lib 演示线程**没有 OS UX 调度器加持**。主线程 / `onlineUXThread` 同时跑重载时，lib 的 launcher.anim 可能跑在小核，量化对比（帧间隔直方图、掉帧率）与原厂不可互推。 | 所有 Demo 的"独立动画线程"演示 | 设备有大小核分化（除 MTK 等少数平台外，几乎所有手机） |
-| 3 | **bug 级** | `LauncherBooster` UAF `reportKeyThreadToUAF` 缺失 → lib 线程不会自动迁移到大核。 | 同上 | 同上 |
-| 4 | **bug 级** | `AppSwipeToRecentContinuationHelper` 缺失 → `delayStartActivityIfNeed` 第三层决策用"100ms 时间窗"伪判定，**与原厂"运行态判定"语义不等价**：原厂只在 `isAppSwipeToRecentContinuationRunning()` 真时挂起，lib 任何 100ms 内的 startActivity 都会被挂起——可能误挂正常启动。 | swipe-to-recents 后的 startActivity | swipe-up → recents 完结前 100ms 内发 startActivity |
-| 5 | **bug 级** | `MultiOpenPreStartHelper` + `MultiAppAnimMergeHelper` 缺失 → 多 app 启动链路无法演示。"两个图标先后点击只起一次 recents 转场"语义丢失，第二次点击会重起转场导致窗口跳动。 | Demo9（多 app 启动） | 任何 multi-app 启动场景 |
-| 6 | **bug 级** | `MESSAGE_RELEASE_TOUCH 600ms` 闸门缺失 → 打开动画起的 600ms 内业务触摸不被压制。原厂是**防"手势 → 触摸 → startActivity 二次触发把窗口弹簧搞坏"的关键保护**；lib 缺失后，Demo9（OPEN_FROM_HOME）的 600ms 窗口内若发生点击，会直接触发 onClick → startActivity → 状态机错乱。 | Demo9 / Demo11 | 任何 OPEN_FROM_HOME / 反向 recents 转场 |
-| 7 | **高** | `AppOpenAnimMergeHelper` 缺失 → `tryFinishOpenRemote` 永远判定"非 recents-merge"，跳过 APP launch 动画清理路径。`onRemoteAnimationMerged`（150+ 行 JADX 自标反编译错误）整段未移植。 | "图标随 recents 卡片飞出"动画 | recents → 开 app 边界场景 |
-| 8 | **高** | `InterceptKeyEventHelper` 缺失 → BACK 键在 recents 转场期间不拦截。`InputManager.injectInputEvent` 模拟 BACK 路径也未移植。 | recents 转场中按 BACK | demo 演示中 BACK 键响应 |
-| 9 | **中** | `MultiDynamicAnimation.requestEnd` 下一帧生效语义缺失。lib 的 `AsyncSpringAnim` 走 androidx `SpringAnimation`，cancel/end 后立即停帧；原厂会出现"已通知 end、还有 N 帧在飞"的窗口（`CustomRectFSpringAnim.java:881` 的 `maybeEnd()` 兜底就为此存在）。 | cancel 场景时序断言 | 任何 cancel 时序相关的 demo 断言 |
-| 10 | **中** | RUS 真实通路缺失：`simulateRemoteUpdate` 一次性塞值，无 `RusConfigChangedListener` 异步监听。Demo8（Feature Flag）无法演示"远程灰度推送后立即影响行为"的真实路径。 | Demo8 | 演示"运行时配置变更" |
-| 11 | **中** | `AnimationFeatureHelper` 默认值错（1/0 而非 -1）+ 缺 `getRadiusAnimationEnable()` + 缺 `setInterruptThreshold` 的 `isAdaptiveAnimation` 钳制。业务侧原本对 -1 走独立分支，lib 直接生效会破坏业务默认行为。 | 任何调用方对"未配置"态的判断 | demo 中所有 RUS 配置读取点 |
-| 12 | **中** | `AnimationFeatureHelper.onDestroy()` 缺失 → lib object 单例永远活着，listener 永不清理；多窗口/进程重启场景会泄漏。 | （仅在真机多窗口切换时会显现） | 多窗口切换 / launcher 进程被 kill 后重启 |
-| 13 | **低** | `TaskStateChangeTimeOutListener` 走 `URGENT_TRANSACTION_EXECUTOR`（-8） vs lib 走主线程 Handler。原厂超时 option 在事务线程执行可避开主线程卡顿；lib 在主线程执行遇到主线程忙时反而**先误超时**再处理。 | 超时兜底路径 | 演示 1500ms 兜底超时 |
+| 1 | ⚠️未修复（6 自由度独立弹簧 + 半步分裂未复刻；937dd23 用 androidx SpringAnimation 演示单自由度——占位缺口见 vs-oppo-16） — **bug 级** | `CustomRectFSpringAnim` 6 自由度独立弹簧 + 中途改终点分裂积分 完全缺失。lib 只能演示单自由度窗口弹簧，无法表达矩形四个自由度独立 stiffness/damping 的真实场景（例如"宽度欠阻尼、位置过阻尼"）。Demo4（Spring Transition）用 `androidx.SpringAnimation` 替代，但语义已偏离。 | Demo4 / Demo9 矩形窗口转场 | 任何依赖多自由度独立弹簧的转场 |
+| 2 | ✔️保持简化（OPPO 私有 OS UX 调度 API，无公开等价物——review 01 §③-4 已判；setThreadPriority 兜底够 demo） — **bug 级** | `LauncherBooster.setUxThreadValue` 缺失 → lib 演示线程**没有 OS UX 调度器加持**。主线程 / `onlineUXThread` 同时跑重载时，lib 的 launcher.anim 可能跑在小核，量化对比（帧间隔直方图、掉帧率）与原厂不可互推。 | 所有 Demo 的"独立动画线程"演示 | 设备有大小核分化（除 MTK 等少数平台外，几乎所有手机） |
+| 3 | ✔️保持简化（UAF 绑核同为 OPPO 私有调度增强——同上） — **bug 级** | `LauncherBooster` UAF `reportKeyThreadToUAF` 缺失 → lib 线程不会自动迁移到大核。 | 同上 | 同上 |
+| 4 | ⚠️未修复（运行态判定桩约 40 行未补；cdd125e 已改 else-if 互斥 + 清理段 + 兜底时钟，但第三层仍"100ms 时间窗"伪判定——同 review 03 §3-c 残余） — **bug 级** | `AppSwipeToRecentContinuationHelper` 缺失 → `delayStartActivityIfNeed` 第三层决策用"100ms 时间窗"伪判定，**与原厂"运行态判定"语义不等价**：原厂只在 `isAppSwipeToRecentContinuationRunning()` 真时挂起，lib 任何 100ms 内的 startActivity 都会被挂起——可能误挂正常启动。 | swipe-to-recents 后的 startActivity | swipe-up → recents 完结前 100ms 内发 startActivity |
+| 5 | ⚠️未修复（MultiOpenPreStartHelper/MultiAppAnimMergeHelper 骨架约 80 行未补；demo 无真实 multi-app 场景） — **bug 级** | `MultiOpenPreStartHelper` + `MultiAppAnimMergeHelper` 缺失 → 多 app 启动链路无法演示。"两个图标先后点击只起一次 recents 转场"语义丢失，第二次点击会重起转场导致窗口跳动。 | Demo9（多 app 启动） | 任何 multi-app 启动场景 |
+| 6 | ⚠️未修复（同 review 03 §3-f：600ms 闸门属手势层；lib/demo 无 forbidTouch 调用点——门控无触发面） — **bug 级** | `MESSAGE_RELEASE_TOUCH 600ms` 闸门缺失 → 打开动画起的 600ms 内业务触摸不被压制。原厂是**防"手势 → 触摸 → startActivity 二次触发把窗口弹簧搞坏"的关键保护**；lib 缺失后，Demo9（OPEN_FROM_HOME）的 600ms 窗口内若发生点击，会直接触发 onClick → startActivity → 状态机错乱。 | Demo9 / Demo11 | 任何 OPEN_FROM_HOME / 反向 recents 转场 |
+| 7 | ⚠️未修复（merge 通路缺失：lib OplusAnimManager 无对应 helper，边界场景不可演示） — **高** | `AppOpenAnimMergeHelper` 缺失 → `tryFinishOpenRemote` 永远判定"非 recents-merge"，跳过 APP launch 动画清理路径。`onRemoteAnimationMerged`（150+ 行 JADX 自标反编译错误）整段未移植。 | "图标随 recents 卡片飞出"动画 | recents → 开 app 边界场景 |
+| 8 | ✔️保持简化（OEM 私有反射 + InputManager 注入，跨 ROM 不可移植——4.2-4 一致） — **高** | `InterceptKeyEventHelper` 缺失 → BACK 键在 recents 转场期间不拦截。`InputManager.injectInputEvent` 模拟 BACK 路径也未移植。 | recents 转场中按 BACK | demo 演示中 BACK 键响应 |
+| 9 | ⚠️未修复（requestEnd 下一帧/双轨结束随 MultiDynamicAnimation 链路回移时对齐——同 review 01 §③-5） — **中** | `MultiDynamicAnimation.requestEnd` 下一帧生效语义缺失。lib 的 `AsyncSpringAnim` 走 androidx `SpringAnimation`，cancel/end 后立即停帧；原厂会出现"已通知 end、还有 N 帧在飞"的窗口（`CustomRectFSpringAnim.java:881` 的 `maybeEnd()` 兜底就为此存在）。 | cancel 场景时序断言 | 任何 cancel 时序相关的 demo 断言 |
+| 10 | ⚠️未修复（约 20 行 addRemoteUpdateListener 抽象未补；Demo8 用 interruptionEnabled 已演示行为变更——异步监听属增强） — **中** | RUS 真实通路缺失：`simulateRemoteUpdate` 一次性塞值，无 `RusConfigChangedListener` 异步监听。Demo8（Feature Flag）无法演示"远程灰度推送后立即影响行为"的真实路径。 | Demo8 | 演示"运行时配置变更" |
+| 11 | ⚠️未修复（同 review 03 §3-g：默认 -1"未配置"态未补 + getRadiusAnimationEnable/钳制未补——约 10 行小改；demo 恒走生效值） — **中** | `AnimationFeatureHelper` 默认值错（1/0 而非 -1）+ 缺 `getRadiusAnimationEnable()` + 缺 `setInterruptThreshold` 的 `isAdaptiveAnimation` 钳制。业务侧原本对 -1 走独立分支，lib 直接生效会破坏业务默认行为。 | 任何调用方对"未配置"态的判断 | demo 中所有 RUS 配置读取点 |
+| 12 | ❌不成立（lib 未注册任何全局 listener——无对象可泄漏；真实 RUS listener 通路缺失本身归风险 10） — **中** | `AnimationFeatureHelper.onDestroy()` 缺失 → lib object 单例永远活着，listener 永不清理；多窗口/进程重启场景会泄漏。 | （仅在真机多窗口切换时会显现） | 多窗口切换 / launcher 进程被 kill 后重启 |
+| 13 | ✔️保持简化（demo 无 -8 事务线程；超时兜底跑主线程在无卡顿场景下无差异） — **低** | `TaskStateChangeTimeOutListener` 走 `URGENT_TRANSACTION_EXECUTOR`（-8） vs lib 走主线程 Handler。原厂超时 option 在事务线程执行可避开主线程卡顿；lib 在主线程执行遇到主线程忙时反而**先误超时**再处理。 | 超时兜底路径 | 演示 1500ms 兜底超时 |
 
 ---
 
@@ -108,25 +108,25 @@
 
 | # | 建议 | 改动规模 | 价值 | 不补的后果 |
 |---|---|---|---|---|
-| 1 | **补 `MESSAGE_RELEASE_TOUCH=101` + `RELEASE_TOUCH_DELAY=600` 闸门**：在 `AnimationController` 加 `mHandler`（线程同原厂用 `URGENT_TRANSACTION_EXECUTOR`）+ `mOpenWindowAnimRunning` 布尔 + `appLaunchAnimStartOrEnd` start 分支 `sendEmptyMessageDelayed(101, 600)` + `handleMessage(101)` 设 false + `forbidTouch()` 查该位。 | ~30 行 | **高**——review 03 §3-b + 本节风险 6 都点名；Demo9 / Demo11 关键保护 | OPEN_FROM_HOME 的 600ms 内 onClick 触发 startActivity → 窗口跳动；与原厂"双时钟域 touch 防抖"完全脱节 |
-| 2 | **补 `AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()`（最简桩版）**：单例 + `setRunning(boolean)` + 5 个 anim 的 stub + lib `AnimationController.delayStartActivityIfNeed` 第三层改用该查询。 | ~40 行 | **高**——风险 4；review 03 §3-b 第 3 子项 | swipe-to-recents 后 100ms 内的 startActivity 被错误挂起 |
-| 3 | **补 `MultiOpenPreStartHelper` 与 `MultiAppAnimMergeHelper` 的最简骨架**：CAS 计数器 + `setRecentsAnimEndState` synchronized + `prepareMultiAppOpenAnim`/`multiAppOpenAnimStart` 一对 CAS 方法。`reparentTaskLeashOnTaskAppear` 等 Surface 事务部分可延后。 | ~80 行 | **高**——风险 5；多 app 启动链路 | 多 app 启动演示丢语义，第二次点击重起转场 |
-| 4 | **修正 `LauncherBooster` UX 线程标记**：用反射调 `Class.forName("android.os.UiThreadManager").getMethod("setUxThreadValue", ...)`，**仅在真机演示路径执行**，JVM 单测走 `Process.setThreadPriority` 兜底。 | ~20 行 + 反射 try-catch | **高**——风险 2 | 量化对比失真；与 OS 调度器未握手 |
-| 5 | **补 `AnimationFeatureHelper` 真实 RUS 监听接口**（不接真 RUS，加抽象）：暴露 `addRemoteUpdateListener(callback: () -> Unit)` + `simulateRemoteUpdate` 内部触发回调。让 Demo8 能演示"运行时配置变更 + 业务响应"。 | ~20 行 | **中**——风险 10 | Demo8 只能演示配置生效，不能演示运行时变更 |
-| 6 | **`AnimationFeatureHelper` 默认值改 -1** + 补 `getRadiusAnimationEnable()` + `setInterruptThreshold` 内 `isAdaptiveAnimation` 钳制 | ~10 行 | **中**——风险 11 | 业务对"未配置"态判断错位 |
-| 7 | **`AnimationFeatureHelper` 加 `onDestroy()`**（清理 listener） | ~5 行 | 低——风险 12 | 多窗口场景泄漏（demo 环境不易触发） |
+| 1 | ⚠️未修复（约 30 行闸门；同风险6——forbidTouch 无调用点，手势层保护 demo 未接线） — **补 `MESSAGE_RELEASE_TOUCH=101` + `RELEASE_TOUCH_DELAY=600` 闸门**：在 `AnimationController` 加 `mHandler`（线程同原厂用 `URGENT_TRANSACTION_EXECUTOR`）+ `mOpenWindowAnimRunning` 布尔 + `appLaunchAnimStartOrEnd` start 分支 `sendEmptyMessageDelayed(101, 600)` + `handleMessage(101)` 设 false + `forbidTouch()` 查该位。 | ~30 行 | **高**——review 03 §3-b + 本节风险 6 都点名；Demo9 / Demo11 关键保护 | OPEN_FROM_HOME 的 600ms 内 onClick 触发 startActivity → 窗口跳动；与原厂"双时钟域 touch 防抖"完全脱节 |
+| 2 | ⚠️未修复（约 40 行运行态桩；同风险4——第三层判定等价性） — **补 `AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()`（最简桩版）**：单例 + `setRunning(boolean)` + 5 个 anim 的 stub + lib `AnimationController.delayStartActivityIfNeed` 第三层改用该查询。 | ~40 行 | **高**——风险 4；review 03 §3-b 第 3 子项 | swipe-to-recents 后 100ms 内的 startActivity 被错误挂起 |
+| 3 | ⚠️未修复（约 80 行骨架；同风险5——多 app 链路） — **补 `MultiOpenPreStartHelper` 与 `MultiAppAnimMergeHelper` 的最简骨架**：CAS 计数器 + `setRecentsAnimEndState` synchronized + `prepareMultiAppOpenAnim`/`multiAppOpenAnimStart` 一对 CAS 方法。`reparentTaskLeashOnTaskAppear` 等 Surface 事务部分可延后。 | ~80 行 | **高**——风险 5；多 app 启动链路 | 多 app 启动演示丢语义，第二次点击重起转场 |
+| 4 | ✔️保持简化（反射 OEM UiThreadManager 跨 ROM 行为不定；runCatching setThreadPriority 兜底已够——review 01 §③-4） — **修正 `LauncherBooster` UX 线程标记**：用反射调 `Class.forName("android.os.UiThreadManager").getMethod("setUxThreadValue", ...)`，**仅在真机演示路径执行**，JVM 单测走 `Process.setThreadPriority` 兜底。 | ~20 行 + 反射 try-catch | **高**——风险 2 | 量化对比失真；与 OS 调度器未握手 |
+| 5 | ⚠️未修复（约 20 行监听抽象；同风险10——Demo8 增强） — **补 `AnimationFeatureHelper` 真实 RUS 监听接口**（不接真 RUS，加抽象）：暴露 `addRemoteUpdateListener(callback: () -> Unit)` + `simulateRemoteUpdate` 内部触发回调。让 Demo8 能演示"运行时配置变更 + 业务响应"。 | ~20 行 | **中**——风险 10 | Demo8 只能演示配置生效，不能演示运行时变更 |
+| 6 | ⚠️未修复（约 10 行默认值/钳制/派生 getter；同风险11） — **`AnimationFeatureHelper` 默认值改 -1** + 补 `getRadiusAnimationEnable()` + `setInterruptThreshold` 内 `isAdaptiveAnimation` 钳制 | ~10 行 | **中**——风险 11 | 业务对"未配置"态判断错位 |
+| 7 | ❌不成立（同风险12：无真实 RUS listener 可清理） — **`AnimationFeatureHelper` 加 `onDestroy()`**（清理 listener） | ~5 行 | 低——风险 12 | 多窗口场景泄漏（demo 环境不易触发） |
 
 ### 4.2 建议保持简化的
 
 | # | 内容 | 简化理由 |
 |---|---|---|
-| 1 | **不移植 6 自由度 `CustomRectFSpringAnim` 弹簧积分**：907 行的 RectTransformHelper + `OnAnimUpdateListener` 写 SurfaceControl.Transaction 属于"事务写表层"，与"动画线程方案"主线无关；lib 用 androidx SpringAnimation 已能演示弹簧语义。review 04 §4.2-2 已建议。 |
-| 2 | **不移植 `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 整组**：spring 物理已被 androidx SpringAnimation 覆盖；`requestEnd` 语义通过原 `AsyncAnimCallbacks.onAnimActualEnd` 双轨已部分覆盖。 |
-| 3 | **不移植 `AppOpenAnimMergeHelper.onRemoteAnimationMerged`（150 行 JADX 自标反编译错误）**：原方法反编译有 bug，且 `tryStartRecentsForOpenRemoteMerge` 等 Surface 操作属 launcher 专属，与动画方案无关。 |
-| 4 | **不移植 `InterceptKeyEventHelper` 反射调 `OplusWindowManager.setInterceptKeyEventEnabled`**：依赖 OEM 私有类，跨 ROM 不可移植；用 `OnBackInvokedDispatcher` 公开 API 替代是 Android 14+ 改造话题，不属"动画线程方案"焦点。 |
-| 5 | **不移植 `AppSwipeToRecentContinuationHelper` 1800 行完整实现**：仅保留 §4.1-2 的运行态查询桩即可；5 个 continuation anim + 2 个 align eliminate anim 全部展开会让 lib 失焦。 |
-| 6 | **不移植 `LauncherBooster` 50+ UAF 事件 ID**：`LAUNCHER_STATIC_LAUNCHER_ANIM=2016` 等常量是 OEM 调度器配置，跨设备不可移植；lib 演示线程性能对比只能用绝对帧间隔，不能用 UAF 事件。 |
-| 7 | **不接真实 `RusBaseConfigManager`**：RUS 是 OPPO ROM Update 基础设施，无公开等价物；`simulateRemoteUpdate` 已覆盖演示需求。 |
+| 1 | ✔️保持简化 — **不移植 6 自由度 `CustomRectFSpringAnim` 弹簧积分**：907 行的 RectTransformHelper + `OnAnimUpdateListener` 写 SurfaceControl.Transaction 属于"事务写表层"，与"动画线程方案"主线无关；lib 用 androidx SpringAnimation 已能演示弹簧语义。review 04 §4.2-2 已建议。 |
+| 2 | ✔️保持简化 — **不移植 `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 整组**：spring 物理已被 androidx SpringAnimation 覆盖；`requestEnd` 语义通过原 `AsyncAnimCallbacks.onAnimActualEnd` 双轨已部分覆盖。 |
+| 3 | ✔️保持简化 — **不移植 `AppOpenAnimMergeHelper.onRemoteAnimationMerged`（150 行 JADX 自标反编译错误）**：原方法反编译有 bug，且 `tryStartRecentsForOpenRemoteMerge` 等 Surface 操作属 launcher 专属，与动画方案无关。 |
+| 4 | ✔️保持简化 — **不移植 `InterceptKeyEventHelper` 反射调 `OplusWindowManager.setInterceptKeyEventEnabled`**：依赖 OEM 私有类，跨 ROM 不可移植；用 `OnBackInvokedDispatcher` 公开 API 替代是 Android 14+ 改造话题，不属"动画线程方案"焦点。 |
+| 5 | ✔️保持简化 — **不移植 `AppSwipeToRecentContinuationHelper` 1800 行完整实现**：仅保留 §4.1-2 的运行态查询桩即可；5 个 continuation anim + 2 个 align eliminate anim 全部展开会让 lib 失焦。 |
+| 6 | ✔️保持简化 — **不移植 `LauncherBooster` 50+ UAF 事件 ID**：`LAUNCHER_STATIC_LAUNCHER_ANIM=2016` 等常量是 OEM 调度器配置，跨设备不可移植；lib 演示线程性能对比只能用绝对帧间隔，不能用 UAF 事件。 |
+| 7 | ✔️保持简化 — **不接真实 `RusBaseConfigManager`**：RUS 是 OPPO ROM Update 基础设施，无公开等价物；`simulateRemoteUpdate` 已覆盖演示需求。 |
 
 ---
 
@@ -184,4 +184,16 @@
 - **60bd048** — appLaunchAnimStartOrEnd end 分支 + checkAllAnimationFinished 收尾、revertRecentsAnimation、uptimeMillis 时钟、AnimSeqTimeStamp 3 reset 补齐
 - **937dd23** — 加 androidx.dynamicanimation 依赖 + AsyncSpringAnim 演示 View 弹簧跑独立线程
 
+
+
+逐条判定（批次 1 逐项状态，标注位置见正文）：
+- **③表-#1/#9（弹簧占位/requestEnd）** — ⚠️未修复（937dd23 已用 androidx spring 演示部分；完整缺口见 vs-oppo-16）
+- **③表-#2/#3/#8/#13（UX/UAF/按键拦截/事务线程）** — ✔️保持简化（OPPO 私有或 demo 无对应）
+- **③表-#4（续行运行态桩）** — ⚠️未修复（cdd125e 已互斥化；第三层仍时间窗伪判定）
+- **③表-#5/#7（multi-open/merge helper）** — ⚠️未修复（骨架成本 80 行量级）
+- **③表-#6（600ms touch 闸门）** — ⚠️未修复（无 forbidTouch 调用点）
+- **③表-#10/#11（RUS 通路/默认 -1）** — ⚠️未修复（同 review 03 §3-g）
+- **③表-#12（onDestroy 反注册）** — ❌不成立（无真实 RUS listener 可泄漏）
+- **§④-4.1 表** — 1-3/5/6 ⚠️未修复，4 ✔️，7 ❌不成立（见正文）
+- **§④-4.2 表** — 全部 ✔️保持简化（清单即保持简化）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

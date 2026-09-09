@@ -88,26 +88,36 @@
 
 按风险从高到低：
 
+> **⚠️未修复（约 2 行 shutdown() 抛 UnsupportedOperationException 未补——纯 API 形式契约；注：lib LooperExecutor 不实现 ExecutorService，按 AOSP 习惯调用实为编译错误而非 doc 所称 AbstractMethodError，风险面更小）**
 1. **【bug 级】ANIM_EXECUTOR never-quit 契约丢失（API 形式）**（C-1）。原厂 `LooperExecutor extends AbstractExecutorService` 且 `shutdown()` 抛 `UnsupportedOperationException`（`LooperExecutor.java:12,71-73`），调用方写 `ANIM_EXECUTOR.shutdown()` 会得到明确的"不支持"异常；lib 的 `LooperExecutor` 不实现任何 `ExecutorService` 方法，按 AOSP 习惯调用 `shutdown()`` 得到 `AbstractMethodError`——异常类型错误诊断更困难。实际行为都是"永不 quit"，但若未来 lib 增加 `shutdown()` 实现（且错误地让它实际生效），原厂的契约会抛异常挡掉，lib 则会**静默销毁 launcher.anim HandlerThread**，后续 `start()` 调用将 NPE。**建议：补 `shutdown()` 抛 `UnsupportedOperationException` + 标 `@Deprecated`，硬保契约**。
 
+> **✔️保持简化（demo 无 system_server 任务事件源；"超时兜底 + 手工 dispose"已足够演示——§B-8 / 4.2-1 明示保留）**
 2. **【bug 级】`TaskStateChangeTimeOutListener` 是无主孤儿**：原厂该 listener 通过 `addGlobalTaskStateChangeListener` 注册到 `TaskStateHelper.globalListeners`（`CopyOnWriteArrayList`，`:31`），由 system_server 任务事件回调驱动 `onTimeOut`，并由 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 集中 dispose。lib 的 listener 是裸 `class`，构造 postDelayed + dispose 配对但**无人调用构造**——demo 演示的全是手工 `registerSpecialSceneExitTimeOutListener(1500L)` + 手工 `.onTimeOut(...)`。原厂的语义是"事件/超时 OR 触发，Activity onDestroy 兜底 dispose"；lib 是"构造即挂超时、谁 dispose 谁负责"。**两种语义的鸿沟在于"事件先到先发"——lib 完全没有事件源**，demo 演示价值有限。
 
+> **⚠️未修复（集中清理入口缺失：AnimationController 无 destroy()、demo 无 removeAllListener 对应物；各 Activity 自行收尾 + GC——4.1-1 约 15 行可选）**
 3. **【高】`TaskStateHelper.removeAllListener()` 集中清理缺失**（C-5）。原厂 `Launcher.onDestroy()` 第 3846 行显式调 `TaskStateHelper.removeAllListener()`：遍历全局监听器，逐个调 `onTaskListenerReleased()`（`TaskStateHelper.java:270-277`）——`TaskStateChangeTimeOutListener.onTaskListenerReleased()` 内部 dispose + 移除全局注册 + removeCallbacks（`:186-193`）。这一行保证进程级所有待清理的 listener 在 Activity 销毁时被强摘。lib `DemoBaseActivity` 不重写 `onDestroy`，`AnimationController` 也不实现集中清理——demo 进出场次时 listener 残留，靠 GC 回收（GC 时机不可预测，且 callback 持有的 Handler 引用链不破坏之前不会 GC `TaskStateChangeTimeOutListener` 本身）。**demo 测试反复进出同一 Activity 时，超时兜底可能被延迟触发**（不影响功能正确性，但断言"超时即触发"会偶发失败）。
 
+> **⚠️未修复（lib/demo 无基类集中 onDestroy 收尾；Demo6/10/11 已各自在 onDestroy cancel 自有 anim/seq——"完全无 onDestroy"表述过期）**
 4. **【高】`Launcher.onStop` / `onDestroy` 多类动画 cancel 缺失**（C-6）。原厂在 `onStop` 里 folder/stack `cancelRunningAnimations()`（`Launcher.java:4410, :4417`），`onDestroy` 里复位 `AnimationRecord.sAnimationId = -1`、调 `removeAllListener`、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags(3, false)`（`:4454`）、`AnimSeqTimeStamp.resetLastLaunchTaskTime()`（`:4457`）。lib 无对应路径——demo 退场时动画继续 tick 直到 `cancel` 显式调用或自然结束。**演示场景下若 `AsyncValueAnimator.start()` 后用户立即退出 Activity，未 cancel 的 animator 仍在 ANIM 线程跑直到 end**，本身无害（ANIM_EXECUTOR 永远活），但若业务 listener 持有 Activity View，会形成 1~2 帧的"已 detach View 仍收到回调"的幽灵引用窗口——**这是 View 泄漏的间接路径**。
 
+> **✔️保持简化（null 槽 + 快照派发与原厂同构；clearListeners 调用点双方都缺——doc 自认非 lib 独有）**
 5. **【中】listener 强引用 View 的泄漏形态未变**（C-3）。原厂 AsyncAnimCallbacks 用 `ArrayList` 强持 `NullableAnimatorListener`，lib 用 `mutableListOf`——本质相同。`AsyncAnimCallbacks.clearListeners` 是公开 API（`AsyncAnimCallbacks.java:107-109`、lib `AsyncAnimCallbacks.kt:34`），但**调用方** `IconLayerUpdater` / `CustomRectFSpringAnim` 都没有显式调它。动画自然结束后 listener 不被清——`ArrayList` 里持续持有（null 槽会增长；lib 的 `removeAll { it == null }` 在 `getListeners` 调用时才压缩，原厂 `removeNullEntries` 同样惰性压缩）。**长生命周期进程 + 短生命周期 listener**的场景下，list 大小线性增长（最坏 O(n)，n = 历次 addListener 累计）。这点上原厂与 lib 都一样，**这是个**：
 
    - 原厂已知设计取舍：v4 §9.5 提到 WeakReference 持有 factory 会造成动画瞬结、窗口跳变（`LauncherAnimationRunner.java:305,419-451`），是 OPPO 自己在线上踩过的坑。所以**保留 null 槽 + 快照派发是正确的**，但调用方需要在合理时机 `clearListeners`——这点两边都缺失。
 
+> **⚠️未修复（随 MultiDynamicAnimation/CustomRectFSpringAnim 回移时对齐多帧时序；当前 lib 无该链路——同 review 01 §③-5 占位缺口）**
 6. **【中】cancel 是"下一帧生效"的语义缺失标注**（C-12）。`MultiDynamicAnimation.requestEnd(true)` 是置 `mCancelRequest` 标志，下一次 `doAnimationFrame` 帧末才 `endAnimationInternal`（`MultiDynamicAnimation.java:168-176`）。`endAnimationInternal` 摘 AnimationHandler 回调（`:95`）、跑 `mEndListeners` 派发（`:97-101`）。lib 的 `AnimationHandler.removeCallback` 是置 null 槽 + listDirty=true，**派发循环下一次 doAnimationFrame 时跳过 null**（`AnimationHandler.kt:94-101`），帧末 `cleanUpList` 压缩（`:104-108`）——单回调摘除语义一致。但**原厂多帧时序**（cancel → 帧末 → end 派发 → AsyncAnimCallbacks 走 marshal → 主线程回调 → 业务继续）在 lib 上**单帧即生效**（cancel → listDirty → 下一帧不再分发 → 下一帧清理），回调时机更激进。**业务如果在 cancel 后立刻假设"已结束"做副作用**，lib 比原厂更早触发；反之若业务等下一帧验证 "end 已发"，lib 比原厂更晚可见。**两个方向都潜在偏差，需逐用例确认**。
 
+> **✔️保持简化（进程级单例线程永不退出是有意设计；demo 安全；暴露 quit 入口反而引入误用）**
 7. **【低】`AnimationHandler` ThreadLocal 的隐式生命周期**：原厂框架版 `AnimationHandler.getInstance()` 是 ThreadLocal，由线程 exit 时 ThreadLocalMap 随 Thread 实例回收。launcher.anim 永不 quit，**该 ThreadLocal 永不清理**。`setProvider(SfVsyncFrameCallbackProvider)` 只在 `ANIM_EXECUTOR$lambda$0()` 调一次（`OplusExecutors.java:170`），线程整个生命周期都是 SF provider——**没有 `resetProvider` 路径**。lib `AnimationHandler.installThreadScheduler`（`AnimationHandler.kt:151-157`）也只装不拆，`replaceThreadScheduler` 提供运行时换 scheduler（`:168-172`）。**两端都没有"清理"语义**——这是设计正确（进程级单例线程），但若 lib 在测试场景用 `ScheduledTickScheduler` 后调 `AnimationControlThread.instance.quitSafely()`，会**泄漏 ThreadLocal**。`HandlerThread.quitSafely` 是公开 API；lib 没暴露这个入口。**demo 安全，但调用方要主动意识到"线程一旦启动永不退出"**。
 
+> **✔️保持简化（场景外：依赖 IconLayer 复用体系——4.2-2 同判）**
 8. **【低】`AnimationRecord` 缺失导致"复用上次动画 IconLayer"语义丢失**（C-7）。原厂 `AnimationRecord` 提供 `sAnimationId` 单调计数 + `tryConnectExistingAnim`（`AnimationRecord.java:405-431`）+ `canReuseIconLayer`（`:178`），用于快速切换应用时复用上次动画的 icon leash。**demo 场景不涉及该机制，无功能影响**——属行为分歧的"场景外"项。
 
+> **✔️保持简化（与原厂一致：dispose 不清 option；lib listener 随持有链整体 GC，无独立泄漏窗口）**
 9. **【低】`TaskStateChangeTimeOutListener.option` 引用未在 dispose 时清零**（C-11）。原厂与 lib 都是 dispose 时只 `handler = null`，option 引用保持到 GC。**短生命周期 option**（如 lambda 捕获 Activity this）会延迟 Activity GC。**原厂通过 `TaskStateHelper.removeAllListener()` 在 onDestroy 集中调 `dispose()` 缓解**——这恰好是 C-5 的另一面。
 
+> **⚠️未修复（备忘项：回移 MultiDynamicAnimation 时在 endAnimationInternal 末尾补 mEndListeners/mUpdateListeners clear——当前无对应实现）**
 10. **【低】`MultiDynamicAnimation` 框架版 `endAnimationInternal` 只摘回调不清 listeners**。原厂 `MultiDynamicAnimation.java:97-101` 的 `mEndListeners` 不在 `endAnimationInternal` 内 clear；lib 无对应实现（因未移植 MultiDynamicAnimation）。如未来回移 MultiDynamicAnimation 链路，需在 endAnimationInternal 末尾加 `mEndListeners.clear() + mUpdateListeners.clear()` 防泄漏。
 
 ---
@@ -116,23 +126,38 @@
 
 ### 4.1 值得补进 lib 的
 
+> **⚠️未修复（约 15 行 destroy() 未补；controller 由 OplusAnimManager 单例持有、无 per-activity 销毁入口；demo 单次进出无实际泄漏触发——低优先）**
 1. **【必补】`AnimationController` 加 `destroy()/release()` 集中清理方法**：遍历三种 `TaskStateChangeTimeOutListener` 全部 `dispose()` + 清 `animStateChangeListeners` + `reset()`。与原厂 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 的语义对齐，是 demo 反复进出场次"干净退出"的最低保障。对应 C-5，约 15 行。
+> **⚠️未修复（同 ③-1：2 行 shutdown() 抛 UOE；纯 API 形式契约）**
 2. **【必补】`LooperExecutor` 加 `shutdown() throws UnsupportedOperationException`**（+ `@Deprecated`）：硬保 ANIM_EXECUTOR never-quit 契约，调用方按 AOSP 习惯写 `shutdown()` 时得到明确异常而非 `AbstractMethodError`。对应 C-1，2 行。
+> **⚠️未修复（demo 基类未加 onDestroy 集中 cancel；Demo6/10/11 局部覆盖）**
 3. **【必补】`DemoBaseActivity` 重写 `onDestroy()`**：调 `AnimationController.reset()` + 显式 cancel 所有 AsyncValueAnimator + `AsyncAnimCallbacks.clearListeners()`。对应 C-6 / C-4，~10 行。这是 demo "Activity 销毁安全"的可观测证据，不补则 lib 的"安全 cancel 所有动画"宣传无 demo 验证。
+> **✔️保持简化（暴露 quitSafely 反引误用；永不 quit 即契约）**
 4. **【建议补】`AnimationControlThread` 暴露 `quitSafely()` / `quit()`**：明示"进程级单例，永不 quit"是设计而非疏忽。给调用方一个明确的语义锚点，避免误用。对应 §3-7，约 3 行。
+> **✔️保持简化（dispose() 复合方法无调用方需求；clearListeners 已存在）**
 5. **【建议补】`AsyncAnimCallbacks` 加 `dispose()` 复合方法** = `clearListeners() + animationId = -1`：让业务在"逻辑结束 + 物理结束"双轨时统一摘除 listener 容器，避免 ArrayList 长期增长。对应 §3-5，约 3 行。
+> **✔️保持简化（2 行补强；原厂未做、lib 无独立泄漏窗口——见 ③-9）**
 6. **【建议补】`TaskStateChangeTimeOutListener.dispose()` 时把 `option` / `type` 也置 null**：缩窄引用窗口，让 option 闭包持有的 View/Activity 更早可 GC。原厂未做（`TaskStateHelper.java:147-154`），lib 是补强的好机会。对应 C-11，2 行。
+> **⚠️未修复（文档项：README/USAGE 未补"Activity 生命周期契约"小节）**
 7. **【可选】文档补一节「Activity 生命周期契约」**：明示 demo 必须重写 `onDestroy` 才能正确收尾，否则 GC 兜底；明示 `AnimationControlThread` 永不 quit；明示 `ANIM_EXECUTOR` 的 shutdown() 抛 UnsupportedOperationException。文档化的契约比代码契约更稳。
+> **✔️保持简化（AsyncValueAnimator.dispose() 无调用方；ValueAnimator 生命周期 + GC 足够）**
 8. **【可选】`AsyncValueAnimator` 暴露 `dispose()`**：一次性 cancel + clearListeners + 切断 executor 引用——给"用完即弃"的 animator 一个明确结束点，避免依赖 ValueAnimator 自身的 GC。对应 §3-4，~5 行。
 
 ### 4.2 建议保持简化
 
+> **✔️保持简化**
 1. **`TaskStateHelper.globalListeners` CopyOnWriteArrayList + binder 任务事件分发**：与 system_server 的 `addTaskListener` 强绑定（`TaskStateHelper.java:255`），demo 无对应事件源；保留"超时兜底 + 手工 dispose"语义足够演示价值，对应 §B-8。
+> **✔️保持简化**
 2. **`AnimationRecord` 整套（animationId 单调计数、AnimationRecordViewInfo、IconLayer 复用）**：与"独立动画线程"演示主题正交，且依赖 `IconLayerHolder` / `IconSurfaceManager` 等大量 launcher 内部类型，硬塞会把 demo 拖入 launcher 业务建模。对应 §C-7。
+> **✔️保持简化**
 3. **`Launcher.onStop` 的 folder/stack `cancelRunningAnimations`、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags`、`AnimSeqTimeStamp.resetLastLaunchTaskTime`**：都是 launcher 业务专用回调，lib 不引入这些类即用不上。
+> **✔️保持简化**
 4. **`LooperExecutor.getLooper / getHandler / getThread / setThreadPriority`**：原厂用这些方法从 executor 拿到 Handler 来做 postDelayed / setThreadPriority——lib 没有调用方需要这些访问器，postAsync 已经走 handler。对应 C-2。
+> **✔️保持简化**
 5. **`OplusLooperExecutor.executeBlockWait`**：v4 §9.3 点名的主线程 5s 硬等 ANR 风险，属"原厂自己也不该这么写"。**不要回移**。
+> **✔️保持简化**
 6. **MultiDynamicAnimation 的 `mEndListeners` / `mUpdateListeners` 在 end 后 clear**：等真正回移 MultiDynamicAnimation 链路时再补，目前 lib 无对应实现。
+> **✔️保持简化**
 7. **`AsyncAnimCallbacks.clearListeners` 增加"压缩 null 槽"语义**：当前 `getListeners()` 已在派发前压缩（`AsyncAnimCallbacks.kt:56-59`），重复优化收益小。
 
 ---
@@ -165,4 +190,16 @@
 
 - **0e8a472** — runCatching 替代 try/catch
 
+
+
+逐条判定（批次 1 逐项状态，标注位置见正文）：
+- **③-#1（shutdown 契约）** — ⚠️未修复（2 行 API 形式契约；误用面比 doc 所述更小）
+- **③-#2（timeout listener 孤儿）** — ✔️保持简化（无事件源）
+- **③-#3/#4（集中清理 / onDestroy）** — ⚠️未修复（Demo6/10/11 局部 onDestroy 已覆盖）
+- **③-#5/#9（listener 引用）** — ✔️保持简化（与原厂同构）
+- **③-#6/#10（MultiDynamicAnimation 时序）** — ⚠️未修复（随回移处理）
+- **③-#7（ThreadLocal 生命周期）** — ✔️保持简化（永不 quit 有意设计）
+- **③-#8（AnimationRecord）** — ✔️保持简化（场景外）
+- **§④-4.1 表** — 1/2/3/7 ⚠️未修复，4/5/6/8 ✔️保持简化（见正文）
+- **§④-4.2 表** — 全部 ✔️保持简化（清单即保持简化）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

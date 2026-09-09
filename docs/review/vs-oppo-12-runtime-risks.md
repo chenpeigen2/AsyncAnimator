@@ -101,25 +101,36 @@
 
 ### A. 极严重（语义丢失或语义反转）
 
+> **状态：⚠️未修复（缺 TaskStateHelper 全局事件总线 + 事件生产者；仅超时兜底可跑——cdd125e 补兜底定时器；事件型即刻放行缺失；doc-03 §3-d 同判）**
 1. **（bug）`TaskStateChangeTimeOutListener` 缺全局事件总线 + type-specific callback**（§2-C6/C7）。原厂 `TaskStateHelper` 是全局单例，**`dispose()` 必须 `removeGlobalTaskStateChangeListener(this)`**，否则进程级 listener 列表堆积；同时原厂有 3 个独立 callback（`onLandScapeSceneExit`/`onTransitionFinish`/`onTaskListenerReleased`）按 type 触发，lib 合并成单一 `onTimeOut(type, duration)` 且无人调用。**事件型放行整条路径在 lib 里是死路**——`delayStartActivityIfNeed` 期望"事件来时立即放行"的语义消失，只剩超时兜底。真机表现：转场收尾时手势快速触发 startActivity，lib 会等到 listener 内部的 timeout（1500ms / 100ms / 2500ms）才放行，**至少多等一个超时窗口**。
+> **状态：⚠️未修复（超时 postDelayed 仍绑主线程；URGENT_TRANSACTION_EXECUTOR 无 lib 对应物，需独立 HandlerThread；主线程满载时兜底推迟）**
 2. **（bug）`TaskStateChangeTimeOutListener` 监听器绑到主线程而非 `URGENT_TRANSACTION_EXECUTOR`**（§2-C5）。原厂 `TaskStateHelper.java:128` 用 `URGENT_TRANSACTION_EXECUTOR`（-8 优先级，独立线程）；lib `TaskStateChangeTimeOutListener.kt:25` 用 `Looper.getMainLooper()`。**主线程满载时 timeout 推迟**——而且事务线程选择不是随意的：与 transaction 提交并发（避免 transaction 完成前超时触发），主线程被业务任务挤占是常态。原厂测过这个时序，lib 直接换成主线程等于放弃了原厂的隔离设计。
+> **状态：⚠️未修复（cdd125e 已修 else-if 互斥 + 清理段——doc-03 §3-b 判 ✅部分修复；100ms 时间窗 ≠ 运行态判定仍存，需 demo 化运行态单例）**
 3. **（bug）`delayStartActivityIfNeed` 第三层用时间窗代替运行态**（§2-C4）。`AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()` 是**运行态查询**（续行动画在跑），lib 用 `uptimeMillis < maxTime`（100ms 内窗口）。两者不等价：① 续行提前结束但仍在窗口内 → lib 错误挂起；② 续行启动延迟超过 100ms → lib 不会挂起。原厂意图："续行期间 startActivity 推迟"——lib 改成"续行 100ms 窗口内推迟"。**可能 race-condition 触发窗口外的 startActivity**。
 
 ### B. 严重（语义弱化但仍可能触发）
 
+> **状态：⚠️未修复（缺 !isTablet 限定，需宿主注入平板判定；demo 手机场景不触发）**
 4. **`delayStartActivityIfNeed` 第一层漏 `!isTablet()`**（§2-C2）。平板 landscape 场景下原厂不挂起，lib 会挂起——**平板用户体验分支行为反转**。D6（StateMachineActivity）若在平板模拟器跑会得到错误轨迹。
+> **状态：⚠️未修复（缺搜索入口三 source 判定，~10 行 + 注入接口；demo 不用搜索 intent 不触发）**
 5. **`delayStartActivityIfNeed` 第二层漏 `isSpecialAppScene(intent)`**（§2-C3）。搜索入口场景原厂等 transition finish，lib 直接放行——**搜索框可能闪一下再启动 app**。D6/D9 模拟时若用搜索入口 intent 会触发。
+> **状态：⚠️未修复（101/600ms 闸门属手势输入层，demo 手势链路 stub——doc-03 §3-f 判"有意简化"）**
 6. **`appLaunchAnimStartOrEnd` 缺 600ms `MESSAGE_RELEASE_TOUCH` 闸门**（§2-C1）。原厂 `forbidTouch()` 通过 `mOpenWindowAnimRunning` 读这个状态——动画期间禁止输入。lib 完全没有 `forbidTouch()` 的 override（`DefaultAnimationController.forbidTouch` 走 no-op，`DefaultAnimationController.kt:33-49`）。**作为可移植组件时该保护缺失，但库内 demo 因手势链路也是 stub 不触发**。
+> **状态：⚠️未修复（默认值仍 1/0；改 -1 需同步消费逻辑，demo 无 -1 消费方——doc-03 §3-g 同判）**
 7. **`AnimationFeatureHelper` 默认值 1/0 而非 -1**（§2-C8）。`-1` 是 RUS 未下发态，1/0 是已下发态。lib 把"未配置"和"配置为 1/0"混在一起，**消费方按 -1 走独立分支的代码路径全失效**。`setInterruptThreshold` 在 isAdaptiveAnimation 时的 -1 → 1.0f 钳制（`AnimationFeatureHelper.java:126-128`）也无对应。
 
 ### C. 中等（行为差异但有边界）
 
+> **状态：✅已修复（215ecb5：Scheduled/HandlerTickScheduler 已删；默认即 ChoreographerTickScheduler——ThreadLocal 每线程一份，帧回调落所属线程）**
 8. **`ScheduledTickScheduler` 不满足 per-thread 帧语义**（§2-B3）。v4 §8.1 的核心要求是"动画在哪个线程 start，帧回调就在哪个线程 tick"。lib 默认 `ScheduledTickScheduler` 跑在守护线程 `AsyncAnimator-Tick`，与 start 线程无关；只有显式 `installThreadScheduler(HandlerTickScheduler)` 的路径（`AnimationControlThread.onLooperPrepared`）满足。**任何依赖"帧回调线程 == start 线程"的 demo 断言在默认配置下失败**——D3（AsyncCrossThread）若不显式装 scheduler，会观察到帧回调在 `AsyncAnimator-Tick` 而非启动线程。
+> **状态：✅已修复（dbde195/215ecb5：帧源改公开 Choreographer 真 VSYNC、自适配帧率；SF-vsync 残余差异为有意简化 §2-B5）**
 9. **`sf-vsync vs app-vsync` 帧相位差异**（§2-B5）。原厂 launcher.anim 装 `SfVsyncFrameCallbackProvider`，代码推断帧相位对齐 SurfaceFlinger 合成时刻（`animation-thread-analysis-v4.md` §3 路径 C）；真机 trace 在该 MTK 设备上**实测**两线程都同相位（`animation-trace-validation.md` §5），SF-vsync 在该设备未体现。lib `HandlerTickScheduler` 用 `postDelayed(16ms)` wall-clock 自走，**无 vsync 对齐**——精度差一档（实测帧间隔抖动 ±0.4ms，60/90/120Hz 屏帧率硬编码 16ms 不自适应）。**性能演示可量化对比但不可与原厂互推**。D10 直方图会观察到主线程路径（Choreographer）与 launcher.anim 路径（postDelayed）帧间隔抖动特征不同。
 
 ### D. 轻（演示场景下不触发）
 
+> **状态：✅已修复（60bd048：AnimationSeqHelper 仅 pair 为空或 controller 变更才更新——AnimationSeqHelper.kt:487-493）**
 10. **`updateNextFinishSeqIdIfNeed` 无条件覆盖**（§2-C9）。D7（SeqIdDedupActivity）若重复调用 `updateNextFinishSeqIdIfNeed(sameController)`，lib 每次 seqId +1，原厂同 controller 不会变。**只影响消费方按"seqId 单调递增代表新轮"做去重的场景**——D7 当前 demo 未做这类断言。
+> **状态：✔️保持简化（纯日志装饰；demo 状态机路径由 animState getter 断言，无业务日志设施）**
 11. **`addRecentsAnim` 状态转移无 "Error animation state" 日志**（§2-C10）。D6 的状态转移断言会观察到 else 分支命中但无日志。**纯可观测性差异**。
 
 ---
@@ -128,28 +139,42 @@
 
 ### 值得补进 lib 的（性价比高、且直接消除 bug 级硬伤）
 
+> **状态：⚠️未修复（~60-100 行：全局总线 + handler 重选 + 三 callback；同 §③-1/2 判定）**
 1. **`TaskStateChangeTimeOutListener` 三件套重构**（§3-A1/A2，对应 §2-C5/C6/C7）：
    - 改用 `URGENT_TRANSACTION_EXECUTOR` Handler（或 demo 自己造一个独立 HandlerThread handler，命名 `anim-timeout-listener`）；
    - 在 `lib` 内部构造一个 demo 级的"全局事件总线"（`TaskStateHelper` 的简化版：单例 + 三个 type 的 listener 注册表 + 三种事件触发方法）；
    - 把现 `onTimeOut(type, duration)` 改成 `onLandScapeSceneExit/onTransitionFinish/onTaskListenerReleased` 三个独立方法（或保留单 API 但事件来时主动调），并在 `delayStartActivityIfNeed` 的三层里：事件匹配 → 调 listener 触发 option + dispose；超时兜底 → 走 `postDelayed`。这是 review 03 §4.1-7 的延伸，但要把"事件触发"那条路修通而非只留超时。
+> **状态：⚠️未修复（需运行态单例 + 平板配置注入；同 §③-3/4/5 判定）**
 2. **补 `isSpecialAppScene(intent)` + `isTablet()` + `isAppSwipeToRecentContinuationRunning()` 三条件**（对应 §3-A3/B4/B5）。需要：
    - `isTablet()` → 注入 `DisplayController` 或读 `Configuration.smallestScreenWidthDp >= 600`；
    - `isSpecialAppScene(intent)` → demo 化判定（intent 是否带搜索 schema、是否含 `BranchSearchHelper` 等），保留 stub 接口供真实业务实现注入；
    - `isAppSwipeToRecentContinuationRunning()` → demo 化单例（一个 `@Volatile var isRunning: Boolean` + 内部状态机），`setAppToOverviewContinuationState(true)` 时设 true、动画结束或 100ms timeout 时设 false。这样 `delayStartActivityIfNeed` 才会按"运行态"而非"时间窗"决策。
+> **状态：⚠️未修复（同 §③-7：改 -1 需同步消费逻辑）**
 3. **`AnimationFeatureHelper` int flag 默认值改回 -1**（对应 §3-B7）。零成本；保留"未下发"三态语义，业务侧按 -1 走独立分支的代码路径恢复。
+> **状态：⚠️未修复（同 §③-6：手势输入层，demo 无链路）**
 4. **补 `appLaunchAnimStartOrEnd` 的 101 消息闸门**（对应 §3-B6）。补一个 `mOpenWindowAnimRunning` 字段 + 内部 `mHandler` + 101 消息的 `removeMessages/sendEmptyMessage/sendEmptyMessageDelayed(101, 600L)`，并 override `forbidTouch()` 返回 `mOpenWindowAnimRunning`。让组件可移植时输入层能感知"打开动画期间禁止上滑"窗口。
+> **状态：✅已修复（60bd048：条件更新，10 行内已做）**
 5. **修 `updateNextFinishSeqIdIfNeed` 语义**（对应 §3-D10）：仅当 pair 为空或 controller 变更时更新。对齐原厂 `AnimationSeqHelper.java:123-127`，10 行内。
+> **状态：✔️保持简化（纯日志装饰，同 §③-11）**
 6. **补 `addRecentsAnim` 的 "Error animation state" 日志**（对应 §3-D11）：1 行，让 demo 状态机异常路径可观测。
+> **状态：❌已过期（215ecb5：类已删，仅剩 ChoreographerTickScheduler，无需警告注释）**
 7. **`ScheduledTickScheduler` 加 typealias 警告注释**（对应 §3-C8）：在 `ScheduledTickScheduler` 类注释里明确写"本类不满足 v4 §8.1 per-thread 帧语义，仅用于 JVM 单元测试；演示场景请用 `AnimationControlThread` + `HandlerTickScheduler`"——把"默认不安全"变成显式契约。
 
 ### 建议保持简化（无运行时语义影响或属于合理裁剪）
 
+> **状态：✔️保持简化（dbde195 公开 Choreographer 已对齐 VSYNC；SF @hide 不反射）**
 1. **`SfVsyncFrameCallbackProvider` 仍不移植**（§2-B1）：框架 @hide API，且真机 trace 证明 SF-vsync 在该 MTK 设备**实测未生效**（`animation-trace-validation.md` §5）——保留 `HandlerTickScheduler` + `TickScheduler` 接口可替换设计是正确取舍。
+> **状态：✔️保持简化（OPPO 私有 uifirst 服务；setThreadPriority(-19) 兜底已对齐优先级）**
 2. **`LauncherBooster.setUxThreadValue` 不移植**（§2-B2）：纯 OPPO 私有调度增强，无公开等价物；`Process.setThreadPriority(-19)` 兜底已对齐优先级。
+> **状态：✔️保持简化（executeBlockWait 是 v4 §9.3 点名 ANR 风险；其余依赖私有 API）**
 3. **`OplusLooperExecutor` 四扩展（特别是 `executeBlockWait`）不移植**（§2-B4）：`executeBlockWait` 是 v4 §9.3 点名 ANR 风险；其余依赖私有 API。
+> **状态：✔️保持简化（与"动画线程方案"演示主题无关）**
 4. **14 个事务/加载 executor 不全量复刻**（§2-B7）：与"动画线程方案"演示主题无关。
+> **状态：✔️保持简化（helper 业务不复刻可行；注意 §③-3 的运行态判定缺口仍标 ⚠️未修复）**
 5. **`AppSwipeToRecentContinuationHelper` 不引入运行态判定**（§3-A3 提到的运行态查询）——若该 helper 业务复杂，lib 内只做 demo 化单例即可，不复刻真实业务逻辑（review 03 §4.2-3 已有此意）。
+> **状态：✔️保持简化（launcher 专属业务，与演示库定位无关）**
 6. **9 个 OPPO 私有定制 helper 不复刻**（review 02 §2.2 / review 03 §2.2）：multi-app merge、按键拦截、预启动等 launcher 专属业务，与演示库定位无关。
+> **状态：✔️保持简化（dbde195 公开 Choreographer 已覆盖）**
 7. **Choreographer / `SfVsyncFrameCallbackProvider` 不做反射硬挂**（review 04 §4.2-1 已说明）。
 
 ---
@@ -186,3 +211,8 @@
 - **dbde195** — launcher.anim 帧源已对齐公开 Choreographer（真 VSYNC）
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+批次 2 逐条复核（2026-09-09）——按条目名与状态：
+- §③-1（TaskStateChangeTimeOutListener 事件总线）→ ⚠️未修复；§③-2（超时绑主线程）→ ⚠️未修复；§③-3（时间窗 vs 运行态）→ ⚠️未修复（cdd125e 已修 else-if 互斥）；§③-4（isTablet）→ ⚠️未修复；§③-5（isSpecialAppScene）→ ⚠️未修复；§③-6（101/600ms 闸门）→ ⚠️未修复；§③-7（AnimationFeatureHelper 默认值）→ ⚠️未修复；§③-8（per-thread 帧语义）→ ✅已修复（215ecb5）；§③-9（sf-vsync）→ ✅已修复（dbde195/215ecb5）；§③-10（seqId 条件更新）→ ✅已修复（60bd048）；§③-11（UNKNOWN 日志）→ ✔️保持简化
+- §④ 值得补进 1-4 → ⚠️未修复；5 → ✅已修复（60bd048）；6 → ✔️保持简化；7 → ❌已过期（215ecb5）
+- §④ 建议保持简化 1-7 → ✔️保持简化

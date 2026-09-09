@@ -97,6 +97,7 @@
 
 按"可能导致语义不同"的严重度排序：
 
+> **✔️保持简化（MultiDynamicAnimation 整组未移植为既定 demo 简化（review 04 §4.2-2 / review 11 §4.2-1 已建议保持）；androidx SpringAnimation 承担单弹簧语义，demo 无 requestEnd 消费方）**
 1. **（高 / bug 级）`requestEnd` 下一帧生效语义缺失——`MultiDynamicAnimation` 整组未移植**（§2.3-1/2/3）。  
    - 原厂 `requestEnd(z)` → 下一帧 `doAnimationFrame` 才停帧循环 + fire listener，业务侧在 listener 中可以读到 spring 的最终 value/velocity（因为 spring 在这一帧完成了最后的积分）。  
    - lib `AsyncSpringAnim.cancel()` → 立即清回调，listener fire 时**spring 已停止**——业务侧读到的 value/velocity 是停止前的快照，不是最终值。  
@@ -104,6 +105,7 @@
    - **修复成本**：需要写完整的 `MultiDynamicAnimation` + `SpringHolder` + `SpringForce` + `SpringAnimReflectUtils` 4 件套，~500+ 行 Kotlin（详见 §4.1-1）。**性价比低**，建议保持缺失（review 04 §4.2-2 已建议）。  
    - **若必需要**：用 ~50 行写一个"最小可用的 MultiDynamicAnimation"（只保留 `mRunning/mEndRequest/mCancelRequest/mSpringHolderMap + addSpringHolderItem/start/requestEnd/doAnimationFrame`，不带 `applyToAllSpringHolder` 聚合、不带 SpringHolder pendingPosition 半步分裂）也能 cover 80% 业务。
 
+> **✔️保持简化（CustomRectFSpringAnim 保持占位句柄（937dd23 后仍 18 行）；demo 无 6 自由度 RectF 场景；review 11 §4.2-1 已建议保持）**
 2. **（高 / bug 级）`CustomRectFSpringAnim` 6 自由度独立 stiffness/damping 缺失**（§2.3-4）。  
    - 原厂 6 个独立 SpringHolder × 6 个独立 SpringForce，可以表达"centerX 欠阻尼 + width 临界阻尼 + alpha 延迟启动"等组合。  
    - lib 用 androidx 单一 SpringAnimation，**每个 spring 是独立的 SpringAnimation 实例**（不是共享帧回调），所以技术上也可以"6 个独立 stiffness/damping"——但**没有共享帧回调的原子性**（6 个独立 `start()` 调用的时间差 + 6 个独立 Choreographer 注册 → 不同 spring 在不同 vsync 上推进）。  
@@ -111,47 +113,56 @@
    - **修复成本**：必须写 `MultiDynamicAnimation`（共享帧回调）+ `CustomRectFSpringAnim` 6 字段组（812 行 Kotlin），~800+ 行。**性价比极低**，建议保持缺失（review 11 §4.2-1 已建议）。  
    - **替代方案**：用 `SceneSpring.kt`（demo 已有）的 6 实例在同一 `SceneClock` 帧回调里推进——但 `SceneSpring` 是单 spring，**没有 velocityThreshold/pendingPosition 半步分裂**，Demo 4 用的话精度差。
 
+> **⚠️未修复（AsyncSpringAnim 未建模 EndReason 三态（doc §4.1-2 建议 ~20 行，未实施）；androidx OnAnimationEndListener 的 canceled 布尔已能区分 cancel/自然结束；skipToEnd 归入取消语义；demo 无按 reason 分支的消费方）**
 3. **（中）`requestEnd` 与 `cancel` 的语义混淆**（§2.3-3）。  
    - 原厂区分 `requestEnd(true)`（cancel）与 `requestEnd(false)`（自然结束），通过 `OnAnimationEndListener.onAnimationEnd(this, canceled)` 的 `canceled` 参数告诉业务。  
    - lib `AsyncSpringAnim.cancel()` 总是 `canceled=true`；`skipToEnd()` 在 androidx 路径上等价于"立刻跳到 finalPosition"（不是"自然结束"）。  
    - **业务可观察后果**：依赖 `canceled` 标志做不同业务的代码（典型如"cancel 后恢复前一个动画 / 自然结束后清理 listener"）在 lib 上无法区分。  
    - **修复成本**：仅改 `AsyncSpringAnim`：增加 `end(reason: EndReason)` 方法 + 在 `addEndListener` 处根据 reason 注入 `canceled` 标志。~20 行。**性价比高**，建议回移。
 
+> **❌不成立/已过期（grep demo/src：OPEN_FROM_HOME 仅 Demo9 banner 文案，无 AnimType.OPEN_FROM_HOME 调用点；"Demo9 编译失败"说法不成立；3 值枚举为 demo 有意定案（USAGE.md:118））**
 4. **（中）`CustomRectFSpringAnim.AnimType` 枚举不闭合**（§2.3-6）。  
    - lib 3 值 vs 原厂 7 值，缺失 `OPEN_FROM_HOME / REMOTE_CLOSE_TO_HOME / REMOTE_CLOSE_TO_HOME_ASSISTANT / GESTURE_TO_DRAG / SWIPE_TO_HOME_ASSISTANT / REVERSE_TO_OPEN`。  
    - **业务可观察后果**：Demo 9（OPEN_FROM_HOME）调用 `CustomRectFSpringAnim(animType = OPEN_FROM_HOME)` 在 lib 上编译失败——Demo 9 必须改成 `SWIPE_TO_HOME`（语义偏差）。review 11 §②C-1 + §3-1 已点名。  
    - **修复成本**：5 行（枚举补齐），**性价比最高**，建议回移。
 
+> **✔️保持简化（androidx 内部已实现半步分裂，结果等价；doc §3-5 自判修复成本 0 保持现状）**
 5. **（中）`mPendingPosition` 半步分裂积分实现路径不同**（§2.3-5）。  
    - 原厂在 `SpringHolder.updateValueAndVelocity` 拆 deltaT/2；lib 用的 androidx `SpringAnimation.updateValueAndVelocity` 也在内部拆。  
    - **结果等价但行为细节可能不一致**：androidx `SpringAnimation.animateToFinalPosition` 设 `mPendingPosition` 后会在**下一个** `updateValueAndVelocity` 调时触发分裂；原厂 OPPO fork 的 `SpringAnimation.java:64-71` 也是同样行为。**两种路径应该等价**——但若 androidx 版本升级时改了实现（曾经 androidx 在 1.0 → 1.1 时改过 `mPendingPosition` 的处理），lib 与原厂的同步性可能漂移。  
    - **修复成本**：0（保持现状即可），无需回移。
 
+> **✔️保持简化（androidx setMinimumVisibleChange 内部同公式；doc §4.2-7 建议保持；未审计出差异）**
 6. **（中）`getValueThreshold = mMinVisibleChange * 0.75` 在 lib 端未显式控制**（§2.2-8）。  
    - 原厂 `SpringHolder.getValueThreshold` 显式把 threshold 设成 `minimumVisibleChange * 0.75`，通过 `SpringAnimReflectUtils.setValueThreshold` 反射写入 `SpringForce.mValueThreshold`（因为 `setValueThreshold` 是 public 但 `mValueThreshold` 是 `protected`）。  
    - androidx `SpringAnimation.setMinimumVisibleChange`（公开 API）也用类似公式，但**公开 API 文档**未明确乘 0.75——审 androidx 源码确认。  
    - **业务可观察后果**：若原厂与 androidx 在 threshold 上有微小差异，**atRest 判定时机不同**——同一弹簧可能在原厂"恰好 atRest"但在 lib"仍在运动"，导致取消/结束时机偏移 1 帧。  
    - **修复成本**：0（保持现状）。若要精确对齐，需要审计 androidx `SpringAnimation` 源码并显式调用内部 setter。
 
+> **✔️保持简化（依赖 MultiDynamicAnimation 本体（不存在）；doc §4.2-3 建议保持）**
 7. **（中）`commitAnimationFrame` 公开扩展点缺失**（§2.3-8）。  
    - 原厂 `MultiDynamicAnimation.commitAnimationFrame(long j8)` 是 platform `DynamicAnimation` 兼容入口，允许外部以"提交一帧"的方式驱动动画。lib 完全没有这个入口。  
    - **业务可观察后果**：调用方若想用 `MultiDynamicAnimation` 但又用 platform `DynamicAnimation` 的接口（典型如测试桩或自定义 vsync 源），需要 cast 到 `DynamicAnimation` 才能调 `commitAnimationFrame`。lib 没有这条路径。  
    - **修复成本**：~5 行（在 `MultiDynamicAnimation` 加一个 `public fun commitAnimationFrame(frameTimeMs: Long) = doAnimationFrame(frameTimeMs)`），但前提是先把 `MultiDynamicAnimation` 写出来。**性价比低**，建议保持缺失。
 
+> **✔️保持简化（依赖 MultiDynamicAnimation（不存在）；纯 API 风格差异；doc §4.2-6 建议保持）**
 8. **（低）`MultiDynamicAnimation.mSpringHolderMap` 改用 `HashMap<String, SpringHolder>` 而非 `List<SpringHolder>`**（§2.3-7）。  
    - 原厂用 String key（每个 spring 自带 `mKey`）；lib 用单 spring 实例。  
    - **业务可观察后果**：若业务要按 name 查询 spring（典型如"暂停名为 'centerX' 的 spring"），原厂可以 `mSpringHolderMap.get("centerX").requestEnd()`；lib 必须持有所有 spring 实例的引用。**无语义差异，仅 API 风格**。  
    - **修复成本**：若要回移 SpringHolder，需要它持有 `mKey` + 提供 getter。~5 行。
 
+> **✔️保持简化（doc §4.2-4 建议保持：Trace.traceBegin/End 已覆盖 trace 维度）**
 9. **（低）`LogUtils.i + TAG` 调试埋点缺失**（§2.3-9）。OPPO 在每个生命周期方法打日志，lib 完全静默。  
    - **业务可观察后果**：生产环境排查问题时，调用方在原厂可以 `adb logcat -s MultiDynamicAnimation` 看动画生命周期；lib 无 log 可看。  
    - **修复成本**：~10 行（每方法加一行 `Log.i`）。**性价比低**，lib 用 `Trace.traceBegin/End` 已覆盖 trace 维度。
 
+> **✔️保持简化（androidx SpringForce 同值 62.5，无漂移；doc 自判无可观察差异）**
 10. **（提示 / 文档一致性）`SpringForce.VELOCITY_THRESHOLD_MULTIPLIER = 62.5d`**（`SpringForce.java:14`）是 OPPO fork 特定魔数。  
     - androidx `SpringForce` 用同样值（巧合还是 OPPO 抄过来的？需要审 androidx 源码）。  
     - **若 OPPO 升级这个魔数（如改成 100.0），lib 与原厂会立刻漂移**。当前值一致，无可观察差异。  
     - **修复成本**：0（保持现状）。若写自己的 `SpringForce`，沿用 62.5d 即可。
 
+> **✔️保持简化（OPPO 侧死代码残留；lib 无反射层需求，无需回移）**
 11. **（提示 / 已知无影响）`@Metadata` 中残留的废弃反射字段**（§2.3-4）。  
     - `sUpdateValuesMethod / sMassStateClass / sMassStateValueField / sMassStateVelocityField / sSetValueThresholdMethod`（`SpringAnimReflectUtils.java:18-23`）已不再使用，仅作为 Kotlin metadata 残留。  
     - **业务影响 0**。lib 完全不需要这个工具类，无需"回移"。
@@ -162,14 +173,17 @@
 
 ### 4.1 值得补进 lib 的（按性价比排序）
 
+> **❌不成立/已过期（无 7 值调用点（见 §3-4 证据）；CustomRectFSpringAnim 为 internal 句柄，demo 仅用 SWIPE_TO_HOME；补齐属未来真实 spring 回移附带）**
 1. **补 `CustomRectFSpringAnim.AnimType` 7 值枚举**（§3-4）。~5 行（加 4 个 enum 值：`OPEN_FROM_HOME / REMOTE_CLOSE_TO_HOME / REMOTE_CLOSE_TO_HOME_ASSISTANT / GESTURE_TO_DRAG / SWIPE_TO_HOME_ASSISTANT / REVERSE_TO_OPEN`）。**性价比最高**——review 11 §3-1 + 本区域 §3-4 都点名；Demo 9（OPEN_FROM_HOME）必须改枚举才能编译。
 
+> **⚠️未修复（未实施（无 EndReason/enum endImmediately）；androidx canceled 布尔已覆盖主要两态；demo 无区分消费方）**
 2. **改 `AsyncSpringAnim.cancel/skipToEnd` 的语义区分**（§3-3）。~20 行：
    - 加 `enum class EndReason { CANCELLED, SKIPPED, NATURAL }`
    - `cancel()` → 派发到 anim thread 调 `real.cancel()`，`addEndListener` 处把 `canceled=true`
    - 新增 `endImmediately()` 方法 → 调 `real.skipToEnd()`，`addEndListener` 处根据是否主动 skip 注入 `canceled=false`
    - 业务侧根据 `canceled` 标志区分行为（典型如"cancel 后恢复 / 自然结束清理 listener"）
 
+> **⚠️未修复（未实施 ~80 行；demo 无多弹簧共享帧场景；937dd23 已用单 androidx spring 覆盖 Demo11）**
 3. **若要演示"多弹簧共享帧回调"语义**（§3-2），写最小可用版 `MultiDynamicAnimation`（§3-1 提到 ~50 行）。仅保留：
    - 字段：`mRunning: Boolean`、`mEndRequest: Boolean`、`mCancelRequest: Boolean`、`mLastFrameTime: Long`、`mSpringHolderMap: HashMap<String, SpringHolder>`
    - 方法：`addSpringHolderItem(holder)`、`start()`、`requestEnd(cancel: Boolean)`、`doAnimationFrame(frameTimeMs: Long): Boolean`、`endAnimationInternal(canceled: Boolean)`
@@ -179,24 +193,34 @@
 
 ### 4.2 建议保持简化的（明确不补）
 
+> **✔️保持简化（MultiDynamicAnimation+SpringHolder+SpringForce fork+SpringAnimReflectUtils ~1000+ 行，与动画线程主线无关；review 04/11 已建议）**
 1. **不补完整 4 件套**（§3-1, §3-2）——`MultiDynamicAnimation` + `SpringHolder` + `SpringForce` + `SpringAnimReflectUtils` 共 ~1000+ 行 Kotlin，**与"动画线程方案"主线无关**（属于"事务写表层"）。androidx `SpringAnimation` + `SpringForce` 已能 cover 90% 弹簧物理；androidx 的 `mPendingPosition` 半步分裂、`getValueThreshold * 0.75` 阈值等细节虽然实现路径不同但结果等价。review 04 §4.2-2 + review 11 §4.2-1/2 已建议保持简化。
 
+> **✔️保持简化（launcher 专属 UI 层，demo 无 SurfaceControl 路径）**
 2. **不补 `CustomRectFSpringAnim` 6 自由度 RectF 弹簧的 SurfaceControl 事务写层**（812 行 Kotlin）——`OnAnimUpdateListener.onUpdate(rectF, progress, radio, radius, alpha)` → `SurfaceControl.Transaction` 操作属于 launcher 专属 UI 层，与"动画线程方案"主线无关。review 11 §4.2-1 已建议。
 
+> **✔️保持简化（lib 不在 platform DynamicAnimation 树内）**
 3. **不补 `commitAnimationFrame` 公开扩展点**（§3-7）——仅当外部需要用 platform `DynamicAnimation` 接口驱动时才有用，lib 不在 platform `DynamicAnimation` 树内。
 
+> **✔️保持简化（Trace.traceBegin/End 已够）**
 4. **不补 `LogUtils.i + Debug.getCallers(N)` 调试埋点**（§3-9）——OEM 调试设施，lib 用 `Trace.traceBegin/End` 已足够。
 
+> **✔️保持简化（历史包袱，lib 不需要反射路径）**
 5. **不补 `SpringAnimReflectUtils` 整文件**（§2.3-4 / §2.3-11）——历史包袱，lib 不需要反射路径。
 
+> **✔️保持简化（纯 API 风格差异，无语义影响）**
 6. **不补 `mSpringHolderMap` 的 String key 查询 API**（§3-8）——纯 API 风格差异，无语义影响；lib 用 List 索引已够。
 
+> **✔️保持简化（androidx setMinimumVisibleChange 内部同式；未审计出差异）**
 7. **不显式控制 `getValueThreshold = mMinVisibleChange * 0.75` 常量**（§3-6）——androidx 公开 API 的 `setMinimumVisibleChange` 内部应该用同样的乘 0.75 逻辑（需审计）。若审计后确认一致，则无需显式控制；若不一致，**单独修复**：~3 行（在 lib `AsyncSpringAnim` 中显式调用 `real.spring.setValueThreshold(real.minimumVisibleChange * 0.75)`）。
 
 ### 4.3 文档一致性建议
 
+> **⚠️未修复（USAGE.md 仍有点名缺口（已有"句柄占位/907 行未复刻"间接说明，未明示多弹簧共享帧限制；1-2 行文档缺口，低优先））**
 - `docs/USAGE.md` 应该明示"lib 不支持 MultiDynamicAnimation 多弹簧共享帧回调"——目前没有这层文档；调用方在写 6 自由度弹簧动画时会被坑（6 个独立 SpringAnimation 在不同 vsync 上推进 → 视觉抖动）。
+> **⚠️未修复（USAGE §AsyncSpringAnim（97-109 行）描述 marshal 但未写 cancel 立即停帧语义（1-2 行文档缺口，低优先））**
 - `docs/USAGE.md` §AsyncSpringAnim 应该明示 `cancel()` 立即停帧循环而非"下一帧生效"——调用方按原厂语义写"cancel + 等一帧读 final value"的代码会失效。
+> **✅已修复（USAGE.md §CustomRectFSpringAnim 现列出 3 值枚举：SWIPE_TO_HOME/RECENTS_TRANSITION/APP_LAUNCH（:117-118），该文档缺口已不存在；42882ff/e62dbff 后 USAGE 已含 §AsyncSpringAnim 与句柄说明）**
 - `docs/USAGE.md` §CustomRectFSpringAnim 应该明示 AnimType 枚举仅 3 值，需要 7 值的业务需要 fork 自己的枚举。
 
 ---
@@ -266,3 +290,11 @@
 - **937dd23** — androidx SpringAnimation 替代 MultiDynamicAnimation 缺失部分
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+按条目补记：
+- **§3-1 / §3-2** — ✔️保持简化（MultiDynamicAnimation/CustomRectFSpringAnim 6-DOF 未移植，review 04/11 已建议）
+- **§3-3** — ⚠️未修复（EndReason 三态未建模，~20 行，无消费方）
+- **§3-4** — ❌不成立/已过期（无 AnimType.OPEN_FROM_HOME 调用点，Demo9 编译失败说法不成立）
+- **§3-5 / §3-6 / §3-7 / §3-8 / §3-9 / §3-10 / §3-11** — ✔️保持简化（androidx 等价或 OPPO 死代码/doc 自列）
+- **§4.1-1** — ❌不成立/已过期（见 §3-4）；**§4.1-2 / §4.1-3** — ⚠️未修复（未实施）
+- **§4.2-1..7** — ✔️保持简化（doc 自列）
+- **§4.3-1 / §4.3-2** — ⚠️未修复（USAGE 文档缺口 1-2 行）；**§4.3-3** — ✅已修复（42882ff 已列 3 值枚举）

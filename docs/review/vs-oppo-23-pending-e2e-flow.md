@@ -100,6 +100,7 @@
 
 ## ③ 行为差异风险点（按严重度排序）
 
+> **状态：✔️保持简化（setFloat 4 参显式 from 等价 3 参；60bd048 后已走 ObjectAnimator+add()；仅存 add() 前读 duration 的 API 说谎边缘，demo 无影响）**
 ### R1. lib `setFloat` 用 4-参 `ObjectAnimator.ofFloat(from, to)` vs 原厂 3-参隐式 from = current（语义等价 + 顺序差异）
 **严重度：低。** 原厂 `setFloat` (`:127-134`) 用 `ObjectAnimator.ofFloat(t8, floatProperty, f9)`（3 参）：平台 ObjectAnimator 的 3-参重载会自动调用 `property.get(t8)` 作为 `from`。lib 用 `ObjectAnimator.ofFloat(target, property, property.get(target), value)`（4 参，`:75`），显式传 `from`。**两边效果完全一致**——平台 ObjectAnimator 在构造时也是先 `property.get(target)` 缓存，再设置 `from=cache`。lib 的差异只是把"缓存 + 设 from"两步拆成调用方显式一行。
 
@@ -107,9 +108,11 @@
 
 *修复成本：0*（语义已对齐，不需修复；若想消除 API 说谎，给 lib ObjectAnimator 加 `setDuration` 调用即可，1 行）。
 
+> **状态：✅已修复（60bd048：buildAnim 走 add() 覆写 progressAnimator 时长；review 02 §3-4 旧述更正为无差异）**
 ### R2. lib `buildAnim` 写 progressAnimator 时长：路径不同但等价（review 02 §3-4 复核）
 **严重度：无差异。** 原厂 `buildAnim:96` 调 `add(valueAnimator)` → `add(Animator, SpringProperty.DEFAULT)` (`:191-194`) → `animator.setDuration(mDuration)`。lib `buildAnim:94` 调 `add(it)` → `add(Animator)` (`:45-49`) → `child.duration = durationMs`。**两条路径对 progress animator 的 setDuration 时序一致**（都在加进 AnimatorSet 前）。既有 review 02 §3-4 描述"progressAnimator 保持 ValueAnimator 默认 300ms"不准确——复核 lib `:93-96`（`progressAnimator?.let { add(it); progressAnimator = null }`）确认 add() 内部必走 `child.duration = durationMs`。**结论：R4 风险已消除**，无差异。
 
+> **状态：✅已修复（60bd048：addHoldersRecur 三分支 + else-throw 精确对齐原厂）**
 ### R3. lib `addHoldersRecur` 的 else-throw（用户指定复核点）
 **严重度：无差异（精确对齐）。** 原厂 `AnimatorPlaybackController.java:168-170`：
 ```java
@@ -123,6 +126,7 @@ else -> throw RuntimeException("Unknown animation type $anim")
 ```
 **精确对齐**——同分支顺序、同异常类型、同语义。注释 `AnimatorPlaybackController.kt:190-191` 自述"原厂抛 RuntimeException…不认识的动画类型显式失败，而不是静默丢弃出 Holder 链"，与原厂一致。**结论：精确对齐，无差异。**
 
+> **状态：⚠️未修复（无嵌套 AnimatorSet 触发面：playTogether 平铺；未来补 play 嵌套路径时随 R7 一并下发父级时长/插值器）**
 ### R4. lib `addHoldersRecur` 砍父级 duration/interpolator 下发（review 02 §C-11 复核）
 **严重度：低。** 原厂 `AnimatorPlaybackController.java:174-179` 在递归进入嵌套 `AnimatorSet` 时，把父 AnimatorSet 的 `duration`（>0 时）和 `interpolator`（≠ null 时）下发给每个子动画。lib `AnimatorPlaybackController.kt:189` 只递归 `anim.childAnimations.forEach { addHoldersRecur(...) }`，无下发。
 
@@ -130,6 +134,7 @@ else -> throw RuntimeException("Unknown animation type $anim")
 
 *修复成本：5 行*（在递归分支前加 2 行 `if (anim.duration > 0) child.duration = anim.duration; anim.interpolator?.let { child.interpolator = it }`）。
 
+> **状态：✅已修复（本轮：取消监听移至根 animator（原 anims[0]），空子动画 IOOBE 消除；isDispatchStartPending 同步见 R8）**
 ### R5. lib `APC` 主构造器取消监听挂到 `anims[0]` 而非 `animatorSet` 本体（bug 级潜藏）
 **严重度：高（潜藏）。** 原厂 `AnimatorPlaybackController.java:135-156` 把 `AnimatorListenerAdapter`（cancel/end/start）挂到 **`animatorSet` 本体**——这意味着：
 1. 用户 `animatorSet.cancel()` 直接触发 lib 等价路径（`animationPlayer.cancel()` 走的是 ValueAnimator.cancel，不是 AnimatorSet.cancel）；
@@ -145,6 +150,7 @@ OPPO 的 cancel 监听同时维护 `mIsDispatchStartPending = false`（`:140`）
 
 *修复成本：3 行*（改 `anims[0].addListener(...)` → `anim.addListener(...)`；`anim` 需在 init 块顶部保存为 `val mAnimSet: AnimatorSet = anim as AnimatorSet`，并在挂监听时用 `mAnimSet`）。
 
+> **状态：✔️保持简化（设计正确：buildAnimator() 返回内部 va 命中 addHoldersRecur 首分支，避免 ClassCastException）**
 ### R6. lib 自定义 `ObjectAnimator.buildAnimator()` 返回 `ValueAnimator`（用户指定复核点）
 **严重度：无差异（设计正确的简化）。** lib `PendingAnimation.kt:117-179` 自定义 `ObjectAnimator` 包装类，内部持 `va: ValueAnimator`。注释 `PendingAnimation.kt:138-147` 明示：
 > "直接返回 ValueAnimator，而不是像 lib 此前匿名 Animator。原因为平台 `android.animation.ObjectAnimator` 继承 ValueAnimator，能进 `AnimatorPlaybackController.addAnimationHoldersRecur` 的 Holder 分支（`AnimatorPlaybackController.java:164-166`）。如 lib 此前那样返回匿名 Animator，会被 Holder 收集默认分支抛出。"
@@ -160,11 +166,13 @@ OPPO 的 cancel 监听同时维护 `mIsDispatchStartPending = false`（`:140`）
 
 *修复成本：0*（设计正确，无需修复；如需 `getAnimatedValue()`，在 ObjectAnimator 加 getter 委派给 va 即可，2 行）。
 
+> **状态：⚠️未修复（60bd048 已消除跳根漏派主问题；嵌套 AnimatorSet 内层递归仍缺——无触发面）**
 ### R7. lib `dispatchToListeners` 不递归嵌套 AnimatorSet（review 02 §R7 复核）
 **严重度：低。** 原厂 `callListenerCommandRecursively → callAnimatorCommandRecursively` (`:184-203`) 递归进嵌套 AnimatorSet 派发 listener。lib `AnimatorPlaybackController.kt:161-165` 只拍平 `anims` 一层。当前 lib 构造路径不产嵌套 AnimatorSet，**暂无触发面**——但与 R4 同源：若补 `add(animator: Animator)` 改 `play` 且业务传嵌套 AnimatorSet，dispatch 会漏内层 listener。
 
 *修复成本：10-15 行*（把 `dispatchToListeners` 改为 `when (a) { is AnimatorSet -> a.childAnimations.forEach { dispatchToListeners(it, action) }; else -> a.listeners.forEach { it.action(a) } }`）。
 
+> **状态：✅已修复（本轮：start() isDispatchStartPending=true→false，对齐 OPPO :379）**
 ### R8. lib `isDispatchStartPending` 语义反转（review 02 §R2 复核）
 **严重度：中（潜藏）。** 原厂 `start()` 置 `mIsDispatchStartPending = false`（`AnimatorPlaybackController.java:379`），仅 `dispatchOnStart()` 置 true（`:248`）。语义："true = 已派发 start 给所有 listener 但 AnimatorSet 还没真的开始"——给 `dispatchOnStart` 用作幂等闸门。lib `start()` 置 **true**（`AnimatorPlaybackController.kt:110`），与原厂相反。
 
@@ -172,11 +180,13 @@ OPPO 的 cancel 监听同时维护 `mIsDispatchStartPending = false`（`:140`）
 
 *修复成本：1 行*（`AnimatorPlaybackController.kt:110` 把 `true` 改为 `false`）。
 
+> **状态：✔️保持简化（原厂同样丢弃 oa 引用；API 表面差异非 bug）**
 ### R9. lib `PendingAnimation.addFloat` 的 `ObjectAnimator.buildAnimator()` 之后即丢弃 oa 引用（API 表面差异）
 **严重度：低。** lib `PendingAnimation.kt:65` 的 `add(oa.buildAnimator())` 之后 `oa` 引用立即不可达——若调用方想持有 `oa`（例如注册到外部 listener 列表），Kotlin 编译器不会报错（返回值是 `PendingAnimation`，不是 `oa`）。原厂 `add(objectAnimatorOfFloat)`（`PendingAnimation.java:70`）同理丢弃。但 OPPO 的 ObjectAnimator 是平台类，业务可以用 platform API（如 `oa.getAnimatedValue()`）；lib 的 ObjectAnimator 是自定义类，业务持有了也无法用平台 API。**影响**：业务若想持有 ObjectAnimator 引用，lib 与平台 API 不兼容。
 
 *修复成本：0*（属于 API 表面差异，非 bug）。
 
+> **状态：⚠️未修复（PendingAnimation 为 internal 类、demo 零实例化；无外部 cancel 需求）**
 ### R10. lib `PendingAnimation` 无 cancel path（业务触发 cancel 的入口缺失）
 **严重度：中。** lib `PendingAnimation` 类没有 `cancel()` 方法。原厂 `PendingAnimation` 也不直接提供 cancel，但 `getAnimatorSet()` (`:112`) 让外部拿到 `mAnim` 调 `cancel()`。lib `anim` 字段是 `private val`（`:29`），外部无法直接 cancel。**业务若想取消 PendingAnimation**，只能：
 1. 走 `PendingAnimation.createPlaybackController().animationPlayer.cancel()`（间接路径）
@@ -184,11 +194,13 @@ OPPO 的 cancel 监听同时维护 `mIsDispatchStartPending = false`（`:140`）
 
 *修复成本：2 行*（加 `fun cancel() = anim.cancel()`，或暴露 `getAnimatorSet()` getter）。
 
+> **状态：✔️保持简化（纯命名差异，不影响行为）**
 ### R11. lib `addToHolders` 与 `addHoldersRecur` 签名不一致（API 命名同步问题）
 **严重度：低。** lib `PendingAnimation.kt:111-113` 用 `addToHolders`（私有方法），`AnimatorPlaybackController.kt:186` 用 `addHoldersRecur`（public 静态）。两个名字相似但调用方不同：lib 的 `addToHolders` 是 PendingAnimation 私有委托给 APC 的 `addHoldersRecur`。OPPO 统一用 `addAnimationHoldersRecur`（`AnimatorPlaybackController.java:161`）。**命名混乱**——读代码时需在两个名字间跳转。
 
 *修复成本：0*（纯命名，不影响行为）。
 
+> **状态：✔️保持简化（demo 用 setFloat 完成 alpha；原厂 AlphaUpdateListener View 联动与 C2 同族未移植）**
 ### R12. lib `PendingAnimation` 缺 `setViewAlpha` 等业务 setter，演示库自建 `setFloat` 即可完成 alpha 动画
 **严重度：低。** 业务若用 lib `setFloat(target, ALPHA, 0f)`，是 OK 的——`FloatProperty` 直接作用于 alpha。但原厂 `setViewAlpha` 额外挂 `AlphaUpdateListener` (`:169, 227`) 做可见性联动（alpha ≤ 0.01f 切 INVISIBLE + `ViewGroup.setDescendantFocusability(393216)` 防 focus 抖动）。lib 缺这个联动。
 
@@ -202,20 +214,30 @@ OPPO 的 cancel 监听同时维护 `mIsDispatchStartPending = false`（`:140`）
 
 | # | 修复点 | 修复成本 | 风险点 | 理由 |
 |---|---|---|---|---|
+| 1 | ✅已修复（本轮） — **R5 修复**：把 `APC` 主构造器取消监听从 `anims[0]` 改挂到 `animatorSet` 本体；同时 `isDispatchStartPending` 在 cancel 监听内维护 | 3-5 行 | R5 | 当前 IOOBE 潜藏风险；与原厂结构对齐；后续若补 `add(animator: Animator)` 重载或业务传空 childAnimations，避免崩溃 |
 | 1 | **R5 修复**：把 `APC` 主构造器取消监听从 `anims[0]` 改挂到 `animatorSet` 本体；同时 `isDispatchStartPending` 在 cancel 监听内维护 | 3-5 行 | R5 | 当前 IOOBE 潜藏风险；与原厂结构对齐；后续若补 `add(animator: Animator)` 重载或业务传空 childAnimations，避免崩溃 |
+| 2 | ✅已修复（本轮） — **R8 修复**：`APC.start()` 内 `isDispatchStartPending = true` 改 `false` | 1 行 | R8 | 与原厂语义对齐；避免未来补 getter 时语义反转引入 bug |
 | 2 | **R8 修复**：`APC.start()` 内 `isDispatchStartPending = true` 改 `false` | 1 行 | R8 | 与原厂语义对齐；避免未来补 getter 时语义反转引入 bug |
+| 3 | ⚠️未修复（无嵌套触发面，未做） — **R4 修复**：`APC.addHoldersRecur` 递归分支加 `duration > 0 → child.setDuration` + `interpolator != null → child.setInterpolator` 下发 | 2 行 | R4 | 与原厂对齐；若未来补 `add(animator: Animator)` 改 `play` 路径，无触发面 |
 | 3 | **R4 修复**：`APC.addHoldersRecur` 递归分支加 `duration > 0 → child.setDuration` + `interpolator != null → child.setInterpolator` 下发 | 2 行 | R4 | 与原厂对齐；若未来补 `add(animator: Animator)` 改 `play` 路径，无触发面 |
+| 4 | ⚠️未修复（60bd048 已含根；嵌套递归未做） — **R7 修复**：`dispatchToListeners` 改为递归 AnimatorSet | 10-15 行 | R7 | 与原厂对齐；与 R4 同源修复 |
 | 4 | **R7 修复**：`dispatchToListeners` 改为递归 AnimatorSet | 10-15 行 | R7 | 与原厂对齐；与 R4 同源修复 |
+| 5 | ⚠️未修复（internal 类无外部消费者，未补） — **R10 修复**：补 `PendingAnimation.cancel()` 公开方法（委派 `anim.cancel()`）| 2 行 | R10 | 业务必需入口；与原厂 `getAnimatorSet()` + 业务自调 `cancel` 等价 |
 | 5 | **R10 修复**：补 `PendingAnimation.cancel()` 公开方法（委派 `anim.cancel()`）| 2 行 | R10 | 业务必需入口；与原厂 `getAnimatorSet()` + 业务自调 `cancel` 等价 |
+| 6 | ⚠️未修复（internal 类无外部读者；公开化集成时再补 getter） — **C3 部分修复**：补 `getDuration()` / `getAnimatorSet()` getter（getter 即可） | 2 行 | C3 | 业务若需读 duration / anim，无需自己持有引用 |
 | 6 | **C3 部分修复**：补 `getDuration()` / `getAnimatorSet()` getter（getter 即可） | 2 行 | C3 | 业务若需读 duration / anim，无需自己持有引用 |
+| 7 | ❌不成立/已过期（现代码无 mAnim 字段，APC 整体 internal；可见性改动无意义） — **C8 修复**：把 `APC` 的 `mAnim` 字段从 `private` 改 `internal`，便于 lib 内部代码共享 | 0 行（改可见性） | （便利性） | 不影响外部 API；lib 内部若需访问 AnimatorSet 不用绕 `animationPlayer` |
 | 7 | **C8 修复**：把 `APC` 的 `mAnim` 字段从 `private` 改 `internal`，便于 lib 内部代码共享 | 0 行（改可见性） | （便利性） | 不影响外部 API；lib 内部若需访问 AnimatorSet 不用绕 `animationPlayer` |
 
 ### 4.2 建议保持简化（不补）
 
 | # | 简化点 | 不补理由 |
 |---|---|---|
+| 1 | ✔️保持简化（C1/C2/C5/C7/C9 确认；C10 已随本轮 R5/R8 同步维护 isDispatchStartPending） — **C1 / C2 / C5 / C7 / C9 / C10**：setFloats / setInt / setViewAlpha / setViewBackgroundColor / setInterpolator / add(Animator,long) / dispatchSetInterpolator / addOnFrameListener | 业务依赖（`AlphaUpdateListener` / `LauncherAnimUtils` / View API）未移植；当前 lib 演示库 0 调用方；等业务真正用到再补（一次性补全 `AlphaUpdateListener` + 4 个 setter，约 80 行）|
 | 1 | **C1 / C2 / C5 / C7 / C9 / C10**：setFloats / setInt / setViewAlpha / setViewBackgroundColor / setInterpolator / add(Animator,long) / dispatchSetInterpolator / addOnFrameListener | 业务依赖（`AlphaUpdateListener` / `LauncherAnimUtils` / View API）未移植；当前 lib 演示库 0 调用方；等业务真正用到再补（一次性补全 `AlphaUpdateListener` + 4 个 setter，约 80 行）|
+| 2 | ✔️保持简化（语义等价 + API 表面差异；R2/R3 已由 60bd048 对齐） — **R1 / R2 / R3 / R6 / R9 / R11 / R12**：行为差异均为"语义等价 + 路径不同"或"API 表面差异"，不影响业务 | 0 风险，不修 |
 | 2 | **R1 / R2 / R3 / R6 / R9 / R11 / R12**：行为差异均为"语义等价 + 路径不同"或"API 表面差异"，不影响业务 | 0 风险，不修 |
+| 3 | ✔️保持简化（val 锁死更安全；非 final 是反编译 quirk） — **C6**：mDuration 非 final quirk | lib 用 `val` 锁死反而更安全，OPPO 的非 final 是 Java 反编译 quirk，无业务语义 |
 | 3 | **C6**：mDuration 非 final quirk | lib 用 `val` 锁死反而更安全，OPPO 的非 final 是 Java 反编译 quirk，无业务语义 |
 
 ### 4.3 端到端流程复核结论
@@ -247,11 +269,17 @@ createPlaybackController()
 ```
 
 **结构性结论**：
+> **状态：✔️保持简化（复核确认：Holder/时长/start-reverse/mapper 与 ②-A 对齐）**
 - **数据流（Holder 收集、动画时长、start/reverse/pause、mapper）**：精确对齐原厂
+> **状态：✔️保持简化（复核确认：add/buildAnim/createPlaybackController 对齐）**
 - **构造入口（add / buildAnim / createPlaybackController）**：精确对齐原厂
+> **状态：✅已修复（本轮，见 §③ R5）**
 - **取消跟踪挂点**：**结构性不对齐**（R5，挂 `anims[0]` vs 原厂 `animatorSet`）
+> **状态：⚠️未修复（60bd048 已含根；嵌套递归见 §③ R7）**
 - **dispatch 递归**：**结构性不对齐**（R7，单层 vs 递归）
+> **状态：✔️保持简化（复核通过：精确对齐，见 §③ R3）**
 - **`addHoldersRecur` else-throw**：精确对齐（R3，user 指定复核点通过）
+> **状态：✔️保持简化（复核通过：设计正确的简化，见 §③ R6）**
 - **lib `ObjectAnimator.buildAnimator()` 返回 `ValueAnimator`**：设计正确的简化（R6，user 指定复核点通过）
 
 ---
@@ -308,4 +336,36 @@ lib 演示库 (`D:/AsyncAnimator/demo/src`) **零直接调用 `PendingAnimation`
 
 - **60bd048** — setFloat 动画版、addFloat 返回 ValueAnimator 进 Holder、buildAnim 走 add()、addHoldersRecur else-throw 全部对齐原厂
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核
+
+（批次4 / 2026-09-09 逐项打标状态，与正文内联 `> **状态：**` 行一致）
+
+- §③ R1 → ✔️保持简化（4 参 vs 3 参语义等价）
+- §③ R2 → ✅已修复（60bd048：buildAnim 走 add()）
+- §③ R3 → ✅已修复（60bd048：else-throw 精确对齐）
+- §③ R4 → ⚠️未修复（无嵌套触发面）
+- §③ R5 → ✅已修复（本轮：监听器移至根 animator）
+- §③ R6 → ✔️保持简化（buildAnimator 返回 va 设计正确）
+- §③ R7 → ⚠️未修复（60bd048 已含根；嵌套递归缺）
+- §③ R8 → ✅已修复（本轮：start() 置 false）
+- §③ R9 → ✔️保持简化（API 表面）
+- §③ R10 → ⚠️未修复（internal 无外部消费者）
+- §③ R11 → ✔️保持简化（命名）
+- §③ R12 → ✔️保持简化（demo setFloat 等效）
+- 4.1-1 → ✅已修复（本轮 R5）
+- 4.1-2 → ✅已修复（本轮 R8）
+- 4.1-3 → ⚠️未修复（R4 无嵌套触发面）
+- 4.1-4 → ⚠️未修复（R7：60bd048 已含根）
+- 4.1-5 → ⚠️未修复（R10 internal）
+- 4.1-6 → ⚠️未修复（C3 getter internal）
+- 4.1-7 → ❌不成立/已过期（无 mAnim 字段，APC internal）
+- 4.2-1 → ✔️保持简化（C10 已随 R5/R8 修复）
+- 4.2-2 → ✔️保持简化（R1/R2/R3/R6/R9/R11/R12 无影响）
+- 4.2-3 → ✔️保持简化（C6 val 更安全）
+- 4.3-1 → ✔️保持简化（数据流复核对齐）
+- 4.3-2 → ✔️保持简化（构造入口对齐）
+- 4.3-3 → ✅已修复（本轮 R5）
+- 4.3-4 → ⚠️未修复（R7）
+- 4.3-5 → ✔️保持简化（else-throw 对齐）
+- 4.3-6 → ✔️保持简化（buildAnimator 设计正确）
+

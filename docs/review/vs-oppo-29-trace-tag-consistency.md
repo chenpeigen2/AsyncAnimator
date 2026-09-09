@@ -132,6 +132,7 @@
 
 按"可能改变真机 trace 行为或 lib 单测断言可信度"严重度排序：
 
+> **✅已修复（60bd048：Trace.STACK 改 ThreadLocal，跨线程 traceBegin/End 不再错位）**
 1. **（高 / bug 级）`ArrayDeque STACK` 非线程安全——review 08 §3 #1 的精确量化**。
    - **机制**：`Trace.kt:12` `private val STACK = ArrayDeque<String>()`；`traceBegin/End` 在 STACK 上 `addFirst/removeFirst`（`:17, 22`）。ArrayDeque 不是线程安全的，并发 `addFirst` + `removeFirst` 在内部数组扩容 / 缩容 / 元素挪移时会破坏 head/tail 索引。
    - **触发条件**（按 lib 4 调用点逐个排查）：
@@ -151,54 +152,64 @@
    - **原厂规避机制**：OPPO 走 `android.os.Trace` → ATRACE 内核缓冲，每条 trace 事件携带 thread id + monotonic timestamp，**完全不需要 STACK 配对**——Perfetto/Systrace UI 按时间线 + thread slice 自然对齐。
    - **修复成本**：5 行（`STACK = ArrayDeque<String>()` → `ConcurrentLinkedDeque<String>()`，或加 `@Synchronized` on traceBegin/End）。**这是 lib 必须修的最严重 bug**。
 
+> **⚠️未修复（trace 名仍不带 mAnimType：需 AnimType 从调用方贯通，lib 无子系统模型/Perfetto 消费者；真实集成时按 4.1-2）**
 2. **（高）`AsyncAnimCallbacks` trace 命名不携带 `mAnimType` 子系统，导致无法用 Perfetto 跨子系统 grep**。
    - **机制**：lib `AsyncAnimCallbacks.kt:82` 拼出 `"AsyncAnimStart-${id}"`（id 是 `System.identityHashCode` 哈希，每次进程启动不同）；OPPO `AsyncAnimCallbacks.java:141` 拼出 `"#${mAnimationId}-${mAnimType}-Start"`。
    - **影响**：trace-validation.md §3 真机 trace 上能看到 `#26-OPEN_FROM_HOME-Start` 这种事件，**Systrace UI 上能 grep "OPEN_FROM_HOME" 看到所有 OPEN_FROM_HOME 类动画**；lib 上只能 grep "AsyncAnimStart"，**无法按子系统聚合**。
    - **原厂规避机制**：`mAnimType` 字段（`AsyncAnimCallbacks.java:25-26`）+ `setAnimType(...)`（`:164-166`）把 subsystem 注入到 trace name。
    - **修复成本**：~10 行（加 `internal var animType: AnimType = AnimType.SWIPE_TO_HOME` + `setAnimType` + 把 trace 名改成 `"AsyncAnimStart-${id}-${animType}"`）。与 review 08 §4.1 #2 一致。
 
+> **❌不成立/已过期（lib 4 调用点全部 8L 严格配对；OPPO android.os.Trace 经 JNI 写 atrace，无"抛 IllegalStateException"的 Java 异常路径——tag typo 两者皆静默，非行为差异）**
 3. **（中）`Trace.traceEnd` 不校验 tag 与 `traceBegin` 一致**。
    - **机制**：lib `Trace.kt:21-26` `traceEnd(tag: Long)` 只 `removeFirst()`，**不验证 `STACK` 顶的 tag 是否匹配入参**。原厂 `android.os.Trace.traceEnd(8L)` 由 JNI 层保证 ATRACE 缓冲的 LIFO + tag 配对。
    - **影响**：单测场景下，如果某处写了 `traceBegin(8L, "foo")` 接着 `traceEnd(16L)`（typo），lib 默默弹出错的 tag，无报错；OPPO 直接抛 IllegalStateException（JNI 监测到 tag 不匹配）。
    - **修复成本**：3 行（`traceEnd` 加 `if (name.startsWith("[$tag]")) removeFirst() else log("tag mismatch!")`）。
 
+> **✔️保持简化（lib 无 LogUtils 基础设施；observability 差异 review08 已记，demo 走 stderr）**
 5. **（中）`AsyncAnimCallbacks.onAnimationCancel` 路径只有 trace，没有 LogUtils**。
    - **机制**：lib `AsyncAnimCallbacks.kt` 没有 `onAnimationCancel` 的 LogUtils.i；OPPO `AsyncAnimCallbacks.java:111-122` 走 `LogUtils.isLogOpen()` 门控的 `LogUtils.i(TAG, "Async anim cancel #N")`。
    - **影响**：单元测试断言 `Trace.depth == 0` 后**无法验证 cancel 路径有"业务事件"语义**——只能从代码侧静态看有 dispatch 调用。
    - **修复成本**：与 review 08 §4.1 #1 同源（加 `LogUtils.i` 壳层），~10 行。
 
+> **✅已修复（本轮：Continuation-fail 名带 f 值；Debug.getCallers 依赖平台 Debug API 未加）**
 6. **（中）`OplusValueAnimator.Continuation-fail` trace 名不可调试**。
    - **机制**：lib `OplusValueAnimator.kt:139` `Trace.traceBegin(8L, "Continuation-fail")` + `Trace.traceEnd(8L)`——只有名字，无失败原因；OPPO `OplusValueAnimator.java:115, 144` 走 `LogUtils.isAlwayson()` 门控 + `LogUtils.i + Debug.getCallers(15)`，输出调用栈前 15 层。
    - **影响**：单元测试或真机 demo 跑时，`Continuation-fail` 出现，但 `f` 为 0f / 1f / 负数 无法在 trace 名字里区分——grep `Continuation-fail` 后只能猜原因。
    - **修复成本**：2 行（`Trace.traceBegin(8L, "Continuation-fail f=$f")`），或加 `LogUtils.i` + `Debug.getCallers(3)`。
 
+> **❌不成立/已过期（traceEnd 位置与原厂结构等价、非 lib 特有缺陷；60bd048 ThreadLocal 后移入 main lambda 会破坏同线程配对，建议不可行）**
 7. **（中）lib trace 段不覆盖 listener 派发实际耗时**。
    - **机制**：lib `AsyncAnimCallbacks.kt:82-89` traceBegin → runOnMainThread { dispatch } → traceEnd。`traceEnd` 在 `runOnMainThread` 之后立刻同步执行（`runOnMainThread` 是 `postAsync`，返回即结束）；listener 派发实际发生在 main 线程**下一次消息循环**，trace 段已经关闭。
    - **原厂对比**：OPPO `AsyncAnimCallbacks.java:141-144` traceBegin → LogUtils.i → runOnMainThread → traceEnd——同样 traceEnd 在 runOnMainThread 后立刻执行。**结论**：OPPO 与 lib **结构等价**，不是 lib 的特有缺点。但 trace-validation.md §3 真机 trace 上能看到 main 线程 `-End` 段是因为 OPPO 还有 `TracePrintUtil#notifyAnimationEnd` 二次锚点（见 §2.3 #3），lib 完全缺这个二次锚点。
    - **影响**：lib demo 单测无法用 "Trace.depth 是否在 listener 派发后归零" 作为 "listener 已派发" 的断言——**因为 traceEnd 在 dispatch 之前就归零了**。要断言 "listener 已派发"，得另写计数器（如 review 01 §②-B3 的 listener sync 计数器）。
    - **修复成本**：5 行（把 traceEnd 移到 `runOnMainThread { ... }` 的 lambda 末尾；或者新增 `Trace.dispatchEnd` API 在 lambda 末尾调）。**注意**：这会让 STACK 配对跨线程化，**§3.1 的修复必须先做**。
 
+> **✔️保持简化（doc 自评非关键，单测可外层 wrap）**
 8. **（低）`traceBegin`/`traceEnd` 在 stderr 上无时间戳**。
    - **机制**：lib `Trace.kt:17, 22` `log(">>> $tagStr")` 与 `log("<<< $name")`——只有名字，无 `System.nanoTime()` 时间戳。Perfetto/Systrace 上每条 trace 自动带 monotonic timestamp（来自 ATRACE）。
    - **影响**：单测场景下断言"traceBegin → traceEnd 在 100ms 内"，lib 没有时间戳就只能用 `System.nanoTime()` 显式记录。
    - **修复成本**：2 行（`log` 方法加 `System.nanoTime()` 前缀）。**非关键**，单测可以外层 wrap。
 
+> **✅已修复（60bd048：depth 按线程隔离，size 不再跨线程竞争）**
 9. **（低）`Trace.depth` 单测断言在并发场景下不可信**（§3.1 副作用）。
    - **机制**：`Trace.kt:28` `internal val depth: Int get() = STACK.size`——返回当前嵌套深度。单测可用 `assertEquals(0, Trace.depth)` 验证 traceBegin/End 配对正确。
    - **影响**：多线程并发下 `STACK.size` 也是非线程安全的（`size()` 内部走 `head/tail` 字段读，可能读到不一致状态）。
    - **修复成本**：0（§3.1 修完即可）。
 
+> **✔️保持简化（拼接代价在动画事件边界，可忽略）**
 10. **（低）`traceBegin`/`traceEnd` 字符串拼接无 lazy 评估**。
     - **机制**：lib `Trace.kt:16-17` `val tagStr = "[$tag] $name"; STACK.addFirst(tagStr)`——每次 traceBegin 都做字符串拼接，即使后续 traceEnd 不会消费也付出代价。
     - **原厂对比**：OPPO `LogUtils.debug(subModuleTag, Function0<String>)`（`LogUtils.java:146-155`）用 `Function0<String>` 闭包 lazy 评估——`isLogOpen()` 为 false 时 message lambda 不执行。
     - **影响**：release 性能差异。lib 即使最终只打 stderr（无消费者重定向），仍付出拼接代价；OPPO release 关 LogUtils 后零开销。
     - **修复成本**：3 行（traceBegin 加 `name: () -> String` 重载，或引入 lazy 拼接）。**非关键**。
 
+> **✔️保持简化（调用点全部平衡配对；launcher.anim/主线程常驻，ThreadLocal 无泄漏）**
 11. **（提示）`STACK` 容量无上限**。
     - **机制**：lib `Trace.kt:12` `STACK = ArrayDeque<String>()`——默认容量 16，按需扩容。理论可无限 push。
     - **影响**：单测场景下若忘记 traceEnd，`STACK` 单调增长，最终 OOM（典型是 10K+ push + 字符串拼接耗内存）。
     - **修复成本**：1 行（`STACK` 加最大容量 + 截断，或 `traceBegin` 加断言）。
 
+> **✔️保持简化（无 listener 时 trace 段仅覆盖 post 开销，预期行为）**
 12. **（提示）`AsyncAnimCallbacks.dispatch` 在 `addListener` 后立即 start 时 listener 列表为空的兜底缺失**。
     - **机制**：lib `AsyncAnimCallbacks.kt:83-88` `runOnMainThread { for (l in getListeners()) ... }`——若 listener 列表为空，trace 段只覆盖 postAsync 的开销，无 listener 调用。
     - **影响**：无功能差异（无人监听当然没人 fire）。trace 段很短是预期。
@@ -210,30 +221,49 @@
 
 ### 4.1 值得补进 lib 的（按修复成本 / 收益性价比排序）
 
+> **✅已修复（60bd048：ThreadLocal 方案落地）**
 1. **STACK 改 `ConcurrentLinkedDeque` 或加 `@Synchronized`（P0 / 5 行）**。**修复 §3.1**——消除"多线程并发 traceBegin/End 错位" 的真 bug。OPPO 走 ATRACE 平台实现免于此问题，lib 必须自己防。**优先级最高**。
+> **⚠️未修复（同 §3.2）**
 2. **`AsyncAnimCallbacks` 加 `mAnimType` 字段 + trace tag 携带（P1 / 10 行）**。与 OPPO `AsyncAnimCallbacks.java:25-26, 131-144` 1:1 对齐；让 demo 单测可断言 "OPEN_FROM_HOME 类动画在 launcher.anim start"。**修复 §3.2**。
+> **❌不成立/已过期（同 §3.3：无原厂对照语义）**
 3. **`Trace.traceEnd` 加 tag 校验（P2 / 3 行）**。防止 traceBegin/End tag typo 导致 silent mismatch。**修复 §3.3**。
+> **✔️保持简化（同 §3.5）**
 4. **`AsyncAnimCallbacks` 加 `LogUtils.i` 同步打（与 review 08 §4.1 #1 同源，P1 / 10 行）**。4 个调用点（start/cancel/end/actualEnd）补 `LogUtils.i("AsyncAnim", "Async anim start #$id")`，门控 `isLogOpen()`。**修复 §3.5**。
+> **✅已修复（本轮：名字带 f；getCallers 平台 API 未加）**
 5. **`OplusValueAnimator.Continuation-fail` trace 名带 `$f` 值 + 加 `Debug.getCallers(3)`（P2 / 5 行）**。`Trace.traceBegin(8L, "Continuation-fail f=$f caller=${Debug.getCallers(3)}")`；或新增 `LogUtils.i` 路径。**修复 §3.6**。
+> **⚠️未修复（TracePrintUtil#notifyAnimation* 二次锚点缺失；demo stderr 无跨线程配对消费）**
 6. **加 `TracePrintUtil#notifyAnimation{Start,End}` 等价物（P1 / 30 行）**。在 `AsyncAnimCallbacks.dispatch` 的 main 线程 lambda 末尾调 `Trace.traceBegin(8L, "TracePrintUtil#notifyAnimation${verb}")` + traceEnd。**修复 §2.3 #3**——让 demo 能用 Perfetto 验证「动画跨线程派发到 main」的回主线程时序。
+> **❌不成立/已过期（同 §3.7：ThreadLocal 后不可行）**
 7. **`AsyncAnimCallbacks` 把 `traceEnd` 移到 `runOnMainThread` lambda 末尾（P2 / 5 行）**。**修复 §3.7**——但前提是 §3.1 先修完（STACK 跨线程安全）。
 
 ### 4.2 建议保持简化
 
+> **✔️保持简化**
 1. **`android.os.Trace.traceBegin/End` 真接入**。理由：① JVM 单测用不到（需 Perfetto/Systrace），② demo 模块需要 UI 可视化 trace，stderr 重定向比真 trace 实用，③ 真机 demo 可选地把 `Trace.traceBegin` 桥接到 `android.os.Trace.traceBegin`（一行 if 包），但默认走 stderr 即可。
+> **✔️保持简化**
 2. **`Trace.asyncTraceBegin/End` counter 不移植**。Perfetto counter 语义专用，lib 不做 JankTracker，无对应需求。
+> **✔️保持简化**
 3. **`TRACE_TAG_NOT_NEEDED (32L)` WM shell 层不移植**。lib 不覆盖 `com.android.wm.shell.*` 等价物，21 处缺失合理。
+> **✔️保持简化**
 4. **`TRACE_TAG_VIEW (1024L)` View 层不移植**。lib 不覆盖 RecyclerView/Compose 等价物，3 处缺失合理。
+> **✔️保持简化**
 5. **`TaskSnapshotWindow` 动态 tag 不移植**。`j10`/`j102` 的 debug 条件 tag 与 lib 的简单栈语义不符。
+> **✔️保持简化**
 6. **`TraceUtilsKt [PostEffect]` 前缀不移植**。OPPO 模块前缀约定是内部生态约定，外部 demo 用默认常量即可。
+> **✔️保持简化**
 7. **`LogUtils.debug(Function0<String>)` lazy 评估不移植**。lib 闭包 / Kotlin 风格下默认 lazy（`run { "Continuation-fail" }`），但 trace tag 字符串拼接本身代价极小，引入 Function0 包装收益低。
+> **✔️保持简化**
 8. **`TraceHelper` 薄壳 + FLAG_* 常量不移植**。内部使用频率极低（只在 `OplusWorkspace.java:1891` 等 3-4 处），FLAG 是 OPPO 内部 trace 分类约定，外部 demo 不需要这套分类。
+> **✔️保持简化**
 9. **`AsyncAnimCallbacks.onAnimActualEnd` 路径不打 Trace**（与 review 08 §4.1 #6 同源）——保持现状。
+> **✔️保持简化**
 10. **`TracePrintUtil.Type` 6 类 BASIC_ID 子系统分类不移植**。原厂 `WINDOW/VIEW/RECENTS/WORKSPACE/TASKBAR/CARD` 6 类对 lib 而言过细，lib 用 `mAnimType` 一维（SWIPE_TO_HOME / OPEN_FROM_HOME / RECENTS）足够。
 
 ### 4.3 不确定项（需要更多 trace 实证才能决定）
 
+> **✔️保持简化（traceEnd 留在调用线程；ThreadLocal 后移入 main lambda 破坏配对）**
 1. **`AsyncAnimCallbacks.dispatch` 中 `traceEnd` 时机**：当前是「runOnMainThread 后立刻 traceEnd」，与原厂结构等价。建议保持；但如果 §4.1 #1（STACK 线程安全）修完后想进一步对齐 OPPO `traceEnd` 在 lambda 末尾，需要先评估是否引入新风险（dispatch lambda 内若再调 trace，会跨线程 push）。
+> **✅已修复（60bd048：per-thread ThreadLocal 分层已实现）**
 2. **是否做 `STACK` 分层 per thread**：每个线程一个 STACK（类似 ThreadLocal）。原厂 ATRACE 不需要——内核 buffer 是 per-thread 的，事件天然按线程归属。lib 用 ThreadLocal 模拟也可以，但需要重写 `traceBegin/End`，且 §4.1 #1 的 ConcurrentLinkedDeque 方案已经足够。
 
 ---
@@ -272,4 +302,20 @@
 
 - **60bd048** — Trace.STACK→ThreadLocal，跨线程 traceBegin/End 不再错位（虽然不是 ATRACE）
 
+本份批次 5 逐条复核结果：
+- §3.1（STACK 非线程安全）— ✅已修复（60bd048：ThreadLocal）
+- §3.2（trace 名不带 mAnimType）— ⚠️未修复（需 AnimType 贯通）
+- §3.3（traceEnd tag 校验）— ❌不成立/已过期（无原厂异常对照；4 调用点 8L 严格配对）
+- §3.5（cancel 缺 LogUtils）— ✔️保持简化
+- §3.6（Continuation-fail 名不可调试）— ✅已修复（本轮：OplusValueAnimator.kt 名带 f 值）
+- §3.7（traceEnd 不覆盖派发耗时）— ❌不成立/已过期（结构与原厂等价；ThreadLocal 后建议不可行）
+- §3.8（stderr 无时间戳）— ✔️保持简化
+- §3.9（depth 并发不可信）— ✅已修复（60bd048：per-thread depth）
+- §3.10（字符串无 lazy 评估）— ✔️保持简化
+- §3.11（STACK 无上限）— ✔️保持简化
+- §3.12（listener 空兜底）— ✔️保持简化（预期行为）
+- §4.1-1 — ✅已修复（60bd048）；§4.1-2 — ⚠️未修复；§4.1-3 — ❌不成立；§4.1-4 — ✔️保持简化
+- §4.1-5 — ✅已修复（本轮）；§4.1-6 — ⚠️未修复；§4.1-7 — ❌不成立/已过期
+- §4.2-1..10 — ✔️保持简化
+- §4.3-1 — ✔️保持简化；§4.3-2 — ✅已修复（60bd048：ThreadLocal 分层）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -1,6 +1,7 @@
 package com.asyncanimator.thread
 
 import android.os.Handler
+import java.util.concurrent.TimeUnit
 import android.os.Message
 
 /**
@@ -51,4 +52,19 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
         msg.isAsynchronous = true
         h.sendMessage(msg)
     }
+    // Never-quit contract, mirroring OPPO LooperExecutor.java:71-79: any lifecycle call
+    // throws UnsupportedOperationException instead of actually terminating the looper.
+    @Deprecated("LooperExecutor never quits; shutdown() always throws")
+    fun shutdown(): Unit = throw UnsupportedOperationException("LooperExecutor never quits")
+
+    @Deprecated("LooperExecutor never quits; shutdownNow() always throws")
+    fun shutdownNow(): List<Runnable> = throw UnsupportedOperationException("LooperExecutor never quits")
+
+    val isShutdown: Boolean get() = false
+
+    val isTerminated: Boolean get() = false
+
+    @Deprecated("LooperExecutor never quits; awaitTermination() always throws")
+    fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean =
+        throw UnsupportedOperationException("LooperExecutor never quits")
 }

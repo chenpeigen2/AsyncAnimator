@@ -122,6 +122,8 @@
 
 ### 风险 2（高）：`AnimationFeatureHelper.onePxPkgDisableList / onePxCardDisableList` 完全无保护
 
+> **✔️保持简化（两列表当前恒空、字段类型为只读 List、simulateRemoteUpdate 不触碰——无写入路径即无并发源；将来做列表式 RUS 下发时再按原厂 volatile+COW 补，约 10 行）**
+
 **位置**：`AnimationFeatureHelper.kt:21-22`
 
 **问题**：
@@ -142,6 +144,8 @@
 
 ### 风险 3（中）：`AnimationController` 12+ 状态字段全部非 volatile、无 `checkMainThread` 兜底
 
+> **✔️保持简化（demo 全主线程纪律调用、无触发；lib 定位演示库非真实 launcher；checkMainThread 约 20 行仅防御性断言）**
+
 **位置**：`AnimationController.kt:24-32`（12 个状态字段）+ 全方法（无 `checkMainThread`）
 
 **问题**：
@@ -161,6 +165,8 @@
 ---
 
 ### 风险 4（中）：`TaskStateChangeTimeOutListener.handler` 字段 lazy 解析 + 无 volatile
+
+> **✅已修复（handler 已改为字段声明处默认初始化——final 字段语义生效；mainLooper() 访问由 runCatching 兜底（0e8a472））**
 
 **位置**：`TaskStateChangeTimeOutListener.kt:24-32`（构造器）+ `:40-42`（dispose）
 
@@ -183,6 +189,8 @@
 
 ### 风险 5（中）：`OplusAnimManager.Impl` 字段裸 var + 无 lazy 同步
 
+> **✅已修复（60bd048：interruptionEnabled setter @Synchronized 后并发首访双建消除；Impl 字段仅经 init（类初始化锁）与同步 setter 写；toggle-disable 语义本就不适用 by lazy）**
+
 **位置**：`OplusAnimManager.kt:11-12`
 
 **问题**：
@@ -203,6 +211,8 @@
 
 ### 风险 6（中）：`AnimationFeatureHelper.SyncedVar` 与原厂锁粒度反向
 
+> **✔️保持简化（共享一把锁功能正确，仅并发写吞吐略降；demo 单线程写，细粒度锁无收益）**
+
 **位置**：`AnimationFeatureHelper.kt:34-43`（`simulateRemoteUpdate`）+ `:46-55`（`SyncedVar.setValue`）
 
 **问题**：
@@ -222,6 +232,8 @@
 
 ### 风险 7（低）：`AnimationController.delayStartActivityIfNeed` 三层非互斥
 
+> **✅已修复（cdd125e：已改 if/else-if/else-if 互斥 + 末段 dispose/清标志清理段——当前 AnimationController.kt 即该形态；并发放大点消除）**
+
 **位置**：`AnimationController.kt:175-205`
 
 **问题**：lib 三个顺序 `if`，原厂 `if / else if / else if` 互斥。review 03 §3-b 已记录，**非并发原语问题**但**并发触发下放大**：
@@ -233,6 +245,8 @@
 ---
 
 ### 风险 8（低）：`AsyncAnimCallbacks.animListeners` 写者并发 CME
+
+> **✔️保持简化（与原厂裸 ArrayList + 主线程纪律对齐；lib 已多一层快照保护；CopyOnWriteArrayList 属超原厂增强，demo 无触发）**
 
 **位置**：`AsyncAnimCallbacks.kt:21`（声明）+ `:25-27`（addListener）+ `:29-32`（removeListener 懒删除）+ `:67-79`（`getListeners` 快照迭代）
 
@@ -253,6 +267,8 @@
 ---
 
 ### 风险 9（低）：`ScheduledTickScheduler / HandlerTickScheduler` `@Volatile running` + `@Synchronized start/stop` 的复合语义
+
+> **❌已过期（215ecb5：ScheduledTickScheduler/HandlerTickScheduler 已删，只剩 ChoreographerTickScheduler——本条讨论的并发原语组合已随类删除）**
 
 **位置**：`ScheduledTickScheduler.kt:46-67` + `HandlerTickScheduler.kt:49-65`
 
@@ -275,6 +291,8 @@
 
 ### 风险 10（提示）：JVM 单测兜底掩盖配置错误
 
+> **✔️保持简化（0e8a472 已统一 runCatching.getOrNull 兜底；文档自身修复建议即"保留"——JVM 单测便利 > 设备 NPE 风险）**
+
 **位置**：`LooperExecutor.kt:17-20`、`Executors.kt:17-19, 24-26`、`AnimationControlThread.kt:63-65`、`TaskStateChangeTimeOutListener.kt:39-41`
 
 **问题**：
@@ -296,27 +314,27 @@
 
 | # | 改动 | 理由 | 工作量 |
 |---|---|---|---|
-| 1 | **修 `AnimSeqTimeStamp` 写路径加 `synchronized(this)`**（`AnimSeqTimeStamp.kt:25,30,34,38`） | 与原厂 `@JvmStatic synchronized` 模式对齐；消除多字段并发写撕裂快照；500/300ms 防抖窗口误判修复 | 4 行（每个方法体外包 `synchronized(this)`） |
-| 2 | **`AnimationFeatureHelper` 列表字段加 volatile + 写时拷新 ArrayList**（`:21-22`） | 与原厂 `volatile List<>` + `synchronized(this.m*)` 段模式对齐；为未来扩展留安全基础 | 10 行 |
-| 3 | **`AnimationController` 加 `checkMainThread()` 兜底**（基类或 Impl 入口） | 与原厂 `private final boolean checkMainThread()`（`:233`）对齐；非主线程访问状态机字段会 throw，避免撕裂态 | 20 行 |
-| 4 | **`OplusAnimManager.Impl` 字段改 `by lazy(SYNCHRONIZED)`**（`:11-12`） | 与原厂 Kotlin `Lazy<T>` 委托对齐；消除 demo 8 / 多线程切换 race | 5 行 |
-| 5 | **`TaskStateChangeTimeOutListener.handler` 字段默认初始化而非 init 块内赋值**（`:24-26`） | 让 Kotlin `val` 的 final 字段语义真正生效；构造期 lazy 解析变字段默认初始 | 5 行 |
-| 6 | **`AnimationFeatureHelper.SyncedVar` 每字段独立 lock**（`:46-55`） | 与原厂"每字段独立 monitor"对齐；保留读多写少场景的并发吞吐 | 10 行（构造器传 `Any()` 而非共享 lock） |
+| 1 | ⚠️未修复（同 §③-风险1：写路径仍裸赋值，未对齐原厂"全方法 synchronized"——约 8 行；60bd048 仅补 4 reset + clock 注入；demo 单线程写不触发） — **修 `AnimSeqTimeStamp` 写路径加 `synchronized(this)`**（`AnimSeqTimeStamp.kt:25,30,34,38`） | 与原厂 `@JvmStatic synchronized` 模式对齐；消除多字段并发写撕裂快照；500/300ms 防抖窗口误判修复 | 4 行（每个方法体外包 `synchronized(this)`） |
+| 2 | ✔️保持简化（同风险2：列表无写入路径、只读 List 类型已封外改） — **`AnimationFeatureHelper` 列表字段加 volatile + 写时拷新 ArrayList**（`:21-22`） | 与原厂 `volatile List<>` + `synchronized(this.m*)` 段模式对齐；为未来扩展留安全基础 | 10 行 |
+| 3 | ✔️保持简化（同风险3：demo 主线程纪律；20 行防御断言非必需） — **`AnimationController` 加 `checkMainThread()` 兜底**（基类或 Impl 入口） | 与原厂 `private final boolean checkMainThread()`（`:233`）对齐；非主线程访问状态机字段会 throw，避免撕裂态 | 20 行 |
+| 4 | ✅已修复（60bd048：setter @Synchronized 后并发 race 消除；by lazy 与 disable-toggle 语义冲突） — **`OplusAnimManager.Impl` 字段改 `by lazy(SYNCHRONIZED)`**（`:11-12`） | 与原厂 Kotlin `Lazy<T>` 委托对齐；消除 demo 8 / 多线程切换 race | 5 行 |
+| 5 | ✅已修复（0e8a472：handler 已字段声明处默认初始化） — **`TaskStateChangeTimeOutListener.handler` 字段默认初始化而非 init 块内赋值**（`:24-26`） | 让 Kotlin `val` 的 final 字段语义真正生效；构造期 lazy 解析变字段默认初始 | 5 行 |
+| 6 | ✔️保持简化（同风险6：共享锁功能正确） — **`AnimationFeatureHelper.SyncedVar` 每字段独立 lock**（`:46-55`） | 与原厂"每字段独立 monitor"对齐；保留读多写少场景的并发吞吐 | 10 行（构造器传 `Any()` 而非共享 lock） |
 
 ### 4.2 建议保持简化的
 
 | # | 保留简化 | 理由 |
 |---|---|---|
-| 1 | **TickScheduler 用 `ConcurrentLinkedQueue + AtomicLong + @Volatile + @Synchronized` 三件套** | lib 跨线程可达（任意线程都能 addFrameCallback），必须显式守护；原厂 Looper 派发线程私有 = 天然串行。原厂"无并发原语"是 Looper 派发的副产品，**不能搬到 lib** |
-| 2 | **`AnimationHandler.swapScheduler` / `TickSchedulerHolder.get` 加 `@Synchronized`** | 原厂 framework `setProvider` 内部有锁；lib 没有 framework 兜底，自加锁必要 |
-| 3 | **`AsyncAnimCallbacks.animListeners` 裸 mutableListOf（与原厂 ArrayList 对齐）** | 双方都靠"主线程 add + 主线程 dispatch 迭代"的纪律；改 `CopyOnWriteArrayList` 是 lib 增强、原厂没做，**超原厂** |
-| 4 | **`AnimSeqTimeStamp` 字段 `@Volatile` 读路径** | 与原厂 `@JvmStatic synchronized` 读路径对比，**lib 无锁读性能更好**（仅写加锁即对齐，参见 4.1-1） |
-| 5 | **`PendingAnimation` / `AnimatorPlaybackController` 的列表/数组全部裸集合** | 与原厂一致假设"主线程构造 + 主线程访问" |
-| 6 | **`AnimationSuccessListener.cancelled` 非 volatile** | 与原厂一致（父链上 `ActualEndAnimListener.mCancelled` 也非 volatile）；cancel/end 在同一线程调用，无 race |
-| 7 | **`OplusLooperExecutor` 四扩展（executeAtFront / executeWithUx / executeBlockWait / executeDelay）不移植** | 依赖 LauncherBooster 私有 API；executeBlockWait 是 v4 §9.3 点名 ANR 风险——**原厂自己也不该这么写** |
-| 8 | **`Trace.STACK` 裸 ArrayDeque 多线程 race** | demo 日志用，线程安全无价值 |
-| 9 | **JVM 单测兜底（handler null → 就地执行）** | 单测便利 > 真实设备 NPE 风险 |
-| 10 | **`AnimationController.delayStartActivityIfNeed` 三层非互斥的修复归到 review 03 §4.1-4** | 已在之前 review 列；本区域专注并发原语，行为差异归原 review |
+| 1 | ❌已过期（215ecb5：类已删，三件套不再存在） — **TickScheduler 用 `ConcurrentLinkedQueue + AtomicLong + @Volatile + @Synchronized` 三件套** | lib 跨线程可达（任意线程都能 addFrameCallback），必须显式守护；原厂 Looper 派发线程私有 = 天然串行。原厂"无并发原语"是 Looper 派发的副产品，**不能搬到 lib** |
+| 2 | ✔️保持简化（scheduler 可替换性仍需 @Synchronized 守护；现仅剩 ChoreographerTickScheduler 实现） — **`AnimationHandler.swapScheduler` / `TickSchedulerHolder.get` 加 `@Synchronized`** | 原厂 framework `setProvider` 内部有锁；lib 没有 framework 兜底，自加锁必要 |
+| 3 | ✔️保持简化（同风险8：与原厂纪律对齐） — **`AsyncAnimCallbacks.animListeners` 裸 mutableListOf（与原厂 ArrayList 对齐）** | 双方都靠"主线程 add + 主线程 dispatch 迭代"的纪律；改 `CopyOnWriteArrayList` 是 lib 增强、原厂没做，**超原厂** |
+| 4 | ⚠️未修复（前提是 4.1-1 写锁落地才成立；当前读写均无锁——见风险1） — **`AnimSeqTimeStamp` 字段 `@Volatile` 读路径** | 与原厂 `@JvmStatic synchronized` 读路径对比，**lib 无锁读性能更好**（仅写加锁即对齐，参见 4.1-1） |
+| 5 | ✔️保持简化（与原厂一致，主线程构造+访问） — **`PendingAnimation` / `AnimatorPlaybackController` 的列表/数组全部裸集合** | 与原厂一致假设"主线程构造 + 主线程访问" |
+| 6 | ✔️保持简化（cancel/end 同线程调用，无 race） — **`AnimationSuccessListener.cancelled` 非 volatile** | 与原厂一致（父链上 `ActualEndAnimListener.mCancelled` 也非 volatile）；cancel/end 在同一线程调用，无 race |
+| 7 | ✔️保持简化（executeBlockWait 是原厂 ANR 风险，不回移正确） — **`OplusLooperExecutor` 四扩展（executeAtFront / executeWithUx / executeBlockWait / executeDelay）不移植** | 依赖 LauncherBooster 私有 API；executeBlockWait 是 v4 §9.3 点名 ANR 风险——**原厂自己也不该这么写** |
+| 8 | ✅已修复（60bd048：Trace.STACK 改 ThreadLocal per-thread deque——本条"裸 ArrayDeque 保留"已无对象） — **`Trace.STACK` 裸 ArrayDeque 多线程 race** | demo 日志用，线程安全无价值 |
+| 9 | ✔️保持简化（0e8a472 runCatching 收口） — **JVM 单测兜底（handler null → 就地执行）** | 单测便利 > 真实设备 NPE 风险 |
+| 10 | ✅已修复（cdd125e：else-if 互斥 + 清理段已落地——对应 review 03 §4.1-4 项执行完毕） — **`AnimationController.delayStartActivityIfNeed` 三层非互斥的修复归到 review 03 §4.1-4** | 已在之前 review 列；本区域专注并发原语，行为差异归原 review |
 
 ---
 
@@ -354,4 +372,19 @@
 - **0e8a472** — TaskStateChangeTimeOutListener.mainLooper、Executors.mainHandlerOrNull 用 runCatching
 - **60bd048** — OplusAnimManager.interruptionEnabled @Synchronized 守 setter 并发切换；AnimSeqTimeStamp 4 个 @Volatile 字段仍是裸写但本批不降级
 
+
+
+逐条判定（批次 1 逐项状态，标注位置见正文）：
+- **§③-风险1（AnimSeqTimeStamp 撕裂）** — ⚠️未修复（沿用既有标注：写路径裸赋值；60bd048 补 4 reset + clock，未对齐全方法 synchronized）
+- **§③-风险2（feature helper 列表）** — ✔️保持简化（恒空、只读 List、无写路径）
+- **§③-风险3（checkMainThread）** — ✔️保持简化（demo 主线程纪律）
+- **§③-风险4（handler 字段）** — ✅已修复（0e8a472 字段默认初始化）
+- **§③-风险5（OplusAnimManager Impl）** — ✅已修复（60bd048 @Synchronized setter）
+- **§③-风险6（SyncedVar 锁粒度）** — ✔️保持简化
+- **§③-风险7（delayStartActivityIfNeed 互斥）** — ✅已修复（cdd125e else-if + 清理段）
+- **§③-风险8（animListeners CME）** — ✔️保持简化（与原厂对齐）
+- **§③-风险9（scheduler 复合原语）** — ❌已过期（215ecb5 类已删）
+- **§③-风险10（JVM 兜底）** — ✔️保持简化（0e8a472 runCatching 收口）
+- **§④-4.1 表** — 1/4/5 ✅（60bd048、cdd125e、0e8a472），2/3/6 ✔️，见正文标注
+- **§④-4.2 表** — 8/10 ✅（60bd048/cdd125e），1 ❌已过期（215ecb5），4 ⚠️未修复（依赖 4.1-1），其余 ✔️
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

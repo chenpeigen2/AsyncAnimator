@@ -123,6 +123,7 @@ lib 全树 **0 命中** `addGlobalTaskStateChangeListener` / `removeGlobalTaskSt
 
 ### A. 极严重（语义消失/反转）
 
+> **状态：⚠️未修复（成本 80-120 行：缺 TaskStateHelper 全局事件总线，事件放行路径仍失效；demo 仅超时兜底可用）**
 #### A1. **`TaskStateChangeTimeOutListener` 缺全局事件总线，事件触发路径完全失效**（合并 review 03 §3-d + review 06 §2.2 #3 + review 09 §C-4 + review 12 §3-A1）
 
 原厂调用链（6 步）：
@@ -143,6 +144,7 @@ lib 调用链（1 步，只有超时兜底）：
 - lib `registerTransitionFinishTimeOutListener(1500L)`：**无论 transition 是否 finish，都等满 1500ms** 才放行 startActivity
 - 真机行为差异：原厂"事件即时放行"消失，"至少多等一个超时窗口"
 
+> **状态：⚠️未修复（随 A1：仍为单 onTimeOut(type,duration)，原厂 3 override 拆分未做；无事件源时不可观察）**
 #### A2. **`TaskStateChangeTimeOutListener.onTimeOut(type, duration)` 与原厂三 callback 签名错配**
 
 原厂 3 个独立 override（`TaskStateHelper.java:177, 187, 197`）：
@@ -160,6 +162,7 @@ lib 合并成 `fun onTimeOut(type: Type, duration: Long)`（`TaskStateChangeTime
 - 缺 `handler = null`（handler 强引用 listener，listener 强引用 option 闭包，形成进程级引用链）
 - 缺 `z8 == true` 过滤（原厂 transition finish 时若 `isRecent == false` 不触发，lib 一律触发）
 
+> **状态：⚠️未修复（成本高：TaskStateHelper 主体缺失；11 个调用点均 launcher/system_server 集成，demo 无对应业务）**
 #### A3. **`TaskStateHelper` 主体缺失使 11 个调用点的业务语义全部丧失**
 
 grep 全树 `addGlobalTaskStateChangeListener` 共 13 行命中（11 个文件 + 2 个 Launcher 处），所有调用点都期望一个"system_server task 状态变化 → 全局 listener 触发"的事件通道。lib 完全无此通道。
@@ -177,6 +180,7 @@ grep 全树 `addGlobalTaskStateChangeListener` 共 13 行命中（11 个文件 +
 
 ### B. 严重（语义弱化但仍可能触发）
 
+> **状态：⚠️未修复（枚举仍 3 值；补 ON_TO_HOME_TRANSITION_FINISH 需随 A1/A2 的 3-override 拆分才有消费方）**
 #### B1. **类型枚举砍 `ON_TO_HOME_TRANSITION_FINISH` 导致特定场景无法表达**
 
 原厂 4 值（`TaskStateHelper.java:212-217`）：`ON_LAND_SCAPE_SCENE_EXIT` / `ON_TO_HOME_TRANSITION_FINISH` / `ON_TRANSITION_FINISH` / `ON_APP_TO_OVERVIEW_CONTINUATION`。
@@ -189,6 +193,7 @@ lib 3 值（`TaskStateChangeTimeOutListener.kt:18-22`）：同上，**少 `ON_TO
 - lib 的 listener 永远无法表达"既要等 transition finish 又要等 onTaskListenerReleased"的场景——这是从 Recents 回 Home 时的常见路径
 - review 03 §2.2-4 / review 09 §B-8 已自认漏
 
+> **状态：⚠️未修复（仍绑主线程 Handler；改后台线程需评估 option 闭包线程安全；demo 主线程未满载暂可接受）**
 #### B2. **监听器 Handler 线程替换：主线程 vs `URGENT_TRANSACTION_EXECUTOR`**（review 12 §2-C5 / §3-A2）
 
 原厂 `TaskStateHelper.java:128, 130`：
@@ -210,6 +215,7 @@ private val handler: Handler? = mainLooper()?.let(::Handler)
 
 ### C. 中等（行为差异但有边界）
 
+> **状态：✔️保持简化（与原厂 dispose 一致不清 option；lib reset()/置 null 即释放，无滞留场景）**
 #### C1. **`dispose()` 不清 `option` 引用**（与原厂一致但加剧泄漏）
 
 原厂 `TaskStateHelper.java:147-154` dispose 把 `handler = null`，**未清 option 引用**。
@@ -220,6 +226,7 @@ lib `TaskStateChangeTimeOutListener.kt:41-43` 同。
 **加剧**：原厂有 `removeAllListener()` 集中清理（`Launcher.onDestroy` 触发）来缓解；lib 无此机制。
 - review 09 §C-11 / §3-9 已列
 
+> **状态：✔️保持简化（无测试替换线程需求；val 一次性绑定更安全）**
 #### C2. **没有 `Handler` 字段更新器（`setHandler`）公开入口**
 
 原厂 `TaskStateHelper.java:206-208` 有 `public final void setHandler(Handler handler)`，供测试场景替换线程。
@@ -227,6 +234,7 @@ lib `TaskStateChangeTimeOutListener.kt:24` `handler` 是 `val`（init 一次性�
 
 **后果**：测试场景不能 stub handler 加速时间。
 
+> **状态：⚠️未修复（随 A1：无派发逻辑自然无日志）**
 #### C3. **`taskListener$1` 派发前没有 log 输出可观测性**
 
 原厂 `TaskStateHelper$taskListener$1.java:114, 140, 150, 160` 4 处 `LogUtils.d("TaskStateHelper", ...)`，可观测每个 callback 触发频率。
@@ -234,16 +242,19 @@ lib 无派发逻辑，自然无日志。
 
 ### D. 轻（演示场景下不触发）
 
+> **状态：✔️保持简化（4.2-4：internal val 已够，不必 public）**
 #### D1. **`getTimeOutOption()` / `getOption()` / `getTimeOutDuration()` / `getType()` 4 个 getter 公开**
 
 原厂 `TaskStateHelper.java:156-173` 4 个 public final getter，外部可读 listener 内部态（测试 / 调试用）。
 lib 无对应 getter——字段都是 `private val`（`TaskStateChangeTimeOutListener.kt:24, 27, 13`）。
 
+> **状态：✔️保持简化（demo 可观测由 Trace 承担；review 08 trace 维度已覆盖）**
 #### D2. **`TAG` + `Log.d("TaskStateHelper[...] : init / Time Out / z8 / z8")` 全套日志缺失**
 
 原厂 `TaskStateHelper.java:133, 142, 180, 190, 200` 共 5 处日志输出，lib 完全无对应。
 **后果**：真机线上无法通过 logcat 跟踪 listener 生命周期。
 
+> **状态：✔️保持简化（无注册逻辑即无重复注册；A1 落地时随带 contains 守卫）**
 #### D3. **`addPendingLaunchCookieListener` / `addGlobalTaskStateChangeListener` 的 `contains` 去重守卫缺失**
 
 原厂 `TaskStateHelper.java:225-230` `if (copyOnWriteArrayList.contains(listener)) return;`，避免重复注册同 listener 导致回调 2 次。
@@ -255,6 +266,7 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 
 ### 4.1 值得补进 lib 的（按收益/成本比排序）
 
+> **状态：⚠️未修复（成本 80-120 行 P0；demo 无 system_server 事件源，未排期）**
 1. **【必补 P0】`TaskStateHelper` 主体类（Kotlin object singleton）+ `TaskStateChangeTimeOutListener` 改造成 `class extends BaseTaskStateChangeListener`**（对应 §3-A1/A2/A3、§2.3-1/2/3/4/5/7/13/15）。
 
    至少以下 7 件事（约 80-120 行）：
@@ -268,50 +280,64 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 
    修复成本：约 80-120 行。这是 review 12 §3-A1 + review 06 §4.1-5 的彻底版本——**让 Demo6 不再需要手调 `onTimeOut(...)` 模拟事件**。
 
+> **状态：⚠️未修复（需先评估 option 回调线程安全；demo 无满载场景）**
 2. **【必补 P0】监听器 Handler 线程替换：主线程 → `URGENT_TRANSACTION_EXECUTOR` 等价线程**（对应 §3-B2、review 12 §3-A2）。
 
    lib 可暴露一个内部 `Executors`：`HandlerThread("anim-timeout-listener").start().looper.let(::Handler)`，或复用 `Executors.ANIM_CONTROL_EXECUTOR`（即 `AnimationControlThread.instance.looper`）。约 5 行。
    
    **注**：handler 绑到 `ANIM_CONTROL_EXECUTOR` 仍比原厂 `URGENT_TRANSACTION_EXECUTOR`（-8 优先级事务线程）差一档；但至少不会与主线程业务任务抢资源。若 demo 端想精确对齐，需要再起一个独立 HandlerThread。review 12 §4.1-1 已列。
 
+> **状态：⚠️未修复（无消费方，依赖 A1/A2 落地）**
 3. **【建议补 P1】补 `ON_TO_HOME_TRANSITION_FINISH` 类型值**（对应 §3-B1、§2.3-1）。
 
    1 行 enum 值。同时需要保证 `TaskStateChangeTimeOutListener.onTransitionFinish` 命中该 type（与 `ON_TRANSITION_FINISH` 合并判断 `z8==true` 触发）——参考 `TaskStateHelper.java:199`。
 
+> **状态：⚠️未修复（行为与原厂一致，纯强化项未排期）**
 4. **【建议补 P1】`TaskStateChangeTimeOutListener.dispose()` 清 `option` 引用为 null**（对应 §3-C1）。
 
    原厂没做；lib 是补强机会：dispose 内 `option = null`（需要把字段改成 `var`）+ `type = null`。约 3 行。
 
+> **状态：✔️保持简化（无单测替换线程需求，不补）**
 5. **【建议补 P1】暴露 `setHandler(Handler)` 测试入口**（对应 §3-C2）。
 
    给单测场景替换线程加速时间。约 3 行。
 
+> **状态：✔️保持简化（demo 用 Trace 输出足够，不补 Log）**
 6. **【可选 P2】补 `LogUtils.d("TaskStateHelper", ...)` 5 处可观测日志**（对应 §3-D2）。
 
    约 10 行。让 demo 真机 / 模拟器可观测 listener 生命周期。
 
+> **状态：✔️保持简化（无注册逻辑；随 A1 一并补）**
 7. **【可选 P2】补 `addGlobalTaskStateChangeListener` 的 `contains` 去重守卫**（对应 §3-D3）。
 
    1 行 `if (globalListeners.contains(listener)) return`。在做 §4.1-1 时一并补即可。
 
+> **状态：⚠️未修复（demo 模块 UI 增强未排期；随 A1 配套）**
 8. **【可选 P2】给 Demo6 加事件触发模拟按钮**（与 §4.1-1 配套）。
 
    在 `Demo6StateMachineActivity.kt:271-282` 现有的"手调 onTimeOut"按钮旁，加"模拟 onTransitionFinish(true)"按钮直接调 `TaskStateHelper.taskListener.onTransitionFinish(true)`。让 demo 同时演示"事件即时触发"与"超时兜底"两条路径。约 20 行 UI。
 
 ### 4.2 建议保持简化（与 §3 风险点无关或属于合理裁剪）
 
+> **状态：✔️保持简化（复核确认合理裁剪：无 cookie/taskId 事件源需求）**
 1. **`pendingLaunchCookieListeners` / `taskIdListeners` 两个二级 listener 容器不引入**（§2.3-10/11/12）。launch cookie 与 taskId 维度是 system_server 任务事件的细粒度路由；lib demo 无 system_server 事件源，单 `globalListeners` 足够。
 
+> **状态：✔️保持简化（复核确认：SystemUiProxy 私有 binder 注入不实做）**
 2. **`init(Context)` / `release(Context)` + `SystemUiProxy.INSTANCE.lambda$get$1(ctx).addTaskListener(taskListener)` 注入路径不实做**（§2.3-13）。SystemUiProxy 是 AOSP/OPPO 私有 binder 入口，lib demo 没有 system_server 上下文；保留为"接口已声明，实现 stub 即可"形态。
 
+> **状态：✔️保持简化（复核确认：无 register 路径即无该状态字段）**
 3. **`isTaskListenerRegistered` 状态字段不引入**（§2.3-14）。review 09 §A-1 已对齐隐式契约；lib 无 register 路径自然无该字段。
 
+> **状态：✔️保持简化（复核确认：internal val 已够）**
 4. **4 个 getter 不全量导出**（§3-D1）。测试场景若需要直接读字段，Kotlin `internal val` 已够用，不必 public 暴露。
 
+> **状态：✔️保持简化（复核确认：binder stub 平台概念不引入）**
 5. **`OplusTaskListener extends IOplusTaskListener.Stub` 抽象类不引入**（§2.3-15 间接）。AIDL binder stub 是 platform 层概念，lib 在 JVM 上无 binder 通道；用普通 abstract class 替之即可。
 
+> **状态：✔️保持简化（复核确认：主线程 marshal 已在线程层处理）**
 6. **`TaskViewCommonUtils.runOnTargetThread(MAIN_EXECUTOR, runnable)` marshal 不实做**（§2.3-4 间接）。原厂的 `MAIN_EXECUTOR` 是 Oplus 私有 `LooperExecutor`，lib 用 `Looper.getMainLooper().queue` 或 `Executors.MAIN_EXECUTOR` 等价即可——已在线程层（review 01）处理。
 
+> **状态：✔️保持简化（复核确认：与 4.2-1 配套不引入）**
 7. **`removeListenerAllOfList(listener)` 不引入**（§2.3-12）。这是 `pendingLaunchCookieListeners` / `taskIdListeners` 配套操作，§4.2-1 不引入容器时同步不需要。
 
 ---
@@ -363,4 +389,34 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核
+
+（批次4 / 2026-09-09 逐项打标状态，与正文内联 `> **状态：**` 行一致）
+
+- §③ A1 → ⚠️未修复（缺 TaskStateHelper 全局事件总线 80-120 行 P0，demo 仅超时兕底）
+- §③ A2 → ⚠️未修复（单 onTimeOut 未拆 3 override，随 A1）
+- §③ A3 → ⚠️未修复（主体类缺失；11 调用点均 launcher 集成）
+- §③ B1 → ⚠️未修复（枚举仍 3 值，需随 A1/A2 拆分）
+- §③ B2 → ⚠️未修复（仍绑主线程 Handler）
+- §③ C1 → ✔️保持简化（与 OPPO dispose 一致）
+- §③ C2 → ✔️保持简化（无测试替换线程需求）
+- §③ C3 → ⚠️未修复（随 A1 无派发日志）
+- §③ D1 → ✔️保持简化（getter 不导出）
+- §③ D2 → ✔️保持简化（demo 用 Trace）
+- §③ D3 → ✔️保持简化（无注册逻辑）
+- 4.1-1 → ⚠️未修复（TaskStateHelper 主体，80-120 行）
+- 4.1-2 → ⚠️未修复（handler 线程替换，需线程安全评估）
+- 4.1-3 → ⚠️未修复（ON_TO_HOME_TRANSITION_FINISH 无消费方）
+- 4.1-4 → ⚠️未修复（dispose 清 option，纯强化）
+- 4.1-5 → ✔️保持简化（setHandler）
+- 4.1-6 → ✔️保持简化（Log）
+- 4.1-7 → ✔️保持简化（去重守卫）
+- 4.1-8 → ⚠️未修复（Demo6 模拟按钮，随 A1）
+- 4.2-1 → ✔️保持简化（无 cookie/taskId 需求）
+- 4.2-2 → ✔️保持简化（SystemUiProxy 不实做）
+- 4.2-3 → ✔️保持简化（isTaskListenerRegistered 不引入）
+- 4.2-4 → ✔️保持简化（getter 不全量导出）
+- 4.2-5 → ✔️保持简化（OplusTaskListener AIDL 不引入）
+- 4.2-6 → ✔️保持简化（marshal 不实做）
+- 4.2-7 → ✔️保持简化（removeListenerAllOfList 不引入）
+

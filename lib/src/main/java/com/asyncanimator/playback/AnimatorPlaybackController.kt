@@ -52,18 +52,21 @@ internal class AnimatorPlaybackController(
         animationPlayer.addUpdateListener(this)
         animationPlayer.addListener(OnAnimationEndDispatcher())
         childAnimations = holders.toTypedArray()
-        // 跟踪 anims cancel 状态
-        anims[0].addListener(object : AnimatorListenerAdapter() {
+        // 跟踪根 animator（对齐原厂挂到根 AnimatorSet 而非 anims[0]），三触点同步 isDispatchStartPending=false（OPPO :140/:147/:154）
+        anim.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationCancel(a: Animator) {
                 targetCancelled = true
+                isDispatchStartPending = false
             }
 
             override fun onAnimationEnd(a: Animator) {
                 targetCancelled = false
+                isDispatchStartPending = false
             }
 
             override fun onAnimationStart(a: Animator) {
                 targetCancelled = false
+                isDispatchStartPending = false
             }
         })
     }
@@ -106,7 +109,7 @@ internal class AnimatorPlaybackController(
         animationPlayer.setFloatValues(progressFraction, 1f)
         animationPlayer.duration = clampDuration(1f - progressFraction)
         animationPlayer.start()
-        isDispatchStartPending = true
+        isDispatchStartPending = false
     }
 
     fun reverse() {

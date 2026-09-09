@@ -180,6 +180,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
   - OPPO 的 feature flag 是 `(!LauncherAnimConfig.isAppTransitionByLightAnim() || LauncherAnimConfig.isAdaptiveAnimation()) && TaskAnimationManager.ENABLE_SHELL_TRANSITIONS && AppFeatureUtils.isSupportBlockableAnimation()`（`OplusAnimManager.java:232-234`），lib 这层完全没接入。
 - **修复成本**：约 **3 行**。`AnimationController.kt` 顶部加 `if (!OplusAnimManager.supportInterruption()) return false`；`OplusAnimManager.kt` 把 `supportInterruption()` 改为可注入（demo 默认 true）。
 
+> **✔️保持简化（doc §6.2-2 建议保持：demo 无 trace viewer；Trace.kt 可加但非必需（观测性退化，非行为差异））**
 #### B2. 第二层缺 `mIsBetweenTransitionEndAndFinish` 日志（可观测性退化）
 
 - **OPPO**：`AnimationController.java:635-639` 把 `z15 = mIsBetweenTransitionEndAndFinish` 拼进 `LogUtils.i(...)`，便于 trace 时区分"分屏触发挂起"vs"业务回调触发挂起"vs"transition 终态触发挂起"。
@@ -187,6 +188,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **后果**：调试 / trace 时无法区分挂起原因（分屏 vs 业务回调）。**D6 / D9 demo 若出现 startActivity 不放行，调试时只能猜**。
 - **修复成本**：约 **3 行**。在 lib 第二层加 `Trace.d` 或 `Log.i` 输出 `isSplitScreenGesture / call-result / isBetweenTransitionEndAndFinish`。
 
+> **⚠️未修复（AnimationControllerTest.kt 确无 delayStartActivityIfNeed 用例（lib/src/test 有测试基建）；补测需注入时钟/listener 状态并与 A1-A3 修复联动，见 vs-oppo-34）**
 #### B3. `delayStartActivityIfNeed` 完全无单元测试（覆盖度空白）
 
 - **OPPO**：由 `Launcher.startActivitySafely` 真实路径触发，有 trace 验证（`animation-trace-validation.md`）。
@@ -196,6 +198,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 ### C. 中等（行为差异但边界）
 
+> **✔️保持简化（doc §6.2-3 自判：无运行时影响（合理简化））**
 #### C1. `displayController` 懒加载缺失（无关行为，仅注释差异）
 
 - **OPPO**：`AnimationController.java:605-607` 每次进入 `delayStartActivityIfNeed` 时若 `displayController == null` 则懒加载一次。原代码似乎没用上（`delayStartActivityIfNeed` 自身不读 `displayController`），可能是给后续 `isLandscapeActivity()` / `mForbidSwipeUpWhileStartingLandApp` 计算用的。
@@ -203,6 +206,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **后果**：无运行时影响。
 - **修复成本**：0（合理简化）。
 
+> **✔️保持简化（并入 A1；demo 单 controller 实例无并发差异，无独立动作）**
 #### C2. `isAppSwipeToRecentContinuationRunning` 是单例静态字段 vs lib 局部 maxTime
 
 - 见 A1。这是从"运行态查询"→"时间窗" 的机制降级，已计入 A1。这里强调**实现细节**：OPPO 是 `static boolean`（全进程共享，因为 launch process 是单 Activity 实例），lib 是 `private var maxTime`（每个 `AnimationController` 实例独立）。
@@ -247,16 +251,24 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 ### 6.1 值得回移（业务影响明确、修复成本可控）
 
+> **⚠️未修复（未实施 ~40 行：AppSwipeToRecentContinuationHelper 桩未建；60bd048 只修了 else-if 互斥/清理段/时钟域，第三层仍时间窗（AnimationController.kt:189-196））**
 1. **A1 第三层运行态判定**：续行场景是 OPPO 核心动画路径之一（demo11 弹簧回归）；时间窗伪判定在 demo 上能跑但真机会 race-condition。**强烈建议回移**。
+> **⚠️未修复（未实施 ~15 行：demo 化 intent action stub 未加；第二层仍不读 intent（AnimationController.kt:184-188））**
 2. **A2 `isSpecialAppScene`**：搜索入口是 OPPO 桌面搜索的核心入口之一；漏了该谓词等于 lib 不能正确处理搜索→app 转场。**建议回移**（demo 化版即可）。
+> **⚠️未修复（未实施 ~5 行：第一层 isLandScapeGesture 仍无 !isTablet conj（AnimationController.kt:180））**
 3. **A3 `!isTablet()` conj**：平板用户群体大；分支反转在平板上必现。**建议回移**（5 行即可）。
+> **⚠️未修复（未补：依赖 A1-A3 修复后行为定型；见 vs-oppo-34）**
 4. **B3 单元测试**：修 A1/A2/A3 后必须有 CI 覆盖，否则未来重构会回归。**强烈建议同步补**。
 
 ### 6.2 建议保持简化（与 demo 主题无关 / 修复成本 / 风险偏低）
 
+> **✔️保持简化（lib 架构下冗余：OplusAnimManager.supportInterruption() gate 实例创建，feature off 返回 DefaultAnimationController（delayStartActivityIfNeed 恒 false），doc §6.2-1 自证）**
 1. **顶部 `supportInterruption()` guard**：OPPO 该 guard 的真正作用是"feature flag 整体关掉时不进决策树"，但 lib 已经把整个 `AnimationController` 实例挂在一个 `OplusAnimManager.supportInterruption()` 工厂下（`OplusAnimManager.kt:23-29`），feature off 时返回的是 `DefaultAnimationController`（`delayStartActivityIfNeed` 直接 return false），所以**顶部 guard 在 lib 架构下其实是冗余的**。建议保持简化，并在 `DefaultAnimationController` no-op 基类上保留。
+> **✔️保持简化（doc §6.2-2 建议保持（观测性））**
 2. **B2 `mIsBetweenTransitionEndAndFinish` 日志**：OPPO 该日志用于 trace 时区分挂起原因；lib demo 没有 trace viewer，加日志意义不大。**建议保持简化**（除非未来接入 `Trace.kt` 的 log 通道）。
+> **✔️保持简化（doc §6.2-3 建议保持）**
 3. **C1 `displayController` 懒加载**：lib 不实现 `isLandscapeActivity` / `mForbidSwipeUpWhileStartingLandApp`，所以这个字段根本不需要。**建议保持简化**。
+> **✔️保持简化（idiomatic Kotlin 替代，无运行时差异（doc 自判））**
 4. **`Call<Boolean> Supplier` → `(() -> Boolean)?` 的 lambda 化**：lib 的 `(() -> Boolean)?` 是 idiomatic Kotlin 替代 `Supplier<Boolean>`，无运行时差异。**建议保持简化**。
 
 ### 6.3 与其他 review 的协同
@@ -303,3 +315,16 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **60bd048** — 时钟域 currentTimeMillis→uptimeMillis（AnimSeqTimeStamp 已带可注入 clock）；delayStartActivityIfNeed 改回 else-if 互斥 + 清理段 dispose listener/清 Between 标志
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+按条目补记：
+- **A1（第三层运行态 vs 时间窗）** — ⚠️未修复：代码仍 `uptimeMillis() < overviewContinuationTimeOutMaxTime`（AnimationController.kt:189-196），运行态 helper 桩未建（~40 行）
+- **A2（isSpecialAppScene）** — ⚠️未修复：第二层仍 `isSplitScreenGesture || call?.invoke()==true`，intent 未读（~15 行）
+- **A3（!isTablet conj）** — ⚠️未修复：第一层仍 `isLandScapeGesture || ...` 无 !isTablet（~5 行）
+- **B1（顶部 supportInterruption guard）** — 维持 ⚠️未修复（小，~3 行）；doc §6.2-1 论证 factory gate 已等效、建议保持简化，二者可并存（guard 属防御性）
+- **B2（第二层日志）** — ✔️保持简化（doc §6.2-2）
+- **B3（无单测）** — ⚠️未修复：AnimationControllerTest 无 delayStartActivityIfNeed 用例
+- **C1（displayController 懒加载）** — ✔️保持简化（doc §6.2-3）
+- **C2（静态字段 vs maxTime）** — ✔️保持简化（并入 A1，demo 单实例）
+- **§4-D dispose 全局事件总线** — ⚠️未修复：TaskStateChangeTimeOutListener.dispose() 仍仅 removeCallbacks（TaskStateChangeTimeOutListener.kt:36-38）；review 12 §A1 P0 同判，无 commit 覆盖
+- **§6.1-1..4** — ⚠️未修复（A1/A2/A3/B3 均未实施）
+- **§6.2-1..4** — ✔️保持简化（doc 自列）
+- **§6.3 协同条目** — 跨 review 引用（review 09/11/12），无独立代码动作

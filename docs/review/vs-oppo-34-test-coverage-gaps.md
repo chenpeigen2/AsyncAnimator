@@ -122,6 +122,7 @@
 
 ### 🔴 bug 级
 
+> **状态：✔️保持简化（AndroidX SpringAnimation 单弹簧是既定替代（937dd23 Demo11 + §4.2 同判）；多体弹簧=功能扩展非回移，200+ 行不做）**
 #### 3.1 `MultiDynamicAnimation` 未移植 → AnimationHandler 的实际承载类缺位
 
 - **现状**：lib 用 AndroidX `SpringAnimation` 直接跑（`OplusValueAnimator` / `spring` 字段），根本没用 `MultiDynamicAnimation`。`AnimationHandlerTest` 测的是 lib 自己写的 `AnimationHandler`（简化版），不是 OPPO 用的 `android.animation.AnimationHandler`。
@@ -129,6 +130,7 @@
 - **测试角度**：`AnimationHandlerTest.testCallbackReturnsTrueEndsAnimation`（`AnimationHandlerTest.kt:46-56`）**只验证 `callbackSize == 1`，没有真正驱动 `onTick` → `doAnimationFrame`**，所以 `AnimationFrameCallback.doAnimationFrame` 的 `Boolean` 返回值（true=结束）从未被 lib 测试触达。**测试名误导**。
 - **修复成本**：5–8 行（mock 一个 TickScheduler 调 `onTick`，断言返回 true 的 callback 在下帧被压缩）。但更深的修复是把 `MultiDynamicAnimation` 移植并加测试，工作量 200+ 行（参考 `MultiDynamicAnimation.java` 165 行 + 对应 SpringHolder）。
 
+> **状态：⚠️未修复（A1 全转移位枚举测试未补 ~70 行；行为 when 表已与 OPPO 对齐、CLOSE→UNKNOWN 兜底正确，缺的是回归守护）**
 #### 3.2 12 状态 × 4 转移位的覆盖率 1/9 → `UNKNOWN` 兜底无回归保护
 
 - **现状**：OPPO `addRecentsAnim` 转移表是 `WhenMappings` 9 个 case（`AnimationController.java:140-176`），对应：
@@ -140,6 +142,7 @@
 - **风险**：当 `animState == CLOSE` 时再调 `addRecentsAnim`，应跳 UNKNOWN 但 lib 没有测试守护；如果有人误改成 `else -> Unit`，**fall-through 到 NONE 然后下一帧触发 NPE**。
 - **修复成本**：9 个测试用例，每个测试 5–8 行，总计 ~70 行。**性价比高**（直接守护状态机完整性）。
 
+> **状态：✅已修复（cdd125e+60bd048：cleanUpRecentsAnim/appLaunchAnimStartOrEnd end 分支已接 checkAllAnimationFinished，双 callback 会执行；文中"NPE 时序竞争"不成立——invoke 均为 ?.invoke 安全调用；A2 回归测试仍未补）**
 #### 3.3 `checkAllAnimationFinished` 端分支未被测试触发 → 收尾 NPE 风险
 
 - **现状**：`AnimationController.kt:121-127`
@@ -157,6 +160,7 @@
 - **风险**：callback 未设时 `?.invoke()` 是 no-op，**但一旦两个 callback 中只设了 1 个**，另一个为 null 时序竞争（如 reset() 在另一个线程设了 null 后 invoke 触发 NPE）。
 - **修复成本**：1 个测试方法 ~12 行（设 callback → addRecentsAnim + cleanUpRecentsAnim + appLaunchAnimStartOrEnd(end=true) → 断言 callback 被调用）。
 
+> **状态：⚠️未修复（TaskStateChangeTimeOutListener 全局事件总线缺失：事件即时放行路径无、仅 timeout 兜底；doc 03 §3-d / SUMMARY bug 表 #1 同判；成本 30-50 行 + 派发架构决策）**
 #### 3.4 `TaskStateChangeTimeOutListener` 全局事件总线砍掉 → 业务等超时不等回调
 
 - **现状**：lib `TaskStateChangeTimeOutListener.kt:42-48` 的 `onTimeOut(type, duration)` 是**单方法回调**，但**没有任何业务代码调用它**（Grep `onTimeOut` 全 lib 0 调用方，仅构造和 dispose）。OPPO `TaskStateHelper.java:177-204` 的 `onLandScapeSceneExit` / `onTransitionFinish(true)` / `onTaskListenerReleased` 是**全局 Listener 派发的**（`addGlobalTaskStateChangeListener`，`TaskStateHelper.java:222-244`）。
@@ -164,6 +168,7 @@
 - **测试角度**：`testThreeTimeoutListenersIndependent`（`AnimationControllerTest.kt:77-88`）**只验证 listener 实例非 null**，没有触发任何 listener.onTimeOut / dispose 路径，**所以 timeout 兜底本身也没被测试**。
 - **修复成本**：30–50 行（在 lib 加一个 module 级 `globalListeners: CopyOnWriteArrayList`，并在 3 个 register 方法里把 listener 注册到全局 + 在 `delayStartActivityIfNeed` 业务触发点 dispatch）。**已记入 SUMMARY-vs-oppo.md bug 表 #1**。
 
+> **状态：✔️保持简化（@Volatile 单字段原子写且无跨字段不变式，OPPO synchronized 序列化无契约增益；doc 自述"生产几乎不可见"；独立 reset 已由 60bd048 补齐）**
 #### 3.5 `AnimSeqTimeStamp` `@Volatile` 替代 `synchronized` → 多字段读写 race
 
 - **现状**：OPPO 8 个方法全部 `@JvmStatic synchronized`（`AnimSeqTimeStamp.java:25-148`），保证 4 字段的 *read-modify-write* 在同一锁内完成。lib `AnimSeqTimeStamp.kt:21-32` 改 `@Volatile`，**没有锁**。
@@ -173,11 +178,13 @@
 
 ### 🟡 中风险（行为不一致但不致命）
 
+> **状态：⚠️未修复（测试名与断言不符未改：testCallbackReturnsTrueEndsAnimation 仅断 callbackSize==1，A4 ~6 行真驱动未补；doAnimationFrame 行为代码已由 60bd048 修正为每轮重读 size）**
 #### 3.6 `AnimationHandler` 测试名 `testCallbackReturnsTrueEndsAnimation` 与断言不符
 
 - `AnimationHandlerTest.kt:46-56`：方法名暗示 "返回 true 触发结束"，但断言只是 `assertEquals(1, handler.callbackSize)`，**没让 callback 真正跑起来**。如果有人把 `if (cb.doAnimationFrame(frameTimeMs)) animationCallbacks[idx] = null` 改成永远 false，**这个测试仍然通过**。
 - **修复成本**：3 行（在 test 内部 `scheduler.postFrameCallback(...)` 同步驱动一帧，断言下一帧 size=0）。
 
+> **状态：⚠️未修复（feature 闸门 isSupportStartingSurface/supportInterruption 有意砍（§4.2 + doc 25 §3-b 同判）；A6 边界测试未补）**
 #### 3.7 `AppFeatureUtils.isSupportStartingSurface()` 守门砍掉 → canFinishRecent 永远 true 在不支持的设备上
 
 - **OPPO `AnimationSeqHelper.java:65-68`**：`(isSupportStartingSurface && supportInterruption && gap <= 500) ? false : true`
@@ -185,12 +192,14 @@
 - **风险**：若未来加 `supportInterruption` 守门时漏改 `canFinishRecent`，测试 **不会失败**（测试覆盖这条 true 分支用的就是 `gap=0`，根本没经过守门）。
 - **修复成本**：1 个测试用例（mock 4 个 boolean 组合 × 2 个 gap 边界 = 8 行）。
 
+> **状态：⚠️未修复（A3 决策树 3 测试未补 ~40 行；决策树本身 cdd125e 已改互斥 else-if+清理段（doc 03 §3-c），缺回归守护）**
 #### 3.8 `delayStartActivityIfNeed` 3 层决策树 0 覆盖
 
 - **现状**：`AnimationController.kt:140-167` 是整个 `AnimationController` 最复杂的逻辑（横屏/分屏/swipe 续行三种 timeout listener 的互斥决策），**0 个测试**。
 - **风险**：任何 refactor 都不会被测到，包括"`specialSceneExitTimeOutMaxTime` 过期"（`uptimeMillis() > maxTime`）这条**关键兜底**分支。
 - **修复成本**：3 个测试方法（landscape、overview、transition 各一）共 ~40 行。
 
+> **状态：⚠️未修复（A7 reset 独立性测试未补；lastRecentStartTime/lastLaunchTaskTime 仍无业务消费者，"删或补测"决策未做）**
 #### 3.9 `AnimSeqTimeStamp.lastRecentStartTime` 和 `lastLaunchTaskTime` 字段 0 覆盖
 
 - **现状**：这两个字段在 lib 里有 `@Volatile` 字段、`update*` setter、`timeGapTo*` getter（`AnimSeqTimeStamp.kt:21-32, 64-68`），**没有任何业务或测试使用**。
@@ -201,10 +210,10 @@
 
 | # | 差异 | 现状 | 修复决策 |
 |---|---|---|---|
-| 3.10 | `MAX_GO_NORMAL_DELAY_TIME = 200` 未移植 | `AnimationSeqHelper.java:23` 有，lib 没 | 不需要（OPPO 用在 `canGoNormalRecent`，lib 没此 API） |
-| 3.11 | `LogUtils.i` 全砍 | `AnimationSeqHelper.java:36, 93` 有 | 不需要（demo 模块用 `Trace`） |
-| 3.12 | `Intrinsics.checkNotNullParameter` 砍掉 | 全方法 | 不需要（Kotlin nullable 类型更 idiom） |
-| 3.13 | `MESSAGE_RELEASE_TOUCH` (101) 触摸释放定时器砍掉 | `AnimationController.java:516, 545` 有 | 已记入 SUMMARY-vs-oppo.md risk list（demo 不需要） |
+| 3.10 | **状态：✔️保持简化（lib 无 canGoNormalRecent API，常量无引用；§4.2 同判）** `MAX_GO_NORMAL_DELAY_TIME = 200` 未移植 | `AnimationSeqHelper.java:23` 有，lib 没 | 不需要（OPPO 用在 `canGoNormalRecent`，lib 没此 API） |
+| 3.11 | **状态：✔️保持简化（demo 用 Trace；review 08）** `LogUtils.i` 全砍 | `AnimationSeqHelper.java:36, 93` 有 | 不需要（demo 模块用 `Trace`） |
+| 3.12 | **状态：✔️保持简化（Kotlin 非空类型替代 checkNotNullParameter）** `Intrinsics.checkNotNullParameter` 砍掉 | 全方法 | 不需要（Kotlin nullable 类型更 idiom） |
+| 3.13 | **状态：✔️保持简化（doc 03 §3-f 已判"手势层有意简化"，已入 SUMMARY risk list）** `MESSAGE_RELEASE_TOUCH` (101) 触摸释放定时器砍掉 | `AnimationController.java:516, 545` 有 | 已记入 SUMMARY-vs-oppo.md risk list（demo 不需要） |
 
 ---
 
@@ -214,26 +223,26 @@
 
 | # | 建议补的测试 | 工作量 | 守护的风险点 |
 |---|---|---|---|
-| **A1** | `addRecentsAnim` 9 个状态转移位的全枚举测试 | ~70 行（9 case × 8 行） | §3.2 UNKNOWN 兜底无回归保护 |
-| **A2** | `checkAllAnimationFinished` 端分支单测（双 callback 已设 + 双列表空） | ~12 行 | §3.3 收尾 NPE 风险 |
-| **A3** | `delayStartActivityIfNeed` 三层决策树测试（landscape / transition / overview + max-time 过期） | ~40 行 | §3.8 横屏/分屏兜底决策 |
-| **A4** | `AnimationHandler.testCallbackReturnsTrueEndsAnimation` 真正驱动一帧（mock scheduler 调 onTick） | ~6 行 | §3.6 测试名误导 |
-| **A5** | `TaskStateChangeTimeOutListener` 单元测试（构造 + 触发 timeout + dispose 验证 callback 被清） | ~25 行 | §3.4 全局事件总线缺位 + timeout 兜底本身无测试 |
-| **A6** | `AnimationSeqHelper.canFinishRecent / canInterceptGesture` 4 boolean × 2 gap = 8 边界测试（含 `isSupportStartingSurface` 守门） | ~20 行 | §3.7 守门砍掉后无回归保护 |
-| **A7** | `AnimSeqTimeStamp` 4 字段 reset 独立性（`resetLastStartAppTime` 不影响其他字段） | ~15 行 | §3.9 死代码 |
-| **A8** | `AnimSeqTimeStamp` 多线程并发写（2 线程 × 1000 次 update vs read） | ~30 行 | §3.5 `@Volatile` vs `synchronized` 降级 |
+| **A1** | **状态：⚠️未修复（未补 ~70 行；守护 §3.2）** `addRecentsAnim` 9 个状态转移位的全枚举测试 | ~70 行（9 case × 8 行） | §3.2 UNKNOWN 兜底无回归保护 |
+| **A2** | **状态：⚠️未修复（未补 ~12 行；守护 §3.3——底层 end 通路已 ✅，测试降为可选守护）** `checkAllAnimationFinished` 端分支单测（双 callback 已设 + 双列表空） | ~12 行 | §3.3 收尾 NPE 风险 |
+| **A3** | **状态：⚠️未修复（未补 ~40 行；守护 §3.8）** `delayStartActivityIfNeed` 三层决策树测试（landscape / transition / overview + max-time 过期） | ~40 行 | §3.8 横屏/分屏兜底决策 |
+| **A4** | **状态：⚠️未修复（未补 ~6 行；守护 §3.6）** `AnimationHandler.testCallbackReturnsTrueEndsAnimation` 真正驱动一帧（mock scheduler 调 onTick） | ~6 行 | §3.6 测试名误导 |
+| **A5** | **状态：⚠️未修复（未补 ~25 行；P0——timeout 兜底本身仍 0 测试，守护 §3.4）** `TaskStateChangeTimeOutListener` 单元测试（构造 + 触发 timeout + dispose 验证 callback 被清） | ~25 行 | §3.4 全局事件总线缺位 + timeout 兜底本身无测试 |
+| **A6** | **状态：⚠️未修复（未补 ~20 行；守护 §3.7）** `AnimationSeqHelper.canFinishRecent / canInterceptGesture` 4 boolean × 2 gap = 8 边界测试（含 `isSupportStartingSurface` 守门） | ~20 行 | §3.7 守门砍掉后无回归保护 |
+| **A7** | **状态：⚠️未修复（未补 ~15 行；守护 §3.9）** `AnimSeqTimeStamp` 4 字段 reset 独立性（`resetLastStartAppTime` 不影响其他字段） | ~15 行 | §3.9 死代码 |
+| **A8** | **状态：⚠️未修复（未补 ~30 行 stress；守护 §3.5——若维持 @Volatile 简化则该测试价值有限）** `AnimSeqTimeStamp` 多线程并发写（2 线程 × 1000 次 update vs read） | ~30 行 | §3.5 `@Volatile` vs `synchronized` 降级 |
 | **小计** | — | **~220 行** | — |
 
 ### 4.2 建议保持简化（不值得补）
 
 | 简化项 | 理由 |
 |---|---|
-| `MultiDynamicAnimation` 未移植 | lib 用 AndroidX `SpringAnimation` 直接做单 spring；如未来要支持多体弹簧（6 自由度 RectF），属于 *功能扩展* 而非 *回移*。需要时再补 ~200 行（含 SpringHolder 移植）+ 测试。**当前 demo 不需要**。 |
-| `Intrinsics.checkNotNullParameter` 砍掉 | Kotlin nullable 类型已经是更 idiomatic 的版本；强制非空检查在 lib 由 `requireNotNull` / `checkNotNull` Kotlin idiom 替代。 |
-| `MAX_GO_NORMAL_DELAY_TIME = 200` 未移植 | lib 的 `AnimationSeqHelper` 不暴露 `canGoNormalRecent` API，OPPO 用此方法判断"能否走 normal recent 路径"（`AnimationSeqHelper.java:30-37` 隐含的 200ms），**lib 业务不依赖**，删了正确。 |
-| `LogUtils.i` 全砍 | demo 模块用 `Trace.traceBegin/End` 即可（review 08 已论证）；不暴露 `LogUtils` 接口。 |
-| `BaseTaskStateChangeListener` 全局总线 | **不建议补**——OPPO 的全局总线是 module-singleton `CopyOnWriteArrayList`，lib 可以改用 `SharedFlow` 或保留 `TaskStateChangeTimeOutListener.onTimeOut` 单方法；补全总线工作量大且风险高（多线程 listener 派发）。如果业务需要可触发，**改用 `SharedFlow` 而不是 `CopyOnWriteArrayList`**（30 行 + 测试 20 行）。 |
-| `MultiAppAnimMergeHelper` 砍掉 | 是 `OplusAnimManager.getMultiAppAnimMergeHelper()` 的多 app 合并动画协调器，**demo 业务场景不涉及多 app 并发动画**。保持简化。 |
+| **状态：✔️保持简化（AndroidX 单弹簧既定替代；多体=功能扩展）**  `MultiDynamicAnimation` 未移植 | lib 用 AndroidX `SpringAnimation` 直接做单 spring；如未来要支持多体弹簧（6 自由度 RectF），属于 *功能扩展* 而非 *回移*。需要时再补 ~200 行（含 SpringHolder 移植）+ 测试。**当前 demo 不需要**。 |
+| **状态：✔️保持简化（Kotlin idiom 替代）**  `Intrinsics.checkNotNullParameter` 砍掉 | Kotlin nullable 类型已经是更 idiomatic 的版本；强制非空检查在 lib 由 `requireNotNull` / `checkNotNull` Kotlin idiom 替代。 |
+| **状态：✔️保持简化（无 API 依赖）**  `MAX_GO_NORMAL_DELAY_TIME = 200` 未移植 | lib 的 `AnimationSeqHelper` 不暴露 `canGoNormalRecent` API，OPPO 用此方法判断"能否走 normal recent 路径"（`AnimationSeqHelper.java:30-37` 隐含的 200ms），**lib 业务不依赖**，删了正确。 |
+| **状态：✔️保持简化（demo 用 Trace）**  `LogUtils.i` 全砍 | demo 模块用 `Trace.traceBegin/End` 即可（review 08 已论证）；不暴露 `LogUtils` 接口。 |
+| **状态：✔️保持简化（不建议补 CopyOnWriteArrayList 总线；需要时改 SharedFlow 30+20 行——与 §3.4 行为缺口并存）**  `BaseTaskStateChangeListener` 全局总线 | **不建议补**——OPPO 的全局总线是 module-singleton `CopyOnWriteArrayList`，lib 可以改用 `SharedFlow` 或保留 `TaskStateChangeTimeOutListener.onTimeOut` 单方法；补全总线工作量大且风险高（多线程 listener 派发）。如果业务需要可触发，**改用 `SharedFlow` 而不是 `CopyOnWriteArrayList`**（30 行 + 测试 20 行）。 |
+| **状态：✔️保持简化（demo 不涉及多 app 并发动画）**  `MultiAppAnimMergeHelper` 砍掉 | 是 `OplusAnimManager.getMultiAppAnimMergeHelper()` 的多 app 合并动画协调器，**demo 业务场景不涉及多 app 并发动画**。保持简化。 |
 
 ### 4.3 总览：测试缺口补全优先级
 
@@ -255,3 +264,29 @@
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+
+| 条目 | 判定 |
+|---|---|
+| 3.1 MultiDynamicAnimation 未移植 | ✔️保持简化（AndroidX 单弹簧既定替代） |
+| 3.2 12 状态 × 4 转移位覆盖 1/9 | ⚠️未修复（A1 未补） |
+| 3.3 checkAllAnimationFinished 端分支 | ✅已修复（cdd125e+60bd048；NPE 论述不成立；A2 测试未补） |
+| 3.4 TaskStateChangeTimeOutListener 全局事件总线 | ⚠️未修复（doc 03 §3-d 同判） |
+| 3.5 AnimSeqTimeStamp @Volatile vs synchronized | ✔️保持简化（无跨字段不变式） |
+| 3.6 testCallbackReturnsTrueEndsAnimation 名不符 | ⚠️未修复（A4 未补） |
+| 3.7 canFinishRecent 缺 feature 闸门测试 | ⚠️未修复（A6 未补） |
+| 3.8 delayStartActivityIfNeed 决策树 0 覆盖 | ⚠️未修复（A3 未补） |
+| 3.9 lastRecentStartTime/lastLaunchTaskTime 0 覆盖 | ⚠️未修复（A7 未补） |
+| 3.10 MAX_GO_NORMAL_DELAY_TIME 未移植 | ✔️保持简化 |
+| 3.11 LogUtils.i 全砍 | ✔️保持简化 |
+| 3.12 Intrinsics.checkNotNullParameter 砍掉 | ✔️保持简化 |
+| 3.13 MESSAGE_RELEASE_TOUCH 定时器砍掉 | ✔️保持简化 |
+| A1 addRecentsAnim 9 转移位全枚举测试 | ⚠️未修复（未补 ~70 行） |
+| A2 checkAllAnimationFinished end 单测 | ⚠️未修复（未补 ~12 行；底层已 ✅） |
+| A3 delayStartActivityIfNeed 决策树测试 | ⚠️未修复（未补 ~40 行） |
+| A4 AnimationHandler 真驱动一帧 | ⚠️未修复（未补 ~6 行） |
+| A5 TaskStateChangeTimeOutListener 单测 | ⚠️未修复（未补 ~25 行；P0） |
+| A6 canFinishRecent/canInterceptGesture 边界测试 | ⚠️未修复（未补 ~20 行） |
+| A7 AnimSeqTimeStamp reset 独立性 | ⚠️未修复（未补 ~15 行） |
+| A8 AnimSeqTimeStamp 并发 stress | ⚠️未修复（未补 ~30 行） |
+| 4.2-1..6 保持简化 6 项 | ✔️保持简化 |

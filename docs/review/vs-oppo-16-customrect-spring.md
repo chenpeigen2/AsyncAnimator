@@ -382,6 +382,7 @@ cancel()
 
 ## ⑤ 行为差异风险点（按风险从高到低）
 
+> **状态：⚠️未修复（6 行枚举可补全 OPPO 7 值；demo/测试仅用 SWIPE_TO_HOME，无消费方触发 NPE——API 对齐项，doc-01 ④-5/06 §3 同判延后）**
 ### 🟥 **bug 级** ① AnimType 3 值 vs 7 值（review 11 §bug 级残留 #9 / review 06 §3 已提，**本次复核确认**）
 
 **触发场景**：任何按 `OPEN_FROM_HOME` / `REVERSE_TO_OPEN` / `GESTURE_TO_DRAG` 等枚举值对接 lib 的调用方。
@@ -408,6 +409,7 @@ enum class AnimType {
 }
 ```
 
+> **状态：⚠️未修复（需 AsyncAnimEndProtocol/序列化或 MultiDynamicAnimation 简化移植 ~30-80 行；AsyncSpringAnim end 已 runOnMainThread——6bbe9a1，物理轨道仍缺）**
 ### 🟥 **bug 级** ② maybeEnd 双轨补救 + 双轨时序完全缺失
 
 **触发场景**：cancel/skipToEnd/reverseToOpen 触发结束回调时。
@@ -423,6 +425,7 @@ enum class AnimType {
 - 在 lib 侧建 `AsyncAnimEndProtocol`（类似 `AsyncAnimCallbacks` 但管序列化）
 - 或：保留 3 个独立派发口，在 `AsyncAnimCallbacks` 文档强约束调用方按 cancel → end → actualEnd 顺序调（不推荐，违反封装）
 
+> **状态：⚠️未修复（占位类无调用方触发 4 方法；marshal 骨架已在 AsyncSpringAnim.dispatch + runOnMainThread——683179b/6bbe9a1；CustomRectFSpringAnim 全量 ~50 行）**
 ### 🟥 **bug 级** ③ Thread Switch Protocol（start/cancel/skipToEnd/reverseToOpen 四路）整体缺失
 
 **触发场景**：业务线程 ≠ anim 线程时（即 `mStartAsync=true` 时 start 在主线程、cancel 在任意线程）。
@@ -436,6 +439,7 @@ enum class AnimType {
 - 给 `CustomRectFSpringAnim` 加 `mAnimLooperExecutor: LooperExecutor` 字段 + 4 个 marshal 方法（参考 `AsyncSpringAnim.dispatch` 的 `if (supportAnimThread) runOnAnimThread{}` 模式）
 - 或：把"线程切换"职责下放到 `AnimationController`，由 controller 持有 mAnimLooperExecutor、controller 调 anim.xxx() 时做 marshal——但 controller 也不知道 anim 想跑哪个线程
 
+> **状态：⚠️未修复（需 MultiDynamicAnimation/requestEnd 移植 ~80-250 行；937dd23 用 androidx 同步 cancel 为有意替代）**
 ### 🟥 **bug 级** ④ Cancel "下一帧生效"语义不可达
 
 **触发场景**：cancel() 触发时业务侧监听 cancel vs end vs actualEnd 的时序。
@@ -451,6 +455,7 @@ enum class AnimType {
 - 复刻 `MultiDynamicAnimation` + `SpringHolder` 整组（review 11 §3-G 已列 500+ 行）
 - 或：把 MultiDynamicAnimation 简化移植——`mMultiDynamicAnimation: MultiDynamicAnimation` 字段 + `start/cancel/requestEnd` 3 个方法 30 行 + SpringHolder 60 行
 
+> **状态：⚠️未修复（MultiDynamicAnimation + 6 SpringHolder ~150-250 行；937dd23 已用 androidx 单自由度演示部分语义）**
 ### 🟡 **高** ⑤ 6 自由度独立 stiffness/damping/minimumVisibleChange 完全缺失
 
 **触发场景**：任何依赖多自由度独立弹簧参数的转场。
@@ -463,6 +468,7 @@ enum class AnimType {
 **修复成本**：~150 行（MultiDynamicAnimation + 6 个 SpringHolder + SpringForce）
 - 或：用 androidx 6 个 `SpringAnimation` 并行——但这破坏 Single Frame Callback 的原子性（6 次回调 → 6 帧写表）
 
+> **状态：⚠️未修复（~20 行 + 需 OPPO 时长缩放概念；demo 常规操作不触发）**
 ### 🟡 **高** ⑥ `getRateStiffness` × AppLaunchAnimSpeedHandler 缩放缺失
 
 **触发场景**：用户在系统设置里改"动画时长比例"（开发者选项）。
@@ -474,6 +480,7 @@ enum class AnimType {
 
 **修复成本**：~20 行（`AppLaunchAnimSpeedHandler.sDurationScale` 字段 + `getRateStiffness` 工具函数）
 
+> **状态：⚠️未修复（捆绑 ⑤ 的 6 自由度引擎；demo 无 rect 弹簧调用面）**
 ### 🟡 **中** ⑦ `isWithAnim` width/height 切换语义缺失
 
 **触发场景**：OPEN_FROM_HOME / REVERSE_TO_OPEN 类型下 width 弹簧跟随 width，其他类型跟随 height。
@@ -484,6 +491,7 @@ enum class AnimType {
 
 **修复成本**：~15 行（`isWithAnim(radio, endRadio): Boolean` + mIsWithAnim 字段 + initAllAnimations 路径分支）
 
+> **状态：⚠️未修复（捆绑 ⑤；~10 行，无 alpha 弹簧载体）**
 ### 🟡 **中** ⑧ `mAlphaStartDelay` 延迟字段缺失
 
 **触发场景**：alpha 与 rect 弹簧的"先后启动"。
@@ -494,6 +502,7 @@ enum class AnimType {
 
 **修复成本**：~10 行（`SpringHolder.setStartDelay` 在 androidx 是支持的；加 `mAlphaStartDelay` 字段 + initAllAnimations 路径写入）
 
+> **状态：⚠️未修复（捆绑 ⑤；~10 行，demo 全 center 锚点不触发）**
 ### 🟢 **低** ⑨ `mTracking` 三档锚点缺失
 
 **触发场景**：rect Y 锚点（top / center / bottom）。
@@ -505,6 +514,7 @@ enum class AnimType {
 
 **修复成本**：~10 行
 
+> **状态：⚠️未修复（捆绑 ⑤；~10 行）**
 ### 🟢 **低** ⑩ `mLimitRadioFlag` / `mMinWidth` 钳制字段缺失
 
 **触发场景**：radio / width 超出合理范围。
@@ -521,28 +531,28 @@ enum class AnimType {
 
 | # | 建议 | 改动规模 | 价值 | 不补的后果 |
 |---|---|---|---|---|
-| 1 | **AnimType 补 7 值**（去 2 假、留 5 真 + SWIPE_TO_HOME） | 5 行 | **高**——review 06 §3 / review 11 §bug 级残留 #9 都点名；与原厂枚举对齐，跨设备兼容 | 任何按 `OPEN_FROM_HOME` / `REVERSE_TO_OPEN` 等对接的代码 NPE；Kotlin enum ordinal 不同 |
-| 2 | **maybeEnd 双轨时序 + AsyncAnimCallbacks 序列化** | ~30 行 | **高**——风险 #2；cancel 时序断言 | cancel → onAnimationEnd 收不到、onAnimActualEnd 不发，资源清理路径不可达 |
-| 3 | **Thread Switch Protocol 4 路 marshal**（start/cancel/skipToEnd/reverseToOpen） | ~50 行 | **高**——风险 #3；与 `AnimationControlThread.kt:46` 注释承诺对齐 | 占位类继续"语义失实"；真机演示时主线程 ≠ anim 线程场景会乱序 |
-| 4 | **`MultiDynamicAnimation` + 6 个 `SpringHolder` 简化移植**（覆盖 cancel 下一帧生效 + 6 自由度） | ~250 行（含 SpringHolder 60 行 + MultiDynamicAnimation 60 行 + CustomRectFSpringAnim 接 130 行） | **高**——风险 #1/4/5/7 一并覆盖 | 6 自由度独立弹簧 + cancel 双轨时序 + isWithAnim 切换全部不可达 |
-| 5 | **`getRateStiffness` × AppLaunchAnimSpeedHandler 缩放** | ~20 行 | **中**——风险 #6 | 用户改动画时长比例后 demo 弹簧速度不变 |
-| 6 | **`mTracking` / `mMinWidth` / `mLimitRadioFlag` 钳制三件套** | ~30 行 | **中**——风险 #9/10 | 极端 swipe 时 rect 溢出视觉撕裂 |
-| 7 | **`mAlphaStartDelay` 延迟字段** | ~10 行 | **中**——风险 #8 | alpha 与 rect 同帧起步，视觉上"卡片与淡入同步"而非"卡片先到再淡入" |
-| 8 | **`copyNextAnimState` 下一帧接管**（依赖建议 #4） | ~30 行 | **中**——recents 转场"手指抬起后从半截继续"演示必备 | 半截接管场景不可演示 |
-| 9 | **`updateEndTargetRectF` 动态改终点**（依赖建议 #4） | ~15 行 | **低**——Android 15 拖动 recents 卡片到一半放手场景 | 手势中途改变终点时 spring 仍跑原终点 |
-| 10 | **`updateMinVisibleChange` 折叠/平板/普通屏差异化** | ~20 行 | **低**——仅折叠/平板设备受影响 | 不同设备形态弹簧停下阈值相同 |
+| 1 | ⚠️未修复（6 行枚举；demo 无消费方——同 §⑤① 判定） — **AnimType 补 7 值**（去 2 假、留 5 真 + SWIPE_TO_HOME） | 5 行 | **高**——review 06 §3 / review 11 §bug 级残留 #9 都点名；与原厂枚举对齐，跨设备兼容 | 任何按 `OPEN_FROM_HOME` / `REVERSE_TO_OPEN` 等对接的代码 NPE；Kotlin enum ordinal 不同 |
+| 2 | ⚠️未修复（~30 行；同 §⑤②） — **maybeEnd 双轨时序 + AsyncAnimCallbacks 序列化** | ~30 行 | **高**——风险 #2；cancel 时序断言 | cancel → onAnimationEnd 收不到、onAnimActualEnd 不发，资源清理路径不可达 |
+| 3 | ⚠️未修复（~50 行；同 §⑤③） — **Thread Switch Protocol 4 路 marshal**（start/cancel/skipToEnd/reverseToOpen） | ~50 行 | **高**——风险 #3；与 `AnimationControlThread.kt:46` 注释承诺对齐 | 占位类继续"语义失实"；真机演示时主线程 ≠ anim 线程场景会乱序 |
+| 4 | ⚠️未修复（~250 行；同 §⑤④⑤） — **`MultiDynamicAnimation` + 6 个 `SpringHolder` 简化移植**（覆盖 cancel 下一帧生效 + 6 自由度） | ~250 行（含 SpringHolder 60 行 + MultiDynamicAnimation 60 行 + CustomRectFSpringAnim 接 130 行） | **高**——风险 #1/4/5/7 一并覆盖 | 6 自由度独立弹簧 + cancel 双轨时序 + isWithAnim 切换全部不可达 |
+| 5 | ⚠️未修复（~20 行；同 §⑤⑥） — **`getRateStiffness` × AppLaunchAnimSpeedHandler 缩放** | ~20 行 | **中**——风险 #6 | 用户改动画时长比例后 demo 弹簧速度不变 |
+| 6 | ⚠️未修复（依赖 6.1-4；同 §⑤⑨⑩） — **`mTracking` / `mMinWidth` / `mLimitRadioFlag` 钳制三件套** | ~30 行 | **中**——风险 #9/10 | 极端 swipe 时 rect 溢出视觉撕裂 |
+| 7 | ⚠️未修复（依赖 6.1-4；同 §⑤⑧） — **`mAlphaStartDelay` 延迟字段** | ~10 行 | **中**——风险 #8 | alpha 与 rect 同帧起步，视觉上"卡片与淡入同步"而非"卡片先到再淡入" |
+| 8 | ⚠️未修复（依赖 6.1-4） — **`copyNextAnimState` 下一帧接管**（依赖建议 #4） | ~30 行 | **中**——recents 转场"手指抬起后从半截继续"演示必备 | 半截接管场景不可演示 |
+| 9 | ⚠️未修复（依赖 6.1-4） — **`updateEndTargetRectF` 动态改终点**（依赖建议 #4） | ~15 行 | **低**——Android 15 拖动 recents 卡片到一半放手场景 | 手势中途改变终点时 spring 仍跑原终点 |
+| 10 | ⚠️未修复（依赖 6.1-4） — **`updateMinVisibleChange` 折叠/平板/普通屏差异化** | ~20 行 | **低**——仅折叠/平板设备受影响 | 不同设备形态弹簧停下阈值相同 |
 
 ### 6.2 建议保持简化（成本 > 收益）
 
 | # | 内容 | 简化理由 |
 |---|---|---|
-| 1 | **`SpringForce` 三支闭式解析解** | androidx `SpringForce` 已实现（同名不同包），行为等价，OPPO 自己也只是 vendored androidx + 私有 hack（`isAtEquilibrium` 反射） |
-| 2 | **`initFirstFrameForBreakScene` 4 参接口** | 依赖 RectTransformHelper + BreakParam，与 launcher 业务强绑定；review 11 §B-3 已建议保持 |
-| 3 | **`mapRatioVelocity` radio 速度换算** | 与建议 #4 捆绑（如果做了 MultiDynamicAnimation 移植，可以一起做） |
-| 4 | **`buildVelocityLogStr` 6 速度日志** | lib 用 `Trace.traceBegin/End` + `LogUtils` 已足够调试；原厂是为 OPPO 内部 dev 流程 |
-| 5 | **`SpringAnimReflectUtils` 反射路径** | androidx 不需要反射；lib 走 Androidx 公开 API |
-| 6 | **`OnAnimUpdateListener` 自定义 6 自由度回调**（mUpdateListeners） | 依赖 SurfaceControl 事务写表层；demo 演示无调用方 |
-| 7 | **`AnonymousClass2` 内嵌 OnAnimationEndListener 类** | lib 可以用 lambda + `OnAnimationEndListener` 复刻同样语义 |
+| 1 | ✔️保持简化（清单即保持简化） — **`SpringForce` 三支闭式解析解** | androidx `SpringForce` 已实现（同名不同包），行为等价，OPPO 自己也只是 vendored androidx + 私有 hack（`isAtEquilibrium` 反射） |
+| 2 | ✔️保持简化（清单即保持简化） — **`initFirstFrameForBreakScene` 4 参接口** | 依赖 RectTransformHelper + BreakParam，与 launcher 业务强绑定；review 11 §B-3 已建议保持 |
+| 3 | ✔️保持简化（清单即保持简化） — **`mapRatioVelocity` radio 速度换算** | 与建议 #4 捆绑（如果做了 MultiDynamicAnimation 移植，可以一起做） |
+| 4 | ✔️保持简化（清单即保持简化） — **`buildVelocityLogStr` 6 速度日志** | lib 用 `Trace.traceBegin/End` + `LogUtils` 已足够调试；原厂是为 OPPO 内部 dev 流程 |
+| 5 | ✔️保持简化（清单即保持简化） — **`SpringAnimReflectUtils` 反射路径** | androidx 不需要反射；lib 走 Androidx 公开 API |
+| 6 | ✔️保持简化（清单即保持简化） — **`OnAnimUpdateListener` 自定义 6 自由度回调**（mUpdateListeners） | 依赖 SurfaceControl 事务写表层；demo 演示无调用方 |
+| 7 | ✔️保持简化（清单即保持简化） — **`AnonymousClass2` 内嵌 OnAnimationEndListener 类** | lib 可以用 lambda + `OnAnimationEndListener` 复刻同样语义 |
 
 ---
 
@@ -616,3 +626,7 @@ enum class AnimType {
 - **937dd23** — springAsyncAnim + androidx.dynamicanimation 演示了单自由度弹簧跑独立线程（替代部分占位功能）
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+批次 2 逐条复核（2026-09-09）：
+- §⑤ ①-⑩：① AnimType → ⚠️未修复（6 行枚举，API 对齐项）；②③④⑤ → ⚠️未修复（30-250 行：AsyncAnimEndProtocol / MultiDynamicAnimation 简化移植）；⑥ → ⚠️未修复（~20 行）；⑦⑧⑨⑩ → ⚠️未修复（捆绑 ⑤ 六自由度引擎）
+- §⑥ 6.1-1..10 → ⚠️未修复（同 §⑤；8-10 依赖 6.1-4）；6.2-1..7 → ✔️保持简化

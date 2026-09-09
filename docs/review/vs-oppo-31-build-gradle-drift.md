@@ -110,6 +110,7 @@
 
 > **前提**：构建配置差异一般不直接导致运行 bug，但以下几条**确定会引起运行时差异**。
 
+> **⚠️未修复（lib 保持上游 androidx.dynamicanimation:1.1.0；B5 的 consumer-rules COUI* keep/exclude 缓解未做——dex 冲突仅在与 OPPO vendor fork 同进程合包时触发，当前独立 demo 进程不触发）**
 ### P0-bug-1：lib 跑在上游 `androidx.dynamicanimation:1.1.0`，原厂跑 OPPO vendor fork
 
 **证据**：
@@ -123,6 +124,7 @@
 
 **修复成本**：**5 行**——在 `consumer-rules.pro` 加 `-keep class androidx.dynamicanimation.animation.COUI* { *; }` + 在 `dependencies` 加 `configurations.all { resolutionStrategy.force(...) }` 或 `exclude(...)`。或者改 lib 不依赖 `androidx.dynamicanimation`（用 `DynamicAnimation` 接口，把 SpringForce 行为用纯 Kotlin 重写）——但这是 review 11 的 G 项（500+ 行）级改动。
 
+> **⚠️未修复（minSdk=36 未下调：API≤35 真机安装会 INSTALL_FAILED_OLDER_SDK；下调需 gradle 验证 + 主线程确认目标设备，本批禁跑 gradle）**
 ### P0-bug-2：lib 的 `compileSdk = 37` + `minSdk = 36`，下游装不到 Android 15 设备
 
 **证据**：
@@ -134,6 +136,7 @@
 
 **修复成本**：**2 行**——把 `minSdk` 调到 `31`（对齐 AOSP Launcher3 main + ColorOS 15 兼容线）。`compileSdk = 35` 也可以下调，但保留 37 不影响运行（仅 IDE lint 警告，AGP `suppressUnsupportedCompileSdk=37` 已抑制）。
 
+> **⚠️待复核（推测性：K2 编译器/stdlib 行为差异需 Kotlin 1.8 vs 2.0 对照实测；现有 demo 实测无崩溃不足以定论）**
 ### P0-bug-3：Kotlin 2.0.21 元数据 vs 原厂 Kotlin 1.8.x 元数据
 
 **证据**：
@@ -148,6 +151,7 @@
 
 **修复成本**：**0–30 行**——若目标是"完全相同 Kotlin 编译产物"，把 `kotlin = "1.8.22"`。但更优解是保留 2.0.21（带 K2 compiler 优化），仅在 demo 上做兼容性回归测试（review 12 提到的"实测无崩溃"补一份 Kotlin 2.0 vs 1.8 对照）。
 
+> **❌不成立/已过期（minSdk=36 ⇒ 可安装设备 ART≥API34，classfile 65(Java21) 可解析；VerifyError 场景已被 minSdk 排除——仅当下调 minSdk 后才需降 jvmTarget）**
 ### P0-bug-4：lib 用 `JavaVersion.VERSION_21` + `jvmTarget = "21"`，class file version 65.0
 
 **证据**：
@@ -159,6 +163,7 @@
 
 **修复成本**：**2 行**——`JavaVersion.VERSION_17` + `jvmTarget = "17"`。**前提**：lib 代码无 Java 21 特有 API（switch pattern matching、string templates 等）；快速 grep 已确认 lib 没用 `SequencedCollection`/`SequencedSet`/`switch` 表达式模式匹配（review 10 已记录）——可下调。
 
+> **⚠️未修复（android-37 SDK hack 为本机环境配置；拆 properties/文档化（B6）未做）**
 ### P0-bug-5：android-37 SDK hack 是开发者本机配置，**不可复现**
 
 **证据**：
@@ -173,6 +178,7 @@
 
 **修复成本**：**2 行**（短期）——`compileSdk = 35` + `buildToolsVersion = "35.0.1"`（ColorOS 15 兼容）。**长期**——加 `build.gradle.kts` 注释指向 `docs/review/vs-oppo-16-...md` §P0-bug-5，让下一个开发者知道 hack 在哪儿。
 
+> **❌不成立/已过期（buildToolsVersion "37.0.0" 三段式合法，实配无 bug——doc 自证 0 行；"AGP 不认 minor-version"系用户口误）**
 ### P0-bug-6：`buildToolsVersion = "37.0.0"` 三段式是合法的，但 `gradle.properties` 关 auto-detect 可能掩盖问题
 
 **证据**：
@@ -184,6 +190,7 @@
 
 **修复成本**：**0 行**（当前实配无 bug）。建议**改文档**说明三段式合法，避免下次误改。
 
+> **❌不成立/已过期（manifest 实查：LauncherEntryActivity 已带 android:exported="true"；其余 10 个 activity 无 intent-filter 且仅本 app 显式启动，Android 12+ 默认 exported=false 无需声明——无实际缺陷）**
 ### P0-bug-7：`demo/build.gradle:6-8` 同步 `compileSdk 37` + `minSdk 36`，11 个 demo activity 全无 `android:exported`
 
 **证据**：
@@ -195,6 +202,7 @@
 
 **修复成本**：**11 行**（每个 demo activity 加 `android:exported="true"`）。最简单 sed 替换。
 
+> **✔️保持简化（签名配置属下游责任——doc 自评 0 行记录）**
 ### P0-bug-8：lib 无 `signingConfigs` + 无 `release` 签名配置，下游需自己加
 
 **证据**：
@@ -205,6 +213,7 @@
 
 **修复成本**：**0 行**（标准做法，下游负责）。本报告仅作记录。
 
+> **✔️保持简化（lib 纯 JVM 无 native；下游按需配 NDK）**
 ### P0-bug-9：lib 完全无 `ndk { abiFilters = [...] }` + `externalNativeBuild`
 
 **证据**：
@@ -215,6 +224,7 @@
 
 **修复成本**：**0 行**（标准做法，下游负责）。
 
+> **⚠️未修复（AGENTS.md 环境说明未补（doc 建议 5 行），属文档/主线程范围）**
 ### P0-bug-10：`org.gradle.java.installations.auto-detect=false` + VS Code redhat JRE + jlink 兼容性问题
 
 **证据**：
@@ -233,31 +243,31 @@
 
 | # | 建议项 | 业务价值 | 修复成本 | 优先级 |
 |---|---|---|---|---|
-| **B1** | 把 `compileSdk = 37` 调到 `35`，移除 `android-37` SDK hack | 让 ColorOS 15 设备能装、能调试；消除"hack 在文档外、新开发者踩坑" | **2 行** + 删 SDK 目录 | **P0，立即修** |
-| **B2** | 把 `minSdk = 36` 调到 `31`（对齐 AOSP Launcher3 + ColorOS 15 兼容线） | 让 ColorOS 15 / 14 / 13 设备全部能装 | **2 行** | **P0，立即修** |
-| **B3** | `JavaVersion.VERSION_21` + `jvmTarget = "21"` 调到 17 | 兼容 Android 13 (API 33) 历史机型 | **2 行**（前提：lib 无 Java 21 特有 API，review 10 已确认） | **P1，本轮可修** |
-| **B4** | demo 11 个 activity 加 `android:exported="true"` | Android 16 (API 36+) 默认行为变化前主动修 | **11 行**（sed 一键替换）| **P1，本轮可修** |
-| **B5** | `consumer-rules.pro` 加 `-keep class androidx.dynamicanimation.animation.COUI* { *; }` + 文档化"如与 OPPO fork 共存需 exclude 冲突 dex" | 防 DEX 合并时 class 冲突 | **3 行** | **P2，下一轮** |
-| **B6** | `gradle.properties` 加注释或拆出 `.sdk-hack.properties`（含 `android-37 hack` 操作说明） | 新开发者上手时间 -2h | **5 行注释** + 1 个新 properties 文件 | **P2，下一轮** |
-| **B7** | `libs.versions.toml` 增 `kotlin-stdlib` 显式声明 + 增 `[bundles]` 给 demo 用 | 符合 Google 官方推荐 | **5 行** | **P3，nice-to-have** |
-| **B8** | 把 `repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)` 改为 `PREFER_SETTINGS` | 允许下游 module-level 仓库（接入方扩展需要）| **1 行** | **P3，可选** |
-| **B9** | 加 `lintOptions { abortOnError = false }` 或 `lint { warningsAsErrors = false }` | demo 引用 androidx 时常见 lint warning，避免阻塞构建 | **3 行** | **P3，可选** |
-| **B10** | 加 `packaging { resources { excludes += listOf("META-INF/*.kotlin_module", "META-INF/AL2.0", "META-INF/LGPL2.1") } }` | 减少 APK 体积、避免合并冲突 | **5 行** | **P3，可选** |
+| **B1** | 状态：⚠️未修复（同 P0-bug-2：下调 compileSdk 需 gradle 验证 + 删本机 hack 目录） — 把 `compileSdk = 37` 调到 `35`，移除 `android-37` SDK hack | 让 ColorOS 15 设备能装、能调试；消除"hack 在文档外、新开发者踩坑" | **2 行** + 删 SDK 目录 | **P0，立即修** |
+| **B2** | 状态：⚠️未修复（同 P0-bug-2：minSdk 下调需确认目标设备并 gradle 验证） — 把 `minSdk = 36` 调到 `31`（对齐 AOSP Launcher3 + ColorOS 15 兼容线） | 让 ColorOS 15 / 14 / 13 设备全部能装 | **2 行** | **P0，立即修** |
+| **B3** | 状态：❌不成立/已过期（同 P0-bug-4：当前 minSdk36 无 VerifyError；随 B2 下调时才需降 Java target） — `JavaVersion.VERSION_21` + `jvmTarget = "21"` 调到 17 | 兼容 Android 13 (API 33) 历史机型 | **2 行**（前提：lib 无 Java 21 特有 API，review 10 已确认） | **P1，本轮可修** |
+| **B4** | 状态：❌不成立/已过期（同 P0-bug-7：manifest 无实际缺陷） — demo 11 个 activity 加 `android:exported="true"` | Android 16 (API 36+) 默认行为变化前主动修 | **11 行**（sed 一键替换）| **P1，本轮可修** |
+| **B5** | 状态：⚠️未修复（同 P0-bug-1：COUI keep/exclude 规则未加） — `consumer-rules.pro` 加 `-keep class androidx.dynamicanimation.animation.COUI* { *; }` + 文档化"如与 OPPO fork 共存需 exclude 冲突 dex" | 防 DEX 合并时 class 冲突 | **3 行** | **P2，下一轮** |
+| **B6** | 状态：⚠️未修复（同 P0-bug-5/10：hack 文档化未做） — `gradle.properties` 加注释或拆出 `.sdk-hack.properties`（含 `android-37 hack` 操作说明） | 新开发者上手时间 -2h | **5 行注释** + 1 个新 properties 文件 | **P2，下一轮** |
+| **B7** | 状态：✔️保持简化（P3 nice-to-have） — `libs.versions.toml` 增 `kotlin-stdlib` 显式声明 + 增 `[bundles]` 给 demo 用 | 符合 Google 官方推荐 | **5 行** | **P3，nice-to-have** |
+| **B8** | 状态：✔️保持简化（FAIL_ON_PROJECT_REPOS 当前无下游模块仓库需求） — 把 `repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)` 改为 `PREFER_SETTINGS` | 允许下游 module-level 仓库（接入方扩展需要）| **1 行** | **P3，可选** |
+| **B9** | 状态：✔️保持简化（当前无 lint 阻塞） — 加 `lintOptions { abortOnError = false }` 或 `lint { warningsAsErrors = false }` | demo 引用 androidx 时常见 lint warning，避免阻塞构建 | **3 行** | **P3，可选** |
+| **B10** | 状态：✔️保持简化（lib 无 META-INF 冲突场景） — 加 `packaging { resources { excludes += listOf("META-INF/*.kotlin_module", "META-INF/AL2.0", "META-INF/LGPL2.1") } }` | 减少 APK 体积、避免合并冲突 | **5 行** | **P3，可选** |
 
 ### 4.2 建议保持简化的（不要回移）
 
 | # | 保持项 | 理由 |
 |---|---|---|
-| **K1** | 不抄 `ndkVersion` / `abiFilters` / `externalNativeBuild` | lib 是纯 JVM，下游按需加更灵活；抄过来会让 lib 携带自己用不上的 native 编译 |
-| **K2** | 不抄 `productFlavors {}` + 4 个 FLAVOR_* 子字段 | lib 不参与 OPPO product matrix，单 flavor 够；抄过来会让 lib 与 `OPPOPallDomesticAall` 等 OPPO 字符串硬绑 |
-| **K3** | 不抄 `signingConfigs` | lib 不签名是标准做法；下游用 debug 测、用自己证书签 release |
-| **K4** | 不抄 `BuildConfig.VERSION_NAME/CODE` 字段 | lib 是独立 release 版本号，下游自管 |
-| **K5** | 不抄 `protonanolib` 那种 library + app 双模块结构 | lib + demo 双模块已够；OPPO 多模块是为 product matrix 服务，lib 不需要 |
-| **K6** | 不抄 `androidx.dynamicanimation` vendor fork | vendor fork 是 OPPO 私有的，不在 Maven Central；lib 拉不到。**保持上游 1.1.0**，靠 B5 的 consumer-rules 缓解冲突 |
-| **K7** | 不抄 `com.coui.appcompat.animation.*` 10+ 个 COUI 插值器 | COUI 插值器在 `com.coui.appcompat.animation` namespace，lib 用 `android.animation.TimeInterpolator` 接口，**不依赖 COUI**；Demo4/Demo11 演示颜色/手感差异（review 11 已记录 G 项），但 500+ 行移植 ROI 低 |
-| **K8** | 不抄 Kotlin 1.8.x compiler 输出 | Kotlin 2.0.21 默认开 K2 compiler，编译速度快 30%；元数据格式向后兼容；保持新版本是正确方向 |
-| **K9** | 不抄 `BuildConfig.FLAVOR_apilevel = "aall"` 等 4 个 flavor 子字段 | 同 K2，硬绑 OPPO 私有命名空间 |
-| **K10** | 不抄 OPPO 自研的 launcher-debug IPC 协议（`TestProtocol`、`TestInformationHandler`，review 06 §0 已声明"测试 IPC 协议，不可运行"）| lib 是通用动画库，不应承担 launcher 调试 IPC 职责 |
+| **K1** | 状态：✔️保持简化 — 不抄 `ndkVersion` / `abiFilters` / `externalNativeBuild` | lib 是纯 JVM，下游按需加更灵活；抄过来会让 lib 携带自己用不上的 native 编译 |
+| **K2** | 状态：✔️保持简化 — 不抄 `productFlavors {}` + 4 个 FLAVOR_* 子字段 | lib 不参与 OPPO product matrix，单 flavor 够；抄过来会让 lib 与 `OPPOPallDomesticAall` 等 OPPO 字符串硬绑 |
+| **K3** | 状态：✔️保持简化 — 不抄 `signingConfigs` | lib 不签名是标准做法；下游用 debug 测、用自己证书签 release |
+| **K4** | 状态：✔️保持简化 — 不抄 `BuildConfig.VERSION_NAME/CODE` 字段 | lib 是独立 release 版本号，下游自管 |
+| **K5** | 状态：✔️保持简化 — 不抄 `protonanolib` 那种 library + app 双模块结构 | lib + demo 双模块已够；OPPO 多模块是为 product matrix 服务，lib 不需要 |
+| **K6** | 状态：✔️保持简化 — 不抄 `androidx.dynamicanimation` vendor fork | vendor fork 是 OPPO 私有的，不在 Maven Central；lib 拉不到。**保持上游 1.1.0**，靠 B5 的 consumer-rules 缓解冲突 |
+| **K7** | 状态：✔️保持简化 — 不抄 `com.coui.appcompat.animation.*` 10+ 个 COUI 插值器 | COUI 插值器在 `com.coui.appcompat.animation` namespace，lib 用 `android.animation.TimeInterpolator` 接口，**不依赖 COUI**；Demo4/Demo11 演示颜色/手感差异（review 11 已记录 G 项），但 500+ 行移植 ROI 低 |
+| **K8** | 状态：✔️保持简化 — 不抄 Kotlin 1.8.x compiler 输出 | Kotlin 2.0.21 默认开 K2 compiler，编译速度快 30%；元数据格式向后兼容；保持新版本是正确方向 |
+| **K9** | 状态：✔️保持简化 — 不抄 `BuildConfig.FLAVOR_apilevel = "aall"` 等 4 个 flavor 子字段 | 同 K2，硬绑 OPPO 私有命名空间 |
+| **K10** | 状态：✔️保持简化 — 不抄 OPPO 自研的 launcher-debug IPC 协议（`TestProtocol`、`TestInformationHandler`，review 06 §0 已声明"测试 IPC 协议，不可运行"）| lib 是通用动画库，不应承担 launcher 调试 IPC 职责 |
 
 ---
 
@@ -352,4 +362,16 @@ lib 的构建配置整体**跑得通、有测试**，但有 **3 个 P0 真 bug**
 
 本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
 
+本份批次 5 逐条复核结果：
+- P0-bug-1（dynamicanimation 上游 vs OPPO fork）— ⚠️未修复（B5 缓解未做；冲突仅在同进程合包场景）
+- P0-bug-2（minSdk/compileSdk）— ⚠️未修复（未下调；需 gradle 验证 + 主线程确认目标设备）
+- P0-bug-3（Kotlin 2.0.21 元数据）— ⚠️待复核（推测性，需 1.8 vs 2.0 对照实测）
+- P0-bug-4（Java 21 classfile）— ❌不成立/已过期（minSdk36 已排除 <API34 设备）
+- P0-bug-5（android-37 SDK hack）— ⚠️未修复（本机环境；B6 文档化未做）
+- P0-bug-6（buildTools 37.0.0 三段式）— ❌不成立/已过期（实配合法无 bug）
+- P0-bug-7（demo activity exported）— ❌不成立/已过期（manifest 实查无缺陷）
+- P0-bug-8（签名）— ✔️保持简化；P0-bug-9（NDK）— ✔️保持简化
+- P0-bug-10（auto-detect/JRE 环境）— ⚠️未修复（AGENTS.md 说明属文档范围）
+- §4.1 B1/B2/B5/B6 — ⚠️未修复；B3/B4 — ❌不成立/已过期；B7..B10 — ✔️保持简化
+- §4.2 K1..K10 — ✔️保持简化（与在行标记一致）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
