@@ -5,6 +5,8 @@ import android.os.HandlerThread
 import android.os.Process
 import android.view.Choreographer
 import com.asyncanimator.core.anim.AnimationHandler
+import com.asyncanimator.core.scheduler.ChoreographerTickScheduler
+import com.asyncanimator.core.scheduler.HandlerTickScheduler
 import com.asyncanimator.core.scheduler.TickScheduler
 
 /**

@@ -1,8 +1,7 @@
-package com.asyncanimator.launcher.animthread
+package com.asyncanimator.core.scheduler
 
 import android.animation.ValueAnimator
 import android.view.Choreographer
-import com.asyncanimator.core.scheduler.TickScheduler
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
 
