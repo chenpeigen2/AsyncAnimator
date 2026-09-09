@@ -239,7 +239,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自取 `instance.looper`；
 
 ### 4-A. 值得补的
 
-#### ✅已修复（64d3bab：runCatching 改为 try + Log.w）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
+#### ✅已修复（64d3bab：runCatching 保留 + onFailure 日志 + Log.w）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
 
 当前 `AnimationControlThread.kt:70`：
 ```kotlin
@@ -300,7 +300,7 @@ override fun onLooperPrepared() {
 
 理由：lib 没引入 `OplusExecutors` 概念。访问 `AnimationControlThread.instance` 已足够。**保持简化**。
 
-> **状态：✅已修复（64d3bab：runCatching 改为 try + Log.w，同 4-A-1）**
+> **状态：✅已修复（64d3bab：runCatching 保留 + onFailure 日志 + Log.w，同 4-A-1）**
 #### 4-B-5. `runCatching { Process.setThreadPriority(...) }` 兜底不补（删除，详见 4-A-1）
 
 理由：构造参数已生效，再设一次无意义。
@@ -347,8 +347,8 @@ override fun onLooperPrepared() {
 \r
 **批次 3 子代理复核（2026-09-09）**——按已知 commit 列表逐项核对：\r
 - §3 R-1/R-2/R-3/R-5/R-6 — 标 ✔️保持简化（OPPO ROM 专属或语义已对齐）\r
-- §3 R-4 — ✅已修复（64d3bab）：runCatching 改为 try + Log.w，冗余兜底已清理\r
-- §4 4-A-1 — ✅已修复（64d3bab：runCatching 改为 try + Log.w）\r
+- §3 R-4 — ✅已修复（64d3bab）：runCatching 保留 + onFailure 日志 + Log.w，冗余兜底已清理\r
+- §4 4-A-1 — ✅已修复（64d3bab：runCatching 保留 + onFailure 日志 + Log.w）\r
 - §4 4-A-2 — 标 ⚠️未修复（无业务 hook 需求）\r
 - §4 4-B-1..5 — 标 ✔️保持简化（已与原 4-B 节判定一致）\r
 - §4 4-C-1/2 — ✔️已保留为监控项
@@ -373,16 +373,16 @@ override fun onLooperPrepared() {
 | §3 R-1 | ✔️保持简化（不变） | 无 `setUxThreadValue` 调用；退化注释 `:35-41`（KDoc）+ `:68-69`（行内）仍在 |
 | §3 R-2 | ✔️保持简化（不变） | `init { start() }`（`:51-53`）+ `by lazy(SYNCHRONIZED)`（`:86-88`）结构未变 |
 | §3 R-3 | ✔️保持简化（不变） | `onLooperPrepared`（`:63-71`）仍在 `Looper.loop()` 前完成装帧源；竞争窗口分析成立 |
-| §3 R-4 | ✅已修复（64d3bab） | `:70` runCatching 改为 try + Log.w 兜底 |
+| §3 R-4 | ✅已修复（64d3bab） | `:70` runCatching 保留 + onFailure 日志 + Log.w 兜底 |
 | §3 R-5 | ✔️保持简化（不变） | `THREAD_NAME = "launcher.anim"`（`:76`）、`PRIORITY = -19`（`:83`）字面值未变 |
 | §3 R-6 | ✔️保持简化（不变） | LooperExecutor 这一层缺失；lib 设计如此 |
-| §4 4-A-1 | ✅已修复（64d3bab） | 同 R-4，runCatching 改为 try + Log.w |
+| §4 4-A-1 | ✅已修复（64d3bab） | 同 R-4，runCatching 保留 + onFailure 日志 + Log.w |
 | §4 4-A-2 | ⚠️未修复（不变） | 无 `onThreadReady` 之类的线程首跑 hook |
 | §4 4-B-1 | ✔️保持简化（不变） | OPPO 私有 `setUxThreadValue`，AOSP 无替代 |
 | §4 4-B-2 | ✔️保持简化（不变） | OPPO 私有 `reportKeyThreadToUAF`，AOSP 无替代 |
 | §4 4-B-3 | ✔️保持简化（不变） | lib 调用方只用 Handler.post |
 | §4 4-B-4 | ✔️保持简化（不变） | lib 没引入 OplusExecutors 概念 |
-| §4 4-B-5 | ✅已修复（64d3bab） | 同 4-A-1，runCatching 改为 try + Log.w |
+| §4 4-B-5 | ✅已修复（64d3bab） | 同 4-A-1，runCatching 保留 + onFailure 日志 + Log.w |
 | §4 4-C-1 | ✔️监控项保留（不变） | THREAD_NAME / PRIORITY 字面量已固化 |
 | §4 4-C-2 | ✔️监控项保留（不变） | `SYNCHRONIZED` 模式正确，`start()` 只跑一次 |
 
