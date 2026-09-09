@@ -1,8 +1,8 @@
 # vs-oppo-13-pending-e2e-flow — PendingAnimation add / buildAnim / createPlaybackController 端到端对比
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/pending/PendingAnimation.kt`（180 行）+
->   `…/playback/AnimatorPlaybackController.kt`（196 行）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/playback/PendingAnimation.kt`（178 行）+
+>   `…/playback/AnimatorPlaybackController.kt`（206 行）
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/android/launcher3/anim/PendingAnimation.java`（235 行）+
 >   `…/anim/AnimatorPlaybackController.java`（467 行）
 >
@@ -14,7 +14,7 @@
 > 3. `createPlaybackController` 调用 `AnimatorPlaybackController` 构造 + 包装 `addHoldersRecur`
 >
 > 以及用户指定的 **三处具体改动对齐情况**：
-> - lib `setFloat` 动画版（即 `PendingAnimation.kt:72-78` 的 `override fun setFloat`）
+> - lib `setFloat` 动画版（即 `PendingAnimation.kt:70-76` 的 `override fun setFloat`）
 > - lib 自定义 `ObjectAnimator.buildAnimator()` 返回 `ValueAnimator`
 > - lib `addHoldersRecur` 的 `else -> throw RuntimeException`
 
@@ -24,22 +24,22 @@
 
 | lib 类（文件:行） | 原厂类（文件:行） | 关系 | 关键证据 |
 |---|---|---|---|
-| `PendingAnimation.kt:27`（`internal class PendingAnimation(duration: Long) : PropertySetter`）| `PendingAnimation.java:23`（`public class implements PropertySetter`）| 字段一一对齐：`anim`↔`mAnim`、`animHolders`↔`mAnimHolders`、`progressAnimator`↔`mProgressAnimator`、`controller`↔`mAnimatorPlaybackController`、`durationMs`↔`mDuration`、`isAnimFinished`↔`isAnimFinished` | lib `:29-35` ↔ 原厂 `:24-30` |
-| `PendingAnimation.kt:45-49`（`fun add(child: Animator): PendingAnimation`）| `PendingAnimation.java:191-194`（`add(Animator, SpringProperty)`）| 行为等价；lib 砍 SpringProperty 第二参 | lib 主体 `child.duration = durationMs; anim.playTogether(child); addToHolders(child)` ↔ 原厂 `mAnim.play(animator.setDuration(mDuration)); addAnimationHoldersRecur(animator, mDuration, springProperty, mAnimHolders)` |
-| `PendingAnimation.kt:51-54`（`add(child: Animator, ip: TimeInterpolator?)`）| `PendingAnimation.java:55-58`（`add(Animator, TimeInterpolator, SpringProperty)`）| 行为等价 + 砍 SpringProperty 第三参 | lib `child.interpolator = ip; return add(child)` ↔ 原厂 `animator.setInterpolator(timeInterpolator); add(animator, springProperty)` |
-| `PendingAnimation.kt:56-59`（`addWithoutDuration(child: Animator)`）| `PendingAnimation.java:88-91`（`addWithoutDuration(Animator)`）| **完全等价**（playTogether vs play 等价对单子动画） | lib `anim.playTogether(child); addToHolders(child)` ↔ 原厂 `mAnim.play(animator); addAnimationHoldersRecur(animator, mDuration, SpringProperty.DEFAULT, mAnimHolders)` |
-| `PendingAnimation.kt:61-66`（`addFloat(target, property, from, to, ip)`）| `PendingAnimation.java:67-71`（`<T> addFloat(T, FloatProperty<T>, float, float, TimeInterpolator)`）| 签名等价 + 内部 ObjectAnimator 实现不同（lib 自定义 wrapper，OPPO 用平台）| lib `ObjectAnimator.ofFloat(target, property, from, to); setInterpolator(ip); return add(oa.buildAnimator())` ↔ 原厂 `ObjectAnimator.ofFloat(t8, floatProperty, f9, f10); setInterpolator(timeInterpolator); add(objectAnimatorOfFloat)` |
-| `PendingAnimation.kt:72-78`（`override fun <T> setFloat(target, property, value, interpolator)`）| `PendingAnimation.java:127-134`（`@Override setFloat(T, FloatProperty<T>, float, TimeInterpolator)`）| 行为等价 + 实现细节差异（见 §3 R1）| lib `ObjectAnimator.ofFloat(target, property, property.get(target), value)`（4 参显式 from）↔ 原厂 `ObjectAnimator.ofFloat(t8, floatProperty, f9)`（3 参隐式 from=current）|
-| `PendingAnimation.kt:80-82`（`addEndListener(onEnd: ((Boolean) -> Unit)?)`）| `PendingAnimation.java:60-65`（`addEndListener(Consumer<Boolean>)`）| 精确对应 | lib `progressAnimator().addListener(AnimatorListeners.forEndCallback(onEnd))` ↔ 原厂 `mProgressAnimator.addListener(AnimatorListeners.forEndCallback(consumer))` |
-| `PendingAnimation.kt:84-86`（`addOnFrameCallback(onFrame: () -> Unit)`）| `PendingAnimation.java:77-79`（`addOnFrameCallback(Runnable)`）+ `:81-86`（`addOnFrameListener`）| 精确对应（lib 不暴露 addOnFrameListener `ValueAnimator.AnimatorUpdateListener` 入口） | lib `progressAnimator().addUpdateListener { onFrame() }` ↔ 原厂 `mProgressAnimator.addUpdateListener(animatorUpdateListener)` |
-| `PendingAnimation.kt:88-90`（`addListener(l)`）| `PendingAnimation.java:73-75`（`addListener(Animator.AnimatorListener)`）| 精确对应 | lib `anim.addListener(l)` ↔ 原厂 `mAnim.addListener(animatorListener)` |
-| `PendingAnimation.kt:92-101`（`fun buildAnim(): AnimatorSet`）| `PendingAnimation.java:93-103`（`AnimatorSet buildAnim()`）| 精确对应 + 时长写入路径差异（见 §3 R2） | lib `progressAnimator?.let { add(it); progressAnimator = null }; if (animHolders.isEmpty()) addWithoutDuration(ValueAnimator.ofFloat(0f, 1f).setDuration(durationMs)); return anim` ↔ 原厂 `ValueAnimator valueAnimator = mProgressAnimator; if (valueAnimator != null) { add(valueAnimator); mProgressAnimator = null; } if (mAnimHolders.isEmpty()) { add(ValueAnimator.ofFloat(0f, 1f).setDuration(mDuration)); } return mAnim` |
-| `PendingAnimation.kt:103-105`（`createPlaybackController()`）| `PendingAnimation.java:105-110`（`AnimatorPlaybackController createPlaybackController()`）| 精确对应 + 缓存逻辑等价 | lib `controller ?: AnimatorPlaybackController(buildAnim(), durationMs, animHolders).also { controller = it }` ↔ 原厂 `if (mAnimatorPlaybackController == null) { mAnimatorPlaybackController = new AnimatorPlaybackController(buildAnim(), mDuration, mAnimHolders); } return mAnimatorPlaybackController` |
-| `AnimatorPlaybackController.kt:74-89`（`class Holder`）| `AnimatorPlaybackController.java:38-61`（`public static class Holder`）| 字段对应 + 砍 springProperty 类型 | lib `:75-79` ↔ 原厂 `:39-50` |
-| `AnimatorPlaybackController.kt:186-194`（`addHoldersRecur`）| `AnimatorPlaybackController.java:161-182`（`addAnimationHoldersRecur`）| 精确对齐 else-throw（见 §3 R3） + 砍父级 duration/interpolator 下发（见 §3 R4） | lib 三分支：`is ValueAnimator -> out.add(Holder(anim, totalDuration.toFloat()))`、`is AnimatorSet -> forEach 递归`、`else -> throw RuntimeException("Unknown animation type $anim")` ↔ 原厂 `if ValueAnimator -> arrayList.add(new Holder(animator, j8, springProperty)); return;` `if (!(animator instanceof AnimatorSet)) throw new RuntimeException("Unknown animation type " + animator);` `Iterator<Animator> it = ((AnimatorSet) animator).getChildAnimations().iterator(); while (it.hasNext()) { ... }` |
-| `AnimatorPlaybackController.kt:27-70`（主构造器）| `AnimatorPlaybackController.java:127-159`（主构造器）| 关键差异：**lib 取消监听挂 `anims[0]`，原厂挂 `animatorSet` 本体**（见 §3 R5）| lib `:46-70` ↔ 原厂 `:127-159` |
-| （lib 缺 `wrap()` 工厂 + `mAnim` 私有 vs 公开） | `AnimatorPlaybackController.java:216-220`（`wrap(AnimatorSet, long)`）| lib 自有 `wrap` 在 `:265-269`（已检查，等价实现） | lib `wrap(set, duration): AnimatorPlaybackController { addHoldersRecur(set, duration, holders); return AnimatorPlaybackController(set, duration, holders) }` ↔ 原厂 `wrap(animatorSet, j8): ArrayList arrayList = new ArrayList(); addAnimationHoldersRecur(animatorSet, j8, SpringProperty.DEFAULT, arrayList); return new AnimatorPlaybackController(animatorSet, j8, arrayList)` |
-| `PendingAnimation.kt:117-179`（内嵌 `ObjectAnimator` 包装类） | 平台 `android.animation.ObjectAnimator`（extends ValueAnimator） | **实现机制不同**：lib 自定义 wrapper 不继承 ValueAnimator；OPPO 用平台类 | lib `:124, 149-158` ↔ 平台 `ObjectAnimator.ofFloat(target, property, values)` |
+| `PendingAnimation.kt:25`（`internal class PendingAnimation(duration: Long) : PropertySetter`）| `PendingAnimation.java:23`（`public class implements PropertySetter`）| 字段一一对齐：`anim`↔`mAnim`、`animHolders`↔`mAnimHolders`、`progressAnimator`↔`mProgressAnimator`、`controller`↔`mAnimatorPlaybackController`、`durationMs`↔`mDuration`、`isAnimFinished`↔`isAnimFinished` | lib `:27-33` ↔ 原厂 `:24-30` |
+| `PendingAnimation.kt:43-47`（`fun add(child: Animator): PendingAnimation`）| `PendingAnimation.java:191-194`（`add(Animator, SpringProperty)`）| 行为等价；lib 砍 SpringProperty 第二参 | lib 主体 `child.duration = durationMs; anim.playTogether(child); addToHolders(child)` ↔ 原厂 `mAnim.play(animator.setDuration(mDuration)); addAnimationHoldersRecur(animator, mDuration, springProperty, mAnimHolders)` |
+| `PendingAnimation.kt:49-52`（`add(child: Animator, ip: TimeInterpolator?)`）| `PendingAnimation.java:55-58`（`add(Animator, TimeInterpolator, SpringProperty)`）| 行为等价 + 砍 SpringProperty 第三参 | lib `child.interpolator = ip; return add(child)` ↔ 原厂 `animator.setInterpolator(timeInterpolator); add(animator, springProperty)` |
+| `PendingAnimation.kt:54-57`（`addWithoutDuration(child: Animator)`）| `PendingAnimation.java:88-91`（`addWithoutDuration(Animator)`）| **完全等价**（playTogether vs play 等价对单子动画） | lib `anim.playTogether(child); addToHolders(child)` ↔ 原厂 `mAnim.play(animator); addAnimationHoldersRecur(animator, mDuration, SpringProperty.DEFAULT, mAnimHolders)` |
+| `PendingAnimation.kt:59-64`（`addFloat(target, property, from, to, ip)`）| `PendingAnimation.java:67-71`（`<T> addFloat(T, FloatProperty<T>, float, float, TimeInterpolator)`）| 签名等价 + 内部 ObjectAnimator 实现不同（lib 自定义 wrapper，OPPO 用平台）| lib `ObjectAnimator.ofFloat(target, property, from, to); setInterpolator(ip); return add(oa.buildAnimator())` ↔ 原厂 `ObjectAnimator.ofFloat(t8, floatProperty, f9, f10); setInterpolator(timeInterpolator); add(objectAnimatorOfFloat)` |
+| `PendingAnimation.kt:70-76`（`override fun <T> setFloat(target, property, value, interpolator)`）| `PendingAnimation.java:127-134`（`@Override setFloat(T, FloatProperty<T>, float, TimeInterpolator)`）| 行为等价 + 实现细节差异（见 §3 R1）| lib `ObjectAnimator.ofFloat(target, property, property.get(target), value)`（4 参显式 from）↔ 原厂 `ObjectAnimator.ofFloat(t8, floatProperty, f9)`（3 参隐式 from=current）|
+| `PendingAnimation.kt:78-80`（`addEndListener(onEnd: ((Boolean) -> Unit)?)`）| `PendingAnimation.java:60-65`（`addEndListener(Consumer<Boolean>)`）| 精确对应 | lib `progressAnimator().addListener(AnimatorListeners.forEndCallback(onEnd))` ↔ 原厂 `mProgressAnimator.addListener(AnimatorListeners.forEndCallback(consumer))` |
+| `PendingAnimation.kt:82-84`（`addOnFrameCallback(onFrame: () -> Unit)`）| `PendingAnimation.java:77-79`（`addOnFrameCallback(Runnable)`）+ `:81-86`（`addOnFrameListener`）| 精确对应（lib 不暴露 addOnFrameListener `ValueAnimator.AnimatorUpdateListener` 入口） | lib `progressAnimator().addUpdateListener { onFrame() }` ↔ 原厂 `mProgressAnimator.addUpdateListener(animatorUpdateListener)` |
+| `PendingAnimation.kt:86-88`（`addListener(l)`）| `PendingAnimation.java:73-75`（`addListener(Animator.AnimatorListener)`）| 精确对应 | lib `anim.addListener(l)` ↔ 原厂 `mAnim.addListener(animatorListener)` |
+| `PendingAnimation.kt:90-99`（`fun buildAnim(): AnimatorSet`）| `PendingAnimation.java:93-103`（`AnimatorSet buildAnim()`）| 精确对应 + 时长写入路径差异（见 §3 R2） | lib `progressAnimator?.let { add(it); progressAnimator = null }; if (animHolders.isEmpty()) addWithoutDuration(ValueAnimator.ofFloat(0f, 1f).setDuration(durationMs)); return anim` ↔ 原厂 `ValueAnimator valueAnimator = mProgressAnimator; if (valueAnimator != null) { add(valueAnimator); mProgressAnimator = null; } if (mAnimHolders.isEmpty()) { add(ValueAnimator.ofFloat(0f, 1f).setDuration(mDuration)); } return mAnim` |
+| `PendingAnimation.kt:101-103`（`createPlaybackController()`）| `PendingAnimation.java:105-110`（`AnimatorPlaybackController createPlaybackController()`）| 精确对应 + 缓存逻辑等价 | lib `controller ?: AnimatorPlaybackController(buildAnim(), durationMs, animHolders).also { controller = it }` ↔ 原厂 `if (mAnimatorPlaybackController == null) { mAnimatorPlaybackController = new AnimatorPlaybackController(buildAnim(), mDuration, mAnimHolders); } return mAnimatorPlaybackController` |
+| `AnimatorPlaybackController.kt:76-91`（`class Holder`）| `AnimatorPlaybackController.java:38-61`（`public static class Holder`）| 字段对应 + 砍 springProperty 类型 | lib `:77-81` ↔ 原厂 `:39-50` |
+| `AnimatorPlaybackController.kt:196-204`（`addHoldersRecur`）| `AnimatorPlaybackController.java:161-182`（`addAnimationHoldersRecur`）| 精确对齐 else-throw（见 §3 R3） + 砍父级 duration/interpolator 下发（见 §3 R4） | lib 三分支：`is ValueAnimator -> out.add(Holder(anim, totalDuration.toFloat()))`、`is AnimatorSet -> forEach 递归`、`else -> throw RuntimeException("Unknown animation type $anim")` ↔ 原厂 `if ValueAnimator -> arrayList.add(new Holder(animator, j8, springProperty)); return;` `if (!(animator instanceof AnimatorSet)) throw new RuntimeException("Unknown animation type " + animator);` `Iterator<Animator> it = ((AnimatorSet) animator).getChildAnimations().iterator(); while (it.hasNext()) { ... }` |
+| `AnimatorPlaybackController.kt:26-72`（主构造器）| `AnimatorPlaybackController.java:127-159`（主构造器）| **原差异已修复（见 §3 R5）**：lib 现同样挂根 `anim` 本体（`:56-71`），三触点同步 `isDispatchStartPending=false` | lib `:45-72` ↔ 原厂 `:127-159` |
+| （lib 缺 `wrap()` 工厂 + `mAnim` 私有 vs 公开） | `AnimatorPlaybackController.java:216-220`（`wrap(AnimatorSet, long)`）| lib 自有 `wrap` 在 `:190-194`（等价实现） | lib `wrap(set, duration): AnimatorPlaybackController { addHoldersRecur(set, duration, holders); return AnimatorPlaybackController(set, duration, holders) }` ↔ 原厂 `wrap(animatorSet, j8): ArrayList arrayList = new ArrayList(); addAnimationHoldersRecur(animatorSet, j8, SpringProperty.DEFAULT, arrayList); return new AnimatorPlaybackController(animatorSet, j8, arrayList)` |
+| `PendingAnimation.kt:115-177`（内嵌 `ObjectAnimator` 包装类） | 平台 `android.animation.ObjectAnimator`（extends ValueAnimator） | **实现机制不同**：lib 自定义 wrapper 不继承 ValueAnimator；OPPO 用平台类 | lib `:122, 147-156` ↔ 平台 `ObjectAnimator.ofFloat(target, property, values)` |
 
 ---
 
@@ -49,37 +49,37 @@
 
 | # | 设计点 | 原厂证据 | lib 证据 |
 |---|---|---|---|
-| A1 | `add(Animator)` 内部覆写 `duration = mDuration`、加入 AnimatorSet、收 Holder | `PendingAnimation.java:191-194` | `PendingAnimation.kt:45-49` |
-| A2 | `add(Animator, TimeInterpolator)` 先 `setInterpolator` 再调 `add(Animator)` | `PendingAnimation.java:55-58` | `PendingAnimation.kt:51-54` |
-| A3 | `addWithoutDuration(Animator)` 跳过 `setDuration`、直接 play + 收 Holder（保留外部预设时长） | `PendingAnimation.java:88-91` | `PendingAnimation.kt:56-59` |
-| A4 | `addFloat(target, prop, from, to, ip)`：构造 ObjectAnimator + setInterpolator + add | `PendingAnimation.java:67-71` | `PendingAnimation.kt:61-66`（用 lib 自定义 ObjectAnimator，见 §3 R6）|
-| A5 | `setFloat` 短路：`property == null` 或 `property.get(target) == value` 时 no-op | `PendingAnimation.java:128` | `PendingAnimation.kt:74` |
-| A6 | `addEndListener` / `addOnFrameCallback` 复用 `progressAnimator` 懒建 | `PendingAnimation.java:60-65, 77-86` | `PendingAnimation.kt:80-86, 107-109` |
-| A7 | `addListener` 转发到 `AnimatorSet` 本体（监听 `mAnim`，非子动画） | `PendingAnimation.java:73-75` | `PendingAnimation.kt:88-90` |
-| A8 | `buildAnim()` 主体三步：① 把 `progressAnimator` 调 `add()`；② 置 null；③ 若 `animHolders` 空补 0→1 占位 | `PendingAnimation.java:93-103` | `PendingAnimation.kt:92-101` |
-| A9 | `buildAnim` 调用 `add(progressAnimator)` → 走 `add(Animator)` → `setDuration(mDuration)` 写入 | `PendingAnimation.java:96 → 191-194` | `PendingAnimation.kt:94 → 45-49`（同样 setDuration）|
-| A10 | `createPlaybackController` 单例缓存 + 懒构造 | `PendingAnimation.java:105-110` | `PendingAnimation.kt:103-105` |
-| A11 | `createPlaybackController` 调 `new AnimatorPlaybackController(buildAnim(), mDuration, mAnimHolders)` | `PendingAnimation.java:107` | `PendingAnimation.kt:104` |
-| A12 | `AnimatorPlaybackController` 主构造器创建独立 `ValueAnimator.ofFloat(0,1)` 主时钟 + LINEAR 插值 | `AnimatorPlaybackController.java:130-132` | `AnimatorPlaybackController.kt:44, 52` |
-| A13 | `OnAnimationEndDispatcher` 挂到 `animationPlayer` 自身 | `AnimatorPlaybackController.java:133` | `AnimatorPlaybackController.kt:54` |
-| A14 | `addHoldersRecur` 三分支：ValueAnimator → 收 Holder；AnimatorSet → 递归子动画；其他 → 抛 `RuntimeException` | `AnimatorPlaybackController.java:164-170` | `AnimatorPlaybackController.kt:187-193`（精确对齐 else-throw 行为）|
-| A15 | `Holder` 构造期一次性计算 `globalEndProgress = animator.duration / totalDuration` | `AnimatorPlaybackController.java:50` | `AnimatorPlaybackController.kt:76` |
-| A16 | `Holder.setProgress(f)` 经 mapper 后 `anim.setCurrentFraction(...)` | `AnimatorPlaybackController.java:58-60` | `AnimatorPlaybackController.kt:81-83` |
-| A17 | `ProgressMapper.DEFAULT`：`f > g → 1` 否则 `f / g` | `AnimatorPlaybackController.java:117-122` | `AnimatorPlaybackController.kt:13` |
-| A18 | `Holder.reset()` 恢复原插值器 + mapper 重置为 DEFAULT | `AnimatorPlaybackController.java:53-56` | `AnimatorPlaybackController.kt:85-88` |
+| A1 | `add(Animator)` 内部覆写 `duration = mDuration`、加入 AnimatorSet、收 Holder | `PendingAnimation.java:191-194` | `PendingAnimation.kt:43-47` |
+| A2 | `add(Animator, TimeInterpolator)` 先 `setInterpolator` 再调 `add(Animator)` | `PendingAnimation.java:55-58` | `PendingAnimation.kt:49-52` |
+| A3 | `addWithoutDuration(Animator)` 跳过 `setDuration`、直接 play + 收 Holder（保留外部预设时长） | `PendingAnimation.java:88-91` | `PendingAnimation.kt:54-57` |
+| A4 | `addFloat(target, prop, from, to, ip)`：构造 ObjectAnimator + setInterpolator + add | `PendingAnimation.java:67-71` | `PendingAnimation.kt:59-64`（用 lib 自定义 ObjectAnimator，见 §3 R6）|
+| A5 | `setFloat` 短路：`property == null` 或 `property.get(target) == value` 时 no-op | `PendingAnimation.java:128` | `PendingAnimation.kt:72` |
+| A6 | `addEndListener` / `addOnFrameCallback` 复用 `progressAnimator` 懒建 | `PendingAnimation.java:60-65, 77-86` | `PendingAnimation.kt:78-84, 105-107` |
+| A7 | `addListener` 转发到 `AnimatorSet` 本体（监听 `mAnim`，非子动画） | `PendingAnimation.java:73-75` | `PendingAnimation.kt:86-88` |
+| A8 | `buildAnim()` 主体三步：① 把 `progressAnimator` 调 `add()`；② 置 null；③ 若 `animHolders` 空补 0→1 占位 | `PendingAnimation.java:93-103` | `PendingAnimation.kt:90-99` |
+| A9 | `buildAnim` 调用 `add(progressAnimator)` → 走 `add(Animator)` → `setDuration(mDuration)` 写入 | `PendingAnimation.java:96 → 191-194` | `PendingAnimation.kt:92 → 43-47`（同样 setDuration）|
+| A10 | `createPlaybackController` 单例缓存 + 懒构造 | `PendingAnimation.java:105-110` | `PendingAnimation.kt:101-103` |
+| A11 | `createPlaybackController` 调 `new AnimatorPlaybackController(buildAnim(), mDuration, mAnimHolders)` | `PendingAnimation.java:107` | `PendingAnimation.kt:102` |
+| A12 | `AnimatorPlaybackController` 主构造器创建独立 `ValueAnimator.ofFloat(0,1)` 主时钟 + LINEAR 插值 | `AnimatorPlaybackController.java:130-132` | `AnimatorPlaybackController.kt:43, 51` |
+| A13 | `OnAnimationEndDispatcher` 挂到 `animationPlayer` 自身 | `AnimatorPlaybackController.java:133` | `AnimatorPlaybackController.kt:53` |
+| A14 | `addHoldersRecur` 三分支：ValueAnimator → 收 Holder；AnimatorSet → 递归子动画；其他 → 抛 `RuntimeException` | `AnimatorPlaybackController.java:164-170` | `AnimatorPlaybackController.kt:197-203`（精确对齐 else-throw 行为）|
+| A15 | `Holder` 构造期一次性计算 `globalEndProgress = animator.duration / totalDuration` | `AnimatorPlaybackController.java:50` | `AnimatorPlaybackController.kt:78` |
+| A16 | `Holder.setProgress(f)` 经 mapper 后 `anim.setCurrentFraction(...)` | `AnimatorPlaybackController.java:58-60` | `AnimatorPlaybackController.kt:83-85` |
+| A17 | `ProgressMapper.DEFAULT`：`f > g → 1` 否则 `f / g` | `AnimatorPlaybackController.java:117-122` | `AnimatorPlaybackController.kt:12` |
+| A18 | `Holder.reset()` 恢复原插值器 + mapper 重置为 DEFAULT | `AnimatorPlaybackController.java:53-56` | `AnimatorPlaybackController.kt:87-90` |
 
 ### B. 有意简化（Kotlin 化或减负）
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| B1 | 砍掉 `add(Animator, SpringProperty)` 三参 overload + `add(Animator, long)` 双参 overload + `setFloat(... delay, duration)` 重载 + `setViewAlpha(... delay, duration)` 重载 + `setFloats` / `setInt` / `setInterpolator` / `setViewAlpha` / `setViewBackgroundColor` / `getAnimatorSet` / `getDuration` / `getListeners` / `addOnFrameListener` 等共 9 个方法 | `PendingAnimation.java:148-159, 164-184, 187-189, 198-209, 211-214, 218-234`；`PendingAnimation.java:60, 73, 81, 112, 116, 120` | lib 注释（`PendingAnimation.kt:53-54`）明示"第三参丢弃"；`PendingAnimation.kt:115` 注释 "此处仅为演示 lib 关键 API，砍掉非演示必需方法"。View 侧方法依赖 `AlphaUpdateListener`（`PendingAnimation.java:169, 227`），未移植；PropertySetter 多重重载同理 |
+| B1 | 砍掉 `add(Animator, SpringProperty)` 三参 overload + `add(Animator, long)` 双参 overload + `setFloat(... delay, duration)` 重载 + `setViewAlpha(... delay, duration)` 重载 + `setFloats` / `setInt` / `setInterpolator` / `setViewAlpha` / `setViewBackgroundColor` / `getAnimatorSet` / `getDuration` / `getListeners` / `addOnFrameListener` 等共 9 个方法 | `PendingAnimation.java:148-159, 164-184, 187-189, 198-209, 211-214, 218-234`；`PendingAnimation.java:60, 73, 81, 112, 116, 120` | 早期版本 lib 注释曾明示"第三参丢弃 / 砍掉非演示必需方法"（当前代码注释已精简，取舍不变，现 `PendingAnimation` 仅保留演示必需方法 `:43-111`）。View 侧方法依赖 `AlphaUpdateListener`（`PendingAnimation.java:169, 227`），未移植；PropertySetter 多重重载同理 |
 | B2 | lib `add()` / `addFloat()` / `addWithoutDuration()` 等返回 `PendingAnimation`（链式）| 原厂对应方法全部返回 `void`（`PendingAnimation.java:55, 67, 88, 127, 137, 148, 157, 164, 176, 187, 191, 211`）| Kotlin 风格化；语义等价 |
 | B3 | `Consumer<Boolean>` → `(Boolean) -> Unit`、`Runnable` → `() -> Unit` | 原厂 `java.util.function.Consumer`、`java.lang.Runnable` | 函数类型 + Kotlin idiom |
 | B4 | `buildAnim` 用 `add(progressAnimator)` 覆写时长；空 holders 补占位用 `addWithoutDuration` 而非 `add` | 原厂 `buildAnim:96` 调 `add(valueAnimator)`（`add(Animator, SpringProperty)`），`:100` 调 `add(ValueAnimator.ofFloat(0f,1f).setDuration(mDuration))`（`add(Animator, SpringProperty)`，本身 idempotent 重新设时长）| lib 用 `addWithoutDuration` 因为空 holders 补占位已经在外部 `setDuration(durationMs)`；lib `add` 会强制 `child.duration = durationMs` 二次写入，幂等但语义重复 |
 | B5 | `progressAnimator` 用 Kotlin `?.let { ... }` 而非原厂 `if (valueAnimator != null) { ... }` | `PendingAnimation.java:94-98` | Kotlin idiom |
-| B6 | `animHolders.isEmpty()` 判断后 `playTogether` vs 原厂 `mAnim.play` | `PendingAnimation.java:89`（`mAnim.play`）vs `PendingAnimation.kt:47, 57`（`anim.playTogether`）| 单子动画语义等价（`play` 与 `playTogether` 对单子动画等效）|
+| B6 | `animHolders.isEmpty()` 判断后 `playTogether` vs 原厂 `mAnim.play` | `PendingAnimation.java:89`（`mAnim.play`）vs `PendingAnimation.kt:45, 55`（`anim.playTogether`）| 单子动画语义等价（`play` 与 `playTogether` 对单子动画等效）|
 | B7 | `addHoldersRecur` 砍 `duration > 0 → next.setDuration` + `interpolator != null → next.setInterpolator` 的父级下发 | `AnimatorPlaybackController.java:174-179` | 当前 lib 构造路径不产嵌套 `AnimatorSet`，无触发面（已有 review 02 §C-11 标注）|
-| B8 | `APC` 主构造器拆 `anims` 平铺 + 取消监听挂到 `anims[0]` 而非 `animatorSet` 本体（**见 §3 R5**）| 原厂 `animatorSet.addListener(new AnimatorListenerAdapter() { cancel: mTargetCancelled=true; mIsDispatchStartPending=false; end: ...; start: ... })`（`:135-156`）| lib 拆 `anim.childAnimations` 入 `anims` 列表，`a.addListener` 写 `anims[0]`。当前构造路径下 `anims[0]` 是 progressAnimator（占位）或第一个 add() 子动画（业务子动画）|
+| B8 | `APC` 主构造器拆 `anims` 平铺 + 取消监听挂到 `anims[0]` 而非 `animatorSet` 本体（**见 §3 R5**）| 原厂 `animatorSet.addListener(new AnimatorListenerAdapter() { cancel: mTargetCancelled=true; mIsDispatchStartPending=false; end: ...; start: ... })`（`:135-156`）| lib 拆 `anim.childAnimations` 入 `anims` 列表；取消监听曾写 `anims[0]`，**已修复改挂根 `anim` 本体**（见 §3 R5，`:56-71`）|
 
 ### C. 遗漏（OPPO 有、lib 没有）
 
@@ -87,14 +87,14 @@
 |---|---|---|---|
 | C1 | **`setFloats` 多关键帧**：原厂支持 `float...` 变参关键帧（`PendingAnimation.java:137-144`）| lib 无此 API | 演示库当前 0 调用方；曲线动画（多帧 easing）无法表达 |
 | C2 | **`setInt` / `setFloats` / `setViewAlpha` / `setViewBackgroundColor`** 共 4 类业务 setter（依赖 `AlphaUpdateListener` + `LauncherAnimUtils` + `View` API）| `PendingAnimation.java:148-155, 164-184`；`PropertySetter.java:30-64` | 见 review 02 §C-4/C-5 |
-| C3 | **`PendingAnimation.getAnimatorSet()` / `getDuration()` / `getListeners()`** 三个 getter | `PendingAnimation.java:112-122` | lib 字段 `private`；外部不可读 duration / anim；APC 内已读 `durationMs`（`AnimatorPlaybackController.kt:29`），但外部若需读得自己持有引用 |
+| C3 | **`PendingAnimation.getAnimatorSet()` / `getDuration()` / `getListeners()`** 三个 getter | `PendingAnimation.java:112-122` | lib 字段 `private`；外部不可读 duration / anim；APC 内已读 `duration`（`AnimatorPlaybackController.kt:28`），但外部若需读得自己持有引用 |
 | C4 | **`addOnFrameListener(ValueAnimator.AnimatorUpdateListener)`** 高级入口（接受 listener 而非 Runnable）| `PendingAnimation.java:81-86` | lib `addOnFrameCallback` 只接 `() -> Unit`；需要拿到 `ValueAnimator`（animatedValue/animatedFraction）的场景不可达 |
 | C5 | **`setInterpolator(TimeInterpolator)`**：直接下发到 AnimatorSet 本体 | `PendingAnimation.java:157-159` | lib 不可达；业务若想统一下发插值器需走 `add` 时逐个设 |
-| C6 | **`PendingAnimation` 主构造器第一件事 `mDuration = j8 <= 0 ? 0L : j8`（即 ≤ 0 强制 0）+ AnimatorSet 构造后挂 cancel/end/start 监听维护 `isAnimFinished`** | `PendingAnimation.java:31-50` | lib `durationMs = duration.coerceAtLeast(0)`（`:31`）+ `init { anim.addListener ... }`（`:37-43`）— 已对齐；`mDuration` 不写 `final` 是 OPPO 的"非 final" quirk，lib 用 `val` 锁死反而更安全 |
+| C6 | **`PendingAnimation` 主构造器第一件事 `mDuration = j8 <= 0 ? 0L : j8`（即 ≤ 0 强制 0）+ AnimatorSet 构造后挂 cancel/end/start 监听维护 `isAnimFinished`** | `PendingAnimation.java:31-50` | lib `durationMs = duration.coerceAtLeast(0)`（`:29`）+ `init { anim.addListener ... }`（`:35-41`）— 已对齐；`mDuration` 不写 `final` 是 OPPO 的"非 final" quirk，lib 用 `val` 锁死反而更安全 |
 | C7 | **`add(Animator, long)` 自定义时长重载**：调用方传非 `mDuration` 时长 | `PendingAnimation.java:211-214` | lib `add(Animator)` 固定写 `durationMs`；当前 0 调用方；构造期时长由调用方预 `setDuration` + `addWithoutDuration` 即可替代 |
 | C8 | **`add(Animator)` 的 PropertySetter 默认实现**：原厂 add(Animator) 委派给 `add(anim, SpringProperty.DEFAULT)`（`PendingAnimation.java:187-189`），PropertySetter 接口默认行为 | `PendingAnimation.java:187-189` | lib `PendingAnimation` 类不实现 `add(Animator)` 作为 PropertySetter 默认；Kotlin 用 `PropertySetter` 接口的 no-op 默认；语义等价 |
-| C9 | **`APC.dispatchSetInterpolator`** 经 `callAnimatorCommandRecursively` 下发到嵌套子动画 | `AnimatorPlaybackController.java:252-254` | lib `dispatchToListeners` 只拍平 `anims`（`AnimatorPlaybackController.kt:161-165`）；与 B7/R7 一组 |
-| C10 | **`APC` 主构造器取消监听同时维护 `mIsDispatchStartPending`**（cancel 置 false、end 置 false、start 置 false）| `AnimatorPlaybackController.java:138-156` | lib 取消监听只维护 `targetCancelled`；`isDispatchStartPending` 在 `start()`（`:110`）和 `reverse()`（`:117`）和 `dispatchOnStart()`（`:169`）处手写，不与 cancel 联动（见 §3 R8）|
+| C9 | **`APC.dispatchSetInterpolator`** 经 `callAnimatorCommandRecursively` 下发到嵌套子动画 | `AnimatorPlaybackController.java:252-254` | lib `dispatchToListeners` 只拍平根+`anims` 一层（`AnimatorPlaybackController.kt:166-175`）；与 B7/R7 一组 |
+| C10 | **`APC` 主构造器取消监听同时维护 `mIsDispatchStartPending`**（cancel 置 false、end 置 false、start 置 false）| `AnimatorPlaybackController.java:138-156` | lib 取消监听曾只维护 `targetCancelled`；**已修复**：根监听三触点（cancel/end/start）均同步 `isDispatchStartPending=false`（`:57-70`），与 cancel 联动（见 §3 R5/R8）|
 
 ---
 
@@ -264,7 +264,7 @@ createPlaybackController()
   → APC 主构造器：animationPlayer = ValueAnimator.ofFloat(0,1).setInterpolator(LINEAR)
                 + addListener(OnAnimationEndDispatcher)
                 + addUpdateListener(this)
-                + anims[0].addListener(取消监听)        // ⚠ R5 潜藏风险（应挂 anim 本体）
+                + anim.addListener(取消监听)        // ⚠ R5 潜藏风险（应挂 anim 本体）
                 + childAnimations = holders.toTypedArray()
 ```
 
@@ -369,3 +369,43 @@ lib 演示库 (`D:/AsyncAnimator/demo/src`) **零直接调用 `PendingAnimation`
 - 4.3-5 → ✔️保持简化（else-throw 对齐）
 - 4.3-6 → ✔️保持简化（buildAnimator 设计正确）
 
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本次独立逐条复核，逐条对照当前 lib 代码（D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/）+ OPPO 只读源码确认。
+
+### 逐条验证结果
+
+**① 类对应关系表**：全部行号与当前代码对照验证。
+- ✔️ §①表 APC 主构造器行已正确标注 `:56-71`（原文已是 `:56-71`，无需修正）。
+
+**② 保真度评估**：
+- A1-A18（精确复刻）：全部验证通过，行号准确。
+- B1-B8（有意简化）：全部验证通过。B8 "取消监听挂anims[0]" 描述的是修复前状态，当前代码已挂根 animator（`:56`），inline 状态标记"✅已修复（本轮）"准确。
+- C1-C10（遗漏）：全部验证通过。
+
+**③ 行为差异风险点**：
+- R1（setFloat 4参vs3参）→ ✔️ 保持简化：当前代码 `:73-76` 仍用4参显式 from，等价。
+- R2（buildAnim时长）→ ✅ 已修复：`buildAnim:91` 走 `add(it)` 内部 `:44` setDuration。
+- R3（addHoldersRecur else-throw）→ ✅ 已修复：`:202` 精确对齐原厂。
+- R4（父级 duration/interpolator 下发）→ ⚠️未修复：无嵌套 AnimatorSet 触发面，当前 `playTogether` 平铺。
+- R5（取消监听挂点）→ ✅ 已修复：当前 `:56` `anim.addListener`（根 animator），含三触点 `isDispatchStartPending=false`。
+- R6（buildAnimator返回ValueAnimator）→ ✔️ 设计正确：`:147` 返回内部 `va`，addHoldersRecur 首分支命中。
+- R7（dispatch不递归嵌套）→ ⚠️未修复：`:172-174` 仅平铺 rootAnim + anims，不递归内层 AnimatorSet。
+- R8（isDispatchStartPending反义）→ ✅ 已修复：`:112` 当前为 `isDispatchStartPending = false`。
+- R9-R12 → ✔️ 保持简化。
+
+**④ 回移建议**：
+- 4.1-1（R5监听器搬根）→ ✅ 已修复。
+- 4.1-2（R8 start()置false）→ ✅ 已修复。
+- 4.1-3（R4父级下发）→ ⚠️未修复。
+- 4.1-4（R7递归dispatch）→ ⚠️未修复。
+- 4.1-5/6/7 → 按原标记。
+
+**④ 汇总表**：修正 1 处——流程图中 `anims[0].addListener` → `anim.addListener`，与 R5 修复一致。
+
+### 修正明细
+1. ① 表 APC 主构造器行已正确（`:56-71`），无需修正。
+2. ④ 汇总表流程图：`anims[0].addListener(取消监听)` → `anim.addListener(取消监听)`（与当前代码:56一致）。
+
+**条目总数**：18（② A1-A18）+ 8（② B1-B8）+ 10（② C1-C10）+ 12（③ R1-R12）+ 7（④ 4.1）+ 3（④ 4.2）+ 6（④ 4.3）= **64 条**
+**修正数**：**1 条**（§①汇总表流程图 `anims[0].addListener` → `anim.addListener`）

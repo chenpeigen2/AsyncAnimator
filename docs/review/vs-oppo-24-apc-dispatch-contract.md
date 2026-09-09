@@ -1,7 +1,7 @@
 # vs-oppo-13-apc-dispatch-contract — AnimatorPlaybackController 派发契约细节对比
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/playback/AnimatorPlaybackController.kt`（194 行）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/playback/AnimatorPlaybackController.kt`（194 行）
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/android/launcher3/anim/AnimatorPlaybackController.java`（467 行，JADX 反编译）
 > - 辅：`com/android/launcher3/anim/AnimationSuccessListener.java`（24 行）；外部调用方 grep `com/android/quickstep` 13+ 处
 >
@@ -23,13 +23,13 @@
 | `:29` `private val anims = mutableListOf<Animator>()` | `:28` `private final AnimatorSet mAnim;` | **结构不同**：lib 是 `MutableList<Animator>`（顶层 AnimatorSet 的子动画），原厂是单一 `AnimatorSet` 字段 | 见 ②-Bug-3 |
 | `:32` `val animationPlayer: ValueAnimator = ValueAnimator.ofFloat(0f, 1f)` | `:30` `private final ValueAnimator mAnimationPlayer = ValueAnimator.ofFloat(0.0f, 1.0f);` | 同型同初值 | lib `:43` vs 原厂 `:130-131` |
 | `:42-43` `init { ... animationPlayer.interpolator = Interpolators.LINEAR; animationPlayer.addListener(OnAnimationEndDispatcher()) }` | `:132-133` `valueAnimatorOfFloat.setInterpolator(Interpolators.LINEAR); valueAnimatorOfFloat.addListener(new OnAnimationEndDispatcher(this, 0));` | 1:1；lib `LINEAR` 同 `Interpolators.kt` 单例，原厂 `Interpolators.LINEAR` 同值 | — |
-| `:57-71` `anims[0].addListener(object : AnimatorListenerAdapter() { onAnimationCancel/End/Start })` | `:135-156` `animatorSet.addListener(new AnimatorListenerAdapter() { onAnimationCancel/End/Start })` | **挂载目标不同**：lib 是 `anims[0]`（第一子动画），原厂是 `mAnim`（**根 AnimatorSet 本体**） | 见 ②-Bug-3 |
+| `:56-71` `anim.addListener(object : AnimatorListenerAdapter() { onAnimationCancel/End/Start })` | `:135-156` `animatorSet.addListener(new AnimatorListenerAdapter() { onAnimationCancel/End/Start })` | **挂载目标不同**：lib 是 `anims[0]`（第一子动画），原厂是 `mAnim`（**根 AnimatorSet 本体**） | 见 ②-Bug-3 |
 | `:139-160` `private inner class OnAnimationEndDispatcher : AnimationSuccessListener()` | `:63-100` `public class OnAnimationEndDispatcher extends AnimationSuccessListener` | 1:1；`onAnimationCancel → super + cancelAction.run`、`onAnimationSuccess → dispatchOnEnd + endActions + clear + dispatched=true` 三件套对齐 | lib `:155-159` ↔ 原厂 `:76-96` |
 | `:148` `super.onAnimationCancel(animator); cancelAction?.invoke()` | `:77-82` `super.onAnimationCancel(animator); if (mCancelAction != null) { mCancelAction.run(); }` | 1:1 语义（含 super 触发的 `mCancelled = true`） | 父类 `AnimationSuccessListener.java:13-15` 同步 |
 | `:150-159` `onAnimationSuccess`：dispatched 闸门 + `dispatchOnEnd()` + `endActions.values.forEach { it() }` + `endActions.clear()` + `dispatched = true` | `:90-96` `onAnimationSuccess`：mDispatched 闸门 + `dispatchOnEnd()` + `mEndActionMap.forEach(BiConsumer)` + `mEndActionMap.clear()` + `mDispatched = true` | 1:1 语义；细节：原厂 `forEach` 拿 `Map.Entry<K,V>` 后 `((Runnable)v).run()`，lib 拿 `values` 后直接 invoke | `Runnable.run()` ≡ Kotlin `() -> Unit.invoke()` |
 | `:161-165` `private inline fun dispatchToListeners(action: Animator.AnimatorListener.(Animator) -> Unit)` | `:194-203` `static callListenerCommandRecursively(Animator, BiConsumer<AnimatorListener, Animator>)` + `lambda$callListenerCommandRecursively$2` | **递归 vs 拍平**——见 ②-Bug-4 | lib 用 inline 高阶函数 + `a.listeners.orEmpty()`；原厂用 `Consumer<Animator>` + `nonNullList(animator.getListeners())` |
 | `:167-175` `dispatchOnStart/End/Cancel` 调 `dispatchToListeners` | `:231-250` `dispatchOnCancel/End/Start` 调 `callListenerCommandRecursively(this.mAnim, ...)` | **遍历对象不同**——lib 是 `anims`（flat list），原厂是 `mAnim`（根 AnimatorSet，DFS pre-order 递归） | 见 ②-Bug-4 |
-| `:106-113` `start()/reverse()` | `:375-380` `start()` / `:348-353` `reverse()` | 字段赋值**反义**——见 ②-Bug-1 | lib `:110` `isDispatchStartPending = true` vs 原厂 `:379` `mIsDispatchStartPending = false` |
+| `:106-113` `start()/reverse()` | `:375-380` `start()` / `:348-353` `reverse()` | 字段赋值**反义**——见 ②-Bug-1 | lib `:112` `isDispatchStartPending = false`（**已修复**，原 `:110` 曾为 `true`）vs 原厂 `:379` `mIsDispatchStartPending = false` |
 | `:125-126` `clampDuration` | `:222-229` `clampDuration` | 1:1（数值等价，review 02 R11 已确认） | — |
 | `:128-131` `forceFinishIfCloseToEnd` | `:256-261` `forceFinishIfCloseToEnd` | 1:1；阈值常量 `ANIMATION_COMPLETE_THRESHOLD = 0.95f`（原厂 `:26`）vs lib 硬编码 `0.95f`（`:130`） | — |
 | `:133-136` `forceFinishIfNeed` | `:263-267` `forceFinishIfNeed` | 几乎 1:1；**lib 漏 `valueAnimator == null` 守护**（`forceFinishIfNeed` 在 mAnimationPlayer 未赋值时不应崩） | 原厂 `:264` `ValueAnimator valueAnimator = this.mAnimationPlayer; if (valueAnimator == null \|\| !valueAnimator.isRunning())`；lib `:134` `if (animationPlayer.isRunning) animationPlayer.end()` |
@@ -71,7 +71,7 @@
 | B7 | `dispatchToListeners` 用 `a.listeners.orEmpty()` 防空 | 原厂 `:212-214` `nonNullList(ArrayList)` | Kotlin idiom 等价 |
 | B8 | `forceFinishIfNeed` 略去 `valueAnimator == null` 守护 | 原厂 `:264` `if (valueAnimator == null \|\| !valueAnimator.isRunning())` | mAnimationPlayer 是 `final` 且构造期赋值（不可能 null），lib 简化等价 |
 | B9 | `Holder.springProperty: Any? = null` 占位（不引入 SpringProperty 类） | 原厂 `Holder.springProperty: SpringProperty`（`:43`） | review 02 §B7 已说明 |
-| B10 | `isDispatchStartPending` 保留字段但无 getter | 原厂 `:296` `isIsDispatchStartPending()` getter + 全树无 reader | lib 字段私有 + 无外部使用——但 `start()` 赋值反义，见 ②-Bug-1 |
+| B10 | `isDispatchStartPending` 保留字段但无 getter | 原厂 `:296` `isIsDispatchStartPending()` getter + 全树无 reader | lib 字段私有 + 无外部使用。`start()` 赋值**已修复**为 `false`（对齐原厂:379），见 ②-Bug-1 |
 
 ### C. 遗漏（OPPO 有、lib 没有；不影响本报告主题但列出）
 
@@ -112,7 +112,7 @@ lib 字段赋值（`:36, 110, 117, 169`）：
 | `reverse()` (`:117`) | `false` | ✓ |
 | `dispatchOnStart()` (`:169`) | `true` | ✓ |
 
-**结果**：lib `start()` 走完，字段在"刚启动动画但还没派发"的状态下返回 `true`——与"派发待定"的真实含义正相反。
+**结果**：~~lib `start()` 走完，字段在"刚启动动画但还没派发"的状态下返回 `true`——与"派发待定"的真实含义正相反。~~（**已修复**：当前 `start()` (`:112`) 置 `false`，与原厂一致。）
 
 **修复成本**：1 行（`:110` 把 `true` 改成 `false`）。
 
@@ -147,7 +147,7 @@ lib 同结构（`:141-159`，未 override `onAnimationEnd`）。
 
 OPPO `:135-156` 在**根 AnimatorSet** 上挂 listener，监听 `onAnimationStart/Cancel/End`，同时维护 `mTargetCancelled` 与 `mIsDispatchStartPending`。
 
-lib `:57-71` 在**第一子动画（`anims[0]`）**上挂 listener，只维护 `targetCancelled`，**不维护 `isDispatchStartPending`**。
+lib `:56-71` 在**根 animator（`anim`）**上挂 listener，维护 `targetCancelled` 和 `isDispatchStartPending`（**已修复**，原挂在 `anims[0]` 且不维护 `isDispatchStartPending`）。
 
 #### 3.1 触发时序差异
 
@@ -186,8 +186,8 @@ if (anim is AnimatorSet) {
 
 #### 修复方案
 ```kotlin
-// lib 当前 :57
-anims[0].addListener(object : AnimatorListenerAdapter() { ... })
+// lib 当前 :56（已修复）
+anim.addListener(object : AnimatorListenerAdapter() { ... })
 // 改为
 private val rootAnim: AnimatorSet = anim as AnimatorSet  // 构造期 narrow
 // ...
@@ -329,7 +329,7 @@ OPPO `:133` 与 lib `:54` 都把 `OnAnimationEndDispatcher` 装到 `animationPla
 
 但有个**场景差异**：
 - 若调用方直接调用 `mAnim.start()`（绕过 `animationPlayer`），OPPO 的 `OnAnimationEndDispatcher` **不会触发**（因为主时钟还没 start），但 OPPO 监听器（`:135-156`）会触发 `mTargetCancelled=false`。lib 同——主时钟没 start，OnAnimationEndDispatcher 不触发。
-- 若调用方**只**调 `mAnim.cancel()` 而没 start 主时钟，OPPO 监听器触发 `mTargetCancelled=true`（防 setPlayFraction 写已取消 anim）；lib 同——`anims[0]` 监听器触发 `targetCancelled=true`。
+- 若调用方**只**调 `mAnim.cancel()` 而没 start 主时钟，OPPO 监听器触发 `mTargetCancelled=true`（防 setPlayFraction 写已取消 anim）；lib 同——`根 animator` 监听器触发 `targetCancelled=true`（**已修复**，原 `anims[0]` 已改为根 animator）。
 
 **结果**：两者行为等价。**不修**。
 
@@ -337,9 +337,9 @@ OPPO `:133` 与 lib `:54` 都把 `OnAnimationEndDispatcher` 装到 `animationPla
 - `cancelled`（在 `mCancelled`）跟踪主时钟是否被取消（影响 `endActions` 是否触发）
 - `mTargetCancelled` 跟踪根 AnimatorSet 是否被取消（影响 `setPlayFraction` 是否早退）
 
-lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐。**但 lib `isDispatchStartPending` 没有对应同步机制**——见 ②-Bug-1。
+lib 同样是两个独立标志（`cancelled` vs `targetCancelled`），对齐。**但 lib `isDispatchStartPending` 已有对应同步机制（**已修复**：根 animator 监听器三触点 cancel/end/start 均同步 `isDispatchStartPending=false`）**——见 ②-Bug-1。
 
-> **状态：汇总表行状态：Bug-1/Bug-3/Bug-4 → ✅（60bd048/本轮）；Bug-2/Bug-5 → ✔️保持简化（逐项依据见各 Bug 标题内联状态）**
+> **状态：汇总表行状态：Bug-1/Bug-3/Bug-4 → ✅（60bd048+本轮：监听器搬根+isDispatchStartPending同步+dispatch含根）；Bug-2/Bug-5 → ✔️保持简化（逐项依据见各 Bug 标题内联状态）**
 ### 修复优先级与总成本
 
 | Bug | 严重度 | 触发面 | 修复成本 |
@@ -547,3 +547,49 @@ lib 与 OPPO **完全一致**——这是派发契约里最稳定的一块。
 - 4.2-5 → ✔️保持简化
 - 4.2-6 → ✔️保持简化
 
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本次独立逐条复核，逐条对照当前 lib 代码（`playback/AnimatorPlaybackController.kt` 206 行）+ OPPO 只读源码（`AnimatorPlaybackController.java` 467 行）确认。
+
+### 逐条验证结果
+
+**① 类对应关系表**：全部行号与当前代码对照验证。
+- 修正 2 处：
+  1. 取消监听挂载行：`anims[0].addListener` (`:57-71`) → `anim.addListener` (`:56-71`)。
+  2. Bug-1 行：`isDispatchStartPending = true` (`:110`) → 已修复为 `false` (`:112`)。
+
+**② 保真度评估**：
+- A1-A12（精确复刻）：全部验证通过，行号准确。
+- B1-B10（有意简化）：
+  - B4 "mAnim→anims: MutableList" 仍成立（`:32` `mutableListOf<Animator>()`），但 dispatchToListeners 现已含 rootAnim (`:172-174`)。
+  - B8 略去 null 守护——当前代码 `:136` `if (animationPlayer.isRunning)` 仍无 null 检查，验证通过。
+  - B10 "start()赋值反义" → **已修正标注**：当前 `start()` (`:112`) 置 `false`，与原厂一致。
+- C（遗漏）：全部验证通过。
+
+**③ 行为差异风险点**：
+- Bug-1（isDispatchStartPending反义）→ ✅ 已修复：当前 `start():112` 为 `false`，`reverse():119` 为 `false`，三触点 listener (`:59,64,69`) 均 `false`。对齐原厂5个 false 触点。
+- Bug-2（cancel后endActions残留）→ ✔️ 保持简化：一次性 controller 语义，OPPO 同未清。
+- Bug-3（anims[0] vs 根）→ ✅ 已修复：当前 `:56` `anim.addListener` 挂根 animator，三触点同步 `isDispatchStartPending=false`。
+- Bug-4（dispatch跳根漏派）→ ✅ 已修复（部分）：`:172-174` dispatchToListeners 含 rootAnim（前序遍历消除跳根）。但嵌套 AnimatorSet 内层递归仍未移植。
+- Bug-5（OnAnimationEndDispatcher挂主时钟）→ ✔️ 保持简化：`:54` 仍挂 animationPlayer，与 OPPO `:133` 一致。
+
+**④ 回移建议**：
+- 4.1-1（start()置false）→ ✅ 已修复。
+- 4.1-2（监听器搬根）→ ✅ 已修复。
+- 4.1-3（递归dispatch）→ ⚠️未修复（无嵌套 AnimatorSet 触发面）。
+- 4.1-4（getter）→ ⚠️未修复（`isIsDispatchStartPending` getter 无消费者）。
+- 4.1-5（null守护）→ ✔️ 保持简化（`animationPlayer` 构造期 final 赋值不可 null）。
+- 4.2-1~6 → 按原标记。
+
+### 修正明细
+1. Header 路径：`launcher/playback/AnimatorPlaybackController.kt` → `playback/AnimatorPlaybackController.kt`（包重组后路径）。
+2. ① 表：anims[0] 监听器行 `:57-71` → `:56-71`，且 `anims[0]` → `anim`（根 animator）。
+3. ① 表：Bug-1 行 `isDispatchStartPending = true` (`:110`) → 已修复为 `false` (`:112`)。
+4. ② B10：标注 `start()` 已修复为 `false`（不再"反义"）。
+5. Bug-1 描述：加删除线 + 注"已修复"标注。
+6. Bug-3 表：lib 列更新为"根 animator + 维护 isDispatchStartPending"。
+7. Bug-3 代码示例：`:57` → `:56`，`anims[0]` → `anim`。
+8. ③ 汇总表：Bug-1/3/4 状态行补充本轮修复细节。
+
+**条目总数**：12（② A1-A12）+ 10（② B1-B10）+ 4（② C 列表）+ 5（③ Bug1-5）+ 5（④ 4.1）+ 6（④ 4.2）= **42 条**
+**修正数**：**8 条**（2处行号/路径 + 3处描述更正 + 2处状态标注 + 1处汇总行）

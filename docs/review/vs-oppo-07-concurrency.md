@@ -14,36 +14,36 @@
 
 | lib 类（文件:行） | 原厂类（文件:行） | 关键并发原语（lib / 原厂） |
 |---|---|---|
-| `core/anim/AnimationHandler.kt:132-141` | `androidx/core/animation/AnimationHandler.java:13-14,158-172`（vendored）；`android.animation.AnimationHandler` @hide 框架类（被 `MultiDynamicAnimation.java:3,21,127` implements） | `ThreadLocal<AnimationHandler> threadLocalHandler`（lib）↔ `sThreadLocal`（vendored core :13）。**两者均纯 ThreadLocal，零同步**。 |
-| `core/anim/AnimationHandler.kt:117-119`（`testHandler`） | 无对应 | `@Volatile var testHandler`（lib）— 测试钩子，独有 |
-| `core/anim/AnimationHandler.kt:131-141`（`TickSchedulerHolder`） | vendored `AnimationFrameCallbackProvider` 抽象 | `@Synchronized fun get()`（lib）— 懒构造；原厂无懒构造（直接 `mFrameCallbackProvider` 字段初始化） |
-| `core/anim/AnimationHandler.kt:113-115`（`swapScheduler`） | 无对应 | `@Synchronized fun swapScheduler`（lib）— demo/实验用，原厂无对应路径 |
-| `core/scheduler/ScheduledTickScheduler.kt:30-61` | vendored `FrameCallbackProvider14`（core :33-79）；dynamicanimation `:50-72` | `ConcurrentLinkedQueue<FrameCallback> callbacks` + `AtomicLong frameCountAtomic/frameTimeNanosAtomic` + `@Volatile running` + `@Synchronized start/stop`（lib）↔ 简单 `mFrameCallbacks` ArrayList（vendored，原厂线程局部的回调列表本身就是 Looper 派发线程私有，**无并发原语**） |
-| `launcher/animthread/HandlerTickScheduler.kt:30-80` | vendored `FrameCallbackProvider16`（core :82-108） + `SfVsyncFrameCallbackProvider`（`OplusExecutors.java:5,170`） | `ConcurrentLinkedQueue callbacks` + `AtomicLong frameCountAtomic/frameTimeNanosAtomic` + `@Volatile running` + `@Synchronized start/stop`（lib）↔ 原厂 `mHandler.postDelayed(this, frameDelay)` + `Choreographer.postFrameCallback`；原厂**零并发原语**（Looper 派发线程 = 回调执行线程，天然串行） |
-| `launcher/animthread/AnimationControlThread.kt:73-83`（`instance`） | `com/oplus/basecommon/thread/OplusExecutors.java:95`（`static final OplusLooperExecutor ANIM_EXECUTOR`） | `by lazy(LazyThreadSafetyMode.SYNCHRONIZED)`（lib）↔ `static final`（JVM 类初始化锁，原厂）。**lib 用 synchronized lazy 模拟 JMM 类初始化**，但与 `static final` 在语义上等效 |
-| `launcher/animthread/AsyncAnimWrapper.kt:17-25` | `com/android/launcher3/anim/AsyncAnimWrapper.java:10-20` | 无并发原语（双方均只把 task 投给 LooperExecutor） |
-| `launcher/async/AsyncValueAnimator.kt:30`（`isEnd`） | `com/android/quickstep/util/animation/AsyncValueAnimator.java:31`（`mIsEnd`） | `AtomicBoolean isEnd` + `compareAndSet(false, true)`（双方一致，**精确复刻**） |
-| `launcher/async/AsyncAnimCallbacks.kt:21`（`animListeners`） | `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:34`（`mAnimListeners`） | `mutableListOf<NullableAnimatorListener?>()`（lib）↔ `ArrayList<NullableAnimatorListener> mAnimListeners`（原厂）。**双方都无显式并发原语**——靠"主线程 add/listener-iterate 主线程派发"的纪律。**关键差异**：lib `getListeners()` 用 `removeAll { it == null }` 拷快照（AsyncAnimCallbacks.kt:75-79），原版 `getListeners()` 用反向遍历 `remove(size)` + `toArray(new NullableAnimatorListener[0])`（AsyncAnimCallbacks.java:38-43） |
-| `launcher/async/LooperExecutor.kt:14-16`（`handler`） | `com/oplus/basecommon/thread/LooperExecutor.java:9`（`mHandler`） | `private val handler: Handler?`（lib）↔ `private final Handler mHandler`（原厂）。**双方都无并发原语**——构造期一次性写入、之后只读。lib 用 `null` 作为 JVM 单测兜底 |
-| `launcher/async/LooperExecutor.kt:33-37`（`post`） | `LooperExecutor.java:27-33`（`execute`） | lib 判 `isCurrentThread`（`handler.looper.thread === Thread.currentThread()`）↔ 原厂判 `getHandler().getLooper() == Looper.myLooper()`。**无并发原语**，纯 Looper 线程比较 |
-| `launcher/async/LooperExecutor.kt:39-46`（`postAsync`） | `com/android/launcher3/Utilities.java:631-637`（`postAsyncCallback`）被 `AsyncAnimCallbacks.java:120,160` 调用 | `Message.obtain(h) { action() }.apply { isAsynchronous = true }`（lib）↔ 原厂相同（`Utilities.postAsyncCallback` 内部 `Message.obtain(handler, r).setAsynchronous(true).sendMessage`）。**精确复刻** |
-| `launcher/async/AsyncAnimCallbacks.kt:67-79`（`getListeners`） | `AsyncAnimCallbacks.java:38-43,81-97`（同款 `getListeners`） | lib 用 `removeAll { null }` + `filterNotNull` 拷快照 ↔ 原厂用反向 `remove(size)` + `toArray(new NullableAnimatorListener[0])`。**保真**（快照语义一致），实现路径不同 |
-| `launcher/async/AsyncAnimCallbacks.kt:60-62`（`runOnMainThread`） | `AsyncAnimCallbacks.java:153-160`（`runOnMainThread`） | `if (exec.isCurrentThread) action() else exec.postAsync(action)`（lib）↔ `if (Looper.getMainLooper().isCurrentThread()) runnable.run(); else Utilities.postAsyncCallback(handler, runnable);`（原厂）。**精确复刻** |
-| `launcher/seq/AnimSeqTimeStamp.kt:9-21` | `com/android/systemui/shared/system/AnimSeqTimeStamp.java:25-28` | `@Volatile private var lastStartAppTime / lastRecentFinishTime / lastRecentStartTime / lastLaunchTaskTime / clock`（lib，4 个 long + 1 个 lambda，**纯 lock-free 读**）↔ `private static long lastStartAppTimeMillis / lastRecentFinishTimeMills / lastRecentStartTimeMills / lastLaunchTaskTimeMills`（原厂，**裸 long，无 volatile**）+ `@JvmStatic public static final synchronized long getTimeGapToLast* / update* / reset*`（原厂：所有读写都加 synchronized） |
-| `launcher/seq/AnimationSeqHelper.kt:23-28` | `com/oplus/quickstep/utils/AnimationSeqHelper.java:50-55,57-65` | `var seqId = 0L`（lib，**裸 long 无同步**）+ `Handler? handler`（懒创建，**无同步**）↔ 原厂 `private long seqId`（**裸 long 无同步**）+ `private final Handler handler = new Handler(Looper.getMainLooper(), ...)`（**final 一次写，构造期发布**）。**两者一致裸 long**——都假设"seqId 单线程访问" |
-| `launcher/feature/AnimationFeatureHelper.kt:11-19` | `com/oplus/quickstep/utils/AnimationFeatureHelper.java:52-60` | `private class SyncedVar<T>(initial: T) : ReadWriteProperty` 内部 `@Volatile private var value = initial`，`setValue = synchronized(lock) { this.value = value }`（lib）↔ `private volatile int mAsyncEnable = -1` 等 9 个字段 + 8 个 `private final synchronized void set*Enable/set*Disable/setThreshold/setLimtSize`（原厂）。**粒度对照**：lib 一个锁管全部 7 字段（统一 `lock`）+ 一次 `simulateRemoteUpdate` 用 `synchronized(lock)` 包 6 个赋值；原厂每字段一把锁（8 把）。两个列表字段 OPPO 用 `synchronized(this.m1pxPkgDisableList)` / `synchronized(this.m1pxCardDisableList)` 做"整段重写"保护（`:320, :345`），lib 把 `onePxPkgDisableList / onePxCardDisableList` 暴露为 `mutableListOf()` 后**没任何保护** |
-| `launcher/controller/AnimationController.kt:33`（`runningTaskInfo`） | `com/oplus/quickstep/utils/AnimationController.java:83`（`mRunningTask`） | `@Volatile private var runningTaskInfo: Any?`（lib）↔ `private volatile TaskInfo mRunningTask`（原厂）。**精确复刻** |
-| `launcher/controller/AnimationController.kt:24-27`（其他状态字段） | `AnimationController.java:67-87`（`isLandscapeActivity`、`mIsBetweenAppExitTransitionEndAndFinish` 等 12+ 字段） | lib 12 个状态字段**全部非 @Volatile**（`isLandScapeGesture`/`isSplitScreenGesture`/`onceGestureProcessingFlag` 等）↔ 原厂对应字段**也全部非 volatile**。**两者一致假设"主线程访问"** |
-| `launcher/controller/AnimationController.kt:42-44`（`recentsAnims/appLaunchAnims/removeTasksMaps`） | `AnimationController.java:89-91`（`mRecentsAnims / mAppLaunchAnims / mRemoveTasksMaps`） | `mutableListOf<CustomRectFSpringAnim>()` + `mutableListOf<RemoteAnimationFactory>()` + `linkedMapOf<Any, Any>()`（lib，**裸 ArrayList/LinkedHashMap 无同步**）↔ `new ArrayList()` / `new LinkedHashMap()`（原厂，**裸集合无同步**）。**一致** |
-| `launcher/controller/DefaultAnimationController.kt:7`（`animStateChangeListeners`） | `com/oplus/quickstep/utils/DefaultAnimationController.java` metadata d2 字段 `mAnimStateChangeListeners` | `mutableListOf<OnAnimStateChangeListener>()`（lib）↔ 应该是 `ArrayList<>`（原厂，未读取文本验证）。**两者一致**：遍历时 `toList()` 拷快照（lib :16） |
-| `launcher/controller/TaskStateChangeTimeOutListener.kt:24-32` | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209` 内部类 | `private val handler: Handler?`（lib，**构造时一次写，无同步**）+ `handler?.postDelayed(timeOutOption, duration)`（init）+ `handler?.removeCallbacks(timeOutOption)`（dispose）。lib 还用 `runCatching` 包 looper 访问（JVM 单测兜底）。↔ OPPO `private Handler handler`（`TaskStateHelper.java:118`，**裸引用无同步**）— `init` 时 `handler = OplusExecutors.URGENT_TRANSACTION_EXECUTOR.handler`，`dispose` 时 `handler.removeCallbacks(timeOutOption)` |
-| `launcher/manager/OplusAnimManager.kt:11-12`（Impl 字段） | `com/oplus/quickstep/utils/OplusAnimManager.java:50-65`（Impl 字段） | `private var animationControllerImpl: AnimationController? = null`（lib，**裸 var 无同步**）↔ `Lazy<AnimationController>` delegate（`f4.g`，原厂用 Kotlin lazy 默认 `SYNCHRONIZED`）。**lib 缺同步**：并发首次访问可能创建两个 Impl 实例 |
-| `launcher/controller/AnimationController.kt:175-205`（`delayStartActivityIfNeed`） | `AnimationController.java:608-650`（同款方法） | lib 三层顺序 `if`（**非互斥**），原厂 `if / else if / else if` 互斥。**lib 把原厂的互斥结构破坏为非互斥**——见 review 03 §3-b 与本报告 §③-风险 3 |
-| `pending/PendingAnimation.kt:13-21`（`anim / animHolders`） | `com/android/launcher3/anim/PendingAnimation.java:24-29`（同款字段） | `AnimatorSet anim` + `mutableListOf<Holder> animHolders`（lib，**裸集合**）↔ 原厂同款（**裸集合**）。**一致无锁**，靠调用方单线程访问 |
-| `playback/AnimatorPlaybackController.kt:18-22`（`anims / childAnimations / endActions`） | `com/android/launcher3/anim/AnimatorPlaybackController.java:28-35,38-44,46-47` | `mutableListOf<Animator> anims` + `Array<Holder>` + `mutableMapOf<String, () -> Unit> endActions`（lib）↔ 原厂同款结构。**一致** |
-| `playback/AnimatorPlaybackController.kt:25`（`targetCancelled`） | `AnimatorPlaybackController.java:73-74`（`mTargetCancelled`） | `private var targetCancelled = false`（lib，**非 volatile**）↔ 原厂同款。**一致假设主线程访问** |
-| `pending/AnimationSuccessListener.kt:7-11` | `com/android/launcher3/anim/AnimationSuccessListener.java:7-21` | `protected var cancelled = false`（lib，**非 volatile**）↔ 原厂 `protected boolean mCancelled`，但父类 `ActualEndAnimListener.mCancelled` 自身有 listener 链同步语义。**语义一致** |
-| `util/Trace.kt:13-15`（`STACK`） | `android.os.Trace`（平台类） | `ArrayDeque<String> STACK` + `traceBegin/End` 内**无同步**（lib）↔ 原厂 `Trace.traceBegin/End` native（线程安全由 native 端保证）。**lib 多线程并发时栈会乱** |
+| `core/AnimationHandler.kt:133, 140-142` | `androidx/core/animation/AnimationHandler.java:13-14,158-172`（vendored）；`android.animation.AnimationHandler` @hide 框架类（被 `MultiDynamicAnimation.java:3,21,127` implements） | `ThreadLocal<AnimationHandler> threadLocalHandler`（lib）↔ `sThreadLocal`（vendored core :13）。**两者均纯 ThreadLocal，零同步**。 |
+| `core/AnimationHandler.kt:136-137`（`testHandler`） | 无对应 | `@Volatile var testHandler`（lib）— 测试钩子，独有 |
+| `core/AnimationHandler.kt:122-127`（`TickSchedulerHolder`，`@Synchronized get` `:124-126`） | vendored `AnimationFrameCallbackProvider` 抽象 | `@Synchronized fun get()`（lib）— 懒构造；原厂无懒构造（直接 `mFrameCallbackProvider` 字段初始化） |
+| `core/AnimationHandler.kt:111-119`（`swapScheduler`） | 无对应 | `@Synchronized fun swapScheduler`（lib）— demo/实验用，原厂无对应路径 |
+| `ScheduledTickScheduler`（已删 215ecb5）· 现 `core/ChoreographerTickScheduler.kt:24-31, 66-76` | vendored `FrameCallbackProvider14`（core :33-79）；dynamicanimation `:50-72` | `ConcurrentLinkedQueue<FrameCallback> callbacks` + `AtomicLong frameCountAtomic/frameTimeNanosAtomic` + `@Volatile running` + `@Synchronized start/stop`（lib）↔ 简单 `mFrameCallbacks` ArrayList（vendored，原厂线程局部的回调列表本身就是 Looper 派发线程私有，**无并发原语**） |
+| `HandlerTickScheduler`（已删 215ecb5）· 现 `core/ChoreographerTickScheduler.kt:24-31, 66-76` | vendored `FrameCallbackProvider16`（core :82-108） + `SfVsyncFrameCallbackProvider`（`OplusExecutors.java:5,170`） | `ConcurrentLinkedQueue callbacks` + `AtomicLong frameCountAtomic/frameTimeNanosAtomic` + `@Volatile running` + `@Synchronized start/stop`（lib）↔ 原厂 `mHandler.postDelayed(this, frameDelay)` + `Choreographer.postFrameCallback`；原厂**零并发原语**（Looper 派发线程 = 回调执行线程，天然串行） |
+| `thread/AnimationControlThread.kt:86-88`（`instance`） | `com/oplus/basecommon/thread/OplusExecutors.java:95`（`static final OplusLooperExecutor ANIM_EXECUTOR`） | `by lazy(LazyThreadSafetyMode.SYNCHRONIZED)`（lib）↔ `static final`（JVM 类初始化锁，原厂）。**lib 用 synchronized lazy 模拟 JMM 类初始化**，但与 `static final` 在语义上等效 |
+| `thread/AsyncAnimWrapper.kt:17-27` | `com/android/launcher3/anim/AsyncAnimWrapper.java:10-20` | 无并发原语（双方均只把 task 投给 LooperExecutor） |
+| `anim/AsyncValueAnimator.kt:26`（`isEnd`） | `com/android/quickstep/util/animation/AsyncValueAnimator.java:31`（`mIsEnd`） | `AtomicBoolean isEnd` + `compareAndSet(false, true)`（双方一致，**精确复刻**） |
+| `anim/AsyncAnimCallbacks.kt:33`（`animListeners`） | `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:34`（`mAnimListeners`） | `mutableListOf<NullableAnimatorListener?>()`（lib）↔ `ArrayList<NullableAnimatorListener> mAnimListeners`（原厂）。**双方都无显式并发原语**——靠"主线程 add/listener-iterate 主线程派发"的纪律。**关键差异**：lib `getListeners()` 用 `removeAll { it == null }` 拷快照（`anim/AsyncAnimCallbacks.kt:76-79`），原版 `getListeners()` 用反向遍历 `remove(size)` + `toArray(new NullableAnimatorListener[0])`（AsyncAnimCallbacks.java:38-43） |
+| `thread/LooperExecutor.kt:22`（`handler`） | `com/oplus/basecommon/thread/LooperExecutor.java:9`（`mHandler`） | `private val handler: Handler?`（lib）↔ `private final Handler mHandler`（原厂）。**双方都无并发原语**——构造期一次性写入、之后只读。lib 用 `null` 作为 JVM 单测兜底 |
+| `thread/LooperExecutor.kt:31-38`（`execute`/`post`） | `LooperExecutor.java:27-33`（`execute`） | lib 判 `isCurrentThread`（`handler.looper.thread === Thread.currentThread()`）↔ 原厂判 `getHandler().getLooper() == Looper.myLooper()`。**无并发原语**，纯 Looper 线程比较 |
+| `thread/LooperExecutor.kt:49-54`（`postAsync`） | `com/android/launcher3/Utilities.java:631-637`（`postAsyncCallback`）被 `AsyncAnimCallbacks.java:120,160` 调用 | `Message.obtain(h) { action() }.apply { isAsynchronous = true }`（lib）↔ 原厂相同（`Utilities.postAsyncCallback` 内部 `Message.obtain(handler, r).setAsynchronous(true).sendMessage`）。**精确复刻** |
+| `anim/AsyncAnimCallbacks.kt:76-79`（`getListeners`） | `AsyncAnimCallbacks.java:38-43,81-97`（同款 `getListeners`） | lib 用 `removeAll { null }` + `filterNotNull` 拷快照 ↔ 原厂用反向 `remove(size)` + `toArray(new NullableAnimatorListener[0])`。**保真**（快照语义一致），实现路径不同 |
+| `anim/AsyncAnimCallbacks.kt:97-100`（`runOnMainThread`） | `AsyncAnimCallbacks.java:153-160`（`runOnMainThread`） | `if (exec.isCurrentThread) action() else exec.postAsync(action)`（lib）↔ `if (Looper.getMainLooper().isCurrentThread()) runnable.run(); else Utilities.postAsyncCallback(handler, runnable);`（原厂）。**精确复刻** |
+| `seq/AnimSeqTimeStamp.kt:13-27` | `com/android/systemui/shared/system/AnimSeqTimeStamp.java:25-28` | `@Volatile private var lastStartAppTime / lastRecentFinishTime / lastRecentStartTime / lastLaunchTaskTime / clock`（lib，4 个 long + 1 个 lambda，**纯 lock-free 读**）↔ `private static long lastStartAppTimeMillis / lastRecentFinishTimeMills / lastRecentStartTimeMills / lastLaunchTaskTimeMills`（原厂，**裸 long，无 volatile**）+ `@JvmStatic public static final synchronized long getTimeGapToLast* / update* / reset*`（原厂：所有读写都加 synchronized） |
+| `seq/AnimationSeqHelper.kt:29-36` | `com/oplus/quickstep/utils/AnimationSeqHelper.java:50-55,57-65` | `var seqId = 0L`（lib，**裸 long 无同步**）+ `Handler? handler`（懒创建，**无同步**）↔ 原厂 `private long seqId`（**裸 long 无同步**）+ `private final Handler handler = new Handler(Looper.getMainLooper(), ...)`（**final 一次写，构造期发布**）。**两者一致裸 long**——都假设"seqId 单线程访问" |
+| `manager/AnimationFeatureHelper.kt:13-78` | `com/oplus/quickstep/utils/AnimationFeatureHelper.java:52-60` | `private class SyncedVar<T>(initial: T) : ReadWriteProperty` 内部 `@Volatile private var value = initial`，`setValue = synchronized(lock) { this.value = value }`（lib）↔ `private volatile int mAsyncEnable = -1` 等 9 个字段 + 8 个 `private final synchronized void set*Enable/set*Disable/setThreshold/setLimtSize`（原厂）。**粒度对照**：lib 一个锁管全部 7 字段（统一 `lock`）+ 一次 `simulateRemoteUpdate` 用 `synchronized(lock)` 包 6 个赋值；原厂每字段一把锁（8 把）。两个列表字段 OPPO 用 `synchronized(this.m1pxPkgDisableList)` / `synchronized(this.m1pxCardDisableList)` 做"整段重写"保护（`:320, :345`），lib 的 `onePxPkgDisableList / onePxCardDisableList` 现为 `@Volatile` 不可变快照（`:32-36`，60bd048 后），public getter 只读（`:39-41`），`simulateRemoteUpdate` 9 参版（`:47-60`）在 `synchronized(lock)` 内整段替换（`.toList()`）——与原厂 `volatile List<>` + `synchronized(this.m*)` 重写段等效 |
+| `control/AnimationController.kt:30-31`（`runningTaskInfo`） | `com/oplus/quickstep/utils/AnimationController.java:83`（`mRunningTask`） | `@Volatile private var runningTaskInfo: Any?`（lib）↔ `private volatile TaskInfo mRunningTask`（原厂）。**精确复刻** |
+| `control/AnimationController.kt:33-53`（其他状态字段） | `AnimationController.java:67-87`（`isLandscapeActivity`、`mIsBetweenAppExitTransitionEndAndFinish` 等 12+ 字段） | lib 状态字段（bool 6 个 `:33-38` + listener/maxTime 等 `:40-53`）**全部非 @Volatile**（`isLandScapeGesture`/`isSplitScreenGesture`/`onceGestureProcessingFlag` 等）↔ 原厂对应字段**也全部非 volatile**。**两者一致假设"主线程访问"** |
+| `control/AnimationController.kt:26-28`（`recentsAnims/appLaunchAnims/removeTasksMaps`） | `AnimationController.java:89-91`（`mRecentsAnims / mAppLaunchAnims / mRemoveTasksMaps`） | `mutableListOf<CustomRectFSpringAnim>()` + `mutableListOf<RemoteAnimationFactory>()` + `linkedMapOf<Any, Any>()`（lib，**裸 ArrayList/LinkedHashMap 无同步**）↔ `new ArrayList()` / `new LinkedHashMap()`（原厂，**裸集合无同步**）。**一致** |
+| `control/DefaultAnimationController.kt:15`（`animStateChangeListeners`） | `com/oplus/quickstep/utils/DefaultAnimationController.java` metadata d2 字段 `mAnimStateChangeListeners` | `mutableListOf<OnAnimStateChangeListener>()`（lib）↔ 应该是 `ArrayList<>`（原厂，未读取文本验证）。**两者一致**：遍历时 `toList()` 拷快照（lib `:27`） |
+| `control/TaskStateChangeTimeOutListener.kt:12-46` | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209` 内部类 | `private val handler: Handler?`（lib，**构造时一次写，无同步**）+ `handler?.postDelayed(timeOutOption, duration)`（init）+ `handler?.removeCallbacks(timeOutOption)`（dispose）。lib 还用 `runCatching` 包 looper 访问（JVM 单测兜底）。↔ OPPO `private Handler handler`（`TaskStateHelper.java:118`，**裸引用无同步**）— `init` 时 `handler = OplusExecutors.URGENT_TRANSACTION_EXECUTOR.handler`，`dispose` 时 `handler.removeCallbacks(timeOutOption)` |
+| `manager/OplusAnimManager.kt:20-23`（Impl 字段） | `com/oplus/quickstep/utils/OplusAnimManager.java:50-65`（Impl 字段） | `@Volatile private var animationControllerImpl: AnimationController? = null`（lib，60bd048 后 @Volatile + setter @Synchronized `:53-64`）↔ 原厂 Kotlin `Lazy<T>` delegate（`f4.g`，默认 `SYNCHRONIZED`）。并发首次访问双建已消除（见 §③-风险5） |
+| `control/AnimationController.kt:220-251`（`delayStartActivityIfNeed`） | `AnimationController.java:608-650`（同款方法） | lib 现为 `if / else if / else if` 互斥 + 末段 dispose/清标志（cdd125e，见 §③-风险7）——旧文「破坏为非互斥」描述已过时 |
+| `playback/PendingAnimation.kt:25-31`（`anim / animHolders`） | `com/android/launcher3/anim/PendingAnimation.java:24-29`（同款字段） | `AnimatorSet anim` + `mutableListOf<Holder> animHolders`（lib，**裸集合**）↔ 原厂同款（**裸集合**）。**一致无锁**，靠调用方单线程访问 |
+| `playback/AnimatorPlaybackController.kt:32-38`（`anims / childAnimations / endActions`） | `com/android/launcher3/anim/AnimatorPlaybackController.java:28-35,38-44,46-47` | `mutableListOf<Animator> anims` + `Array<Holder>` + `mutableMapOf<String, () -> Unit> endActions`（lib）↔ 原厂同款结构。**一致** |
+| `playback/AnimatorPlaybackController.kt:34`（`targetCancelled`） | `AnimatorPlaybackController.java:73-74`（`mTargetCancelled`） | `private var targetCancelled = false`（lib，**非 volatile**）↔ 原厂同款。**一致假设主线程访问** |
+| `playback/AnimationSuccessListener.kt:20-33` + `playback/NullableAnimatorListenerAdapter.kt:15`（`cancelled` 实现在父类） | `com/android/launcher3/anim/AnimationSuccessListener.java:7-21` | `protected var cancelled = false`（lib，**非 volatile**）↔ 原厂 `protected boolean mCancelled`，但父类 `ActualEndAnimListener.mCancelled` 自身有 listener 链同步语义。**语义一致** |
+| `core/Trace.kt:13-14`（`STACK`，60bd048 后 ThreadLocal per-thread） | `android.os.Trace`（平台类） | `ArrayDeque<String> STACK` + `traceBegin/End` 内**无同步**（lib）↔ 原厂 `Trace.traceBegin/End` native（线程安全由 native 端保证）。**lib 已按线程隔离（60bd048），不再乱** |
 
 ---
 
@@ -53,14 +53,14 @@
 
 | # | 设计点 | 原厂证据 | lib 证据 |
 |---|---|---|---|
-| 1 | `AsyncValueAnimator.isEnd` AtomicBoolean CAS 门控 | `AsyncValueAnimator.java:31,57,80`（`compareAndSet(false, true)`） | `AsyncValueAnimator.kt:30,33` — 同一 compareAndSet，语义一致 |
-| 2 | 异步消息投递（listener 派发穿透 sync-barrier） | `Utilities.java:631-637`（`Message.obtain(h,r).setAsynchronous(true)`） | `LooperExecutor.kt:39-46` 同一 `Message.obtain(h) { action() }.apply { isAsynchronous = true }` |
-| 3 | 线程切换协议：`isCurrentThread` → `super.xxx()` 否则 `executor.execute(...)` | `AsyncValueAnimator.java:116-127,130-141,153-164`；`CustomRectFSpringAnim.java:613-621,763-770,888-895` | `AsyncValueAnimator.kt:42-53`（`marshal{}` 内联）— 形状一致 |
-| 4 | listener 懒删除 + 快照迭代（消除 CME 窗口） | `AsyncAnimCallbacks.java:38-43`（反向 `remove(size)` + `toArray`） | `AsyncAnimCallbacks.kt:67-79`（`removeAll { null }` + `filterNotNull`）— 实现路径不同但语义等效 |
-| 5 | `runningTaskInfo` 字段用 `volatile` 跨线程发布 | `AnimationController.java:83`（`private volatile TaskInfo mRunningTask`） | `AnimationController.kt:33`（`@Volatile private var runningTaskInfo: Any?`） |
-| 6 | AnimationFeatureHelper 用 `volatile` 读 + `synchronized` 写的双层结构 | `AnimationFeatureHelper.java:52-60`（9 个 volatile）+ `:99-156`（8 个 `synchronized` setter）+ `:320,345`（列表字段单独 `synchronized(this.m*)`） | `AnimationFeatureHelper.kt:11-19`（SyncedVar：`@Volatile` 读 + `synchronized(lock)` 写）— 锁粒度更粗但语义等效 |
-| 7 | AnimationHandler 的 ThreadLocal 单例语义（每线程一份） | vendored core `:13,158-172`；`OplusExecutors.java:170` 证明框架 `android.animation.AnimationHandler` 同样 ThreadLocal | `AnimationHandler.kt:132-141`（`threadLocalHandler = ThreadLocal<AnimationHandler>()`） |
-| 8 | `LooperExecutor.execute` 同线程内联执行、跨线程 Handler.post | `LooperExecutor.java:27-33`（`getHandler().getLooper() == Looper.myLooper()`） | `LooperExecutor.kt:33-37`（`isCurrentThread` 判 `handler?.looper?.thread === Thread.currentThread()`） |
+| 1 | `AsyncValueAnimator.isEnd` AtomicBoolean CAS 门控 | `AsyncValueAnimator.java:31,57,80`（`compareAndSet(false, true)`） | `anim/AsyncValueAnimator.kt:26,35` — 同一 compareAndSet，语义一致 |
+| 2 | 异步消息投递（listener 派发穿透 sync-barrier） | `Utilities.java:631-637`（`Message.obtain(h,r).setAsynchronous(true)`） | `thread/LooperExecutor.kt:49-54` 同一 `Message.obtain(h) { action() }.apply { isAsynchronous = true }` |
+| 3 | 线程切换协议：`isCurrentThread` → `super.xxx()` 否则 `executor.execute(...)` | `AsyncValueAnimator.java:116-127,130-141,153-164`；`CustomRectFSpringAnim.java:613-621,763-770,888-895` | `anim/AsyncValueAnimator.kt:44-49`（`marshal` 内联 `:47-49`）— 形状一致 |
+| 4 | listener 懒删除 + 快照迭代（消除 CME 窗口） | `AsyncAnimCallbacks.java:38-43`（反向 `remove(size)` + `toArray`） | `anim/AsyncAnimCallbacks.kt:76-79`（`removeAll { null }` + `filterNotNull`）— 实现路径不同但语义等效 |
+| 5 | `runningTaskInfo` 字段用 `volatile` 跨线程发布 | `AnimationController.java:83`（`private volatile TaskInfo mRunningTask`） | `control/AnimationController.kt:30-31`（`@Volatile private var runningTaskInfo: Any?`） |
+| 6 | AnimationFeatureHelper 用 `volatile` 读 + `synchronized` 写的双层结构 | `AnimationFeatureHelper.java:52-60`（9 个 volatile）+ `:99-156`（8 个 `synchronized` setter）+ `:320,345`（列表字段单独 `synchronized(this.m*)`） | `manager/AnimationFeatureHelper.kt:69-78`（SyncedVar：`@Volatile` 读 + `synchronized(lock)` 写）+ 列表快照 `:32-36,47-60`— 锁粒度更粗但语义等效 |
+| 7 | AnimationHandler 的 ThreadLocal 单例语义（每线程一份） | vendored core `:13,158-172`；`OplusExecutors.java:170` 证明框架 `android.animation.AnimationHandler` 同样 ThreadLocal | `core/AnimationHandler.kt:133, 140-142`（`threadLocalHandler = ThreadLocal<AnimationHandler>()`） |
+| 8 | `LooperExecutor.execute` 同线程内联执行、跨线程 Handler.post | `LooperExecutor.java:27-33`（`getHandler().getLooper() == Looper.myLooper()`） | `thread/LooperExecutor.kt:28-29`（`isCurrentThread` 判 `thread === Thread.currentThread()`） |
 
 ### B. 有意简化（lib 注释/文档中明示或合理 demo 化）
 
@@ -70,10 +70,10 @@
 | 2 | `ScheduledTickScheduler` / `HandlerTickScheduler` 用 `@Synchronized start/stop` + `@Volatile running` 守护状态 | 原厂 `Choreographer.postFrameCallback` / `handler.postDelayed` 内部由 Looper 串行化，**无显式同步** | lib 的 scheduler 是跨线程可达对象（`addAnimationFrameCallback` 可被任意线程调），需要显式守护 running 标志的可见性 |
 | 3 | `AnimationControlThread.instance` 用 `LazyThreadSafetyMode.SYNCHRONIZED` 懒创建 | 原厂 `ANIM_EXECUTOR = new OplusLooperExecutor(...)` 是 `static final`，JVM 类初始化锁保证唯一 | 行为等效（都是"线程安全的一次性构造"）；lib 用 synchronized lazy 写得更显眼 |
 | 4 | `AnimationHandler.swapScheduler` / `TickSchedulerHolder.get` 加 `@Synchronized` | 原厂 vendored `setProvider` 由 framework 保证（`AnimationHandler.java:174-176`，框架内部锁） | lib 没有 framework 保证，自加 `@Synchronized` 是必要的 |
-| 5 | `AnimSeqTimeStamp` 用 `@Volatile` 字段 + 纯 lock-free 读 | 原厂用 4 个 `static long` 字段 + 所有方法 `synchronized`（**全方法锁**，包括读路径） | lib 锁粒度更细（无锁读 + 顺序写），但要求**写者也在同步语境下更新**——lib 写路径是裸赋值（`AnimSeqTimeStamp.kt:25-29, 34-38`），**漏锁！** 见 §③-风险 1 |
+| 5 | `AnimSeqTimeStamp` 用 `@Volatile` 字段 + 纯 lock-free 读 | 原厂用 4 个 `static long` 字段 + 所有方法 `synchronized`（**全方法锁**，包括读路径） | lib 锁粒度更细（无锁读 + 顺序写），但要求**写者也在同步语境下更新**——lib 写路径是裸赋值（`seq/AnimSeqTimeStamp.kt:29-43`），**漏锁！** 见 §③-风险 1 |
 | 6 | `TaskStateChangeTimeOutListener.handler` 用裸 `Handler?` 引用 | 原厂 `handler` 字段**也无同步**（构造期一次写、之后只读，构造期可见性由 final 字段保证） | lib 的 `handler` **不是 val**（构造时 `mainLooper()?.let(::Handler)`，懒解析，**有 race**：构造器未完成就被另一线程 `dispose()` 可能 NPE）。见 §③-风险 4 |
-| 7 | `OplusAnimManager` 的 Impl 字段用裸 `var` 而非 lazy | 原厂用 Kotlin `f4.g` 委托（即 `Lazy<T>`，默认 SYNCHRONIZED） | lib 注释（`OplusAnimManager.kt:6-7`）自承"简化版应是 t4.b 类型懒加载"，并发首次访问可能创建两个实例 |
-| 8 | `Trace.STACK` 用裸 `ArrayDeque<String>` 无同步 | 原厂 `android.os.Trace` 是 native 实现，线程安全 | lib 多线程并发 `traceBegin/End` 时栈会乱（JVM 单测下无问题） |
+| 7 | `OplusAnimManager` 的 Impl 字段用裸 `var` 而非 lazy | 原厂用 Kotlin `f4.g` 委托（即 `Lazy<T>`，默认 SYNCHRONIZED） | lib 注释（`manager/OplusAnimManager.kt:19`）自承"简化版应是 t4.b 类型懒加载"，并发首次访问可能创建两个实例 |
+| 8 | `Trace.STACK` per-thread deque（60bd048，已修） | 原厂 `android.os.Trace` 是 native 实现，线程安全 | lib `core/Trace.kt:14` 为 `ThreadLocal`——跨线程并发不乱 |
 | 9 | `PendingAnimation` / `AnimatorPlaybackController` 的列表 / 数组全部裸集合 | 原厂同样裸集合 | **两者一致**——靠"主线程构造 / 主线程 start / 主线程回调"的纪律 |
 | 10 | `AnimationSuccessListener.cancelled` 用 `var`（非 volatile） | 原厂 `mCancelled` 在 `AnimationSuccessListener.mCancelled`，父类 `NullableAnimatorListenerAdapter.mCancelled`，也非 volatile | **一致** |
 
@@ -81,17 +81,17 @@
 
 | # | 遗漏点 | 原厂证据 | 影响 |
 |---|---|---|---|
-| 1 | **`AnimSeqTimeStamp` 写路径漏锁（高风险）** | 原厂 4 个 update/reset 方法全 `synchronized`（`AnimSeqTimeStamp.java:31-40,51-58,71-80,91-100` 等 8 个 `@JvmStatic synchronized` 方法），所有读写共享同一把类锁 | lib 4 个字段 `@Volatile` 只能保证**单个 long 写可见性**，但 `updateLastStartAppTime / updateLastRecentFinishTime / ...` 的实现是裸 `lastXxxTime = clock()`（`AnimSeqTimeStamp.kt:25,30,34,38`），**没在 lock 内**。后果：写者 A 写 `lastStartAppTime` 同时写者 B 写 `lastRecentFinishTime` 没问题（不同字段），但同一字段并发写可能丢更新；读端 `gapTo()` 是 `clock() - timestamp` 多字段读，**可能读到撕裂的快照**——500/300ms 防抖窗口在并发触发下可能误判 |
-| 2 | **`AnimSeqTimeStamp` 整方法 synchronized vs 仅字段 @Volatile：粒度反向了** | 原厂：`@JvmStatic synchronized` 方法（类对象作 monitor）— 读路径也加锁，**简单粗暴但绝对正确** | lib：无锁读路径 + 无锁写路径 — 性能更好但正确性降级。原厂能扛住 14 路并发触发（多模块共享时间戳），lib 在并发密集场景下可能产生"时间戳回退"或"双触发都判 300ms 内" |
+| 1 | **`AnimSeqTimeStamp` 写路径漏锁（高风险）** | 原厂 4 个 update/reset 方法全 `synchronized`（`AnimSeqTimeStamp.java:31-40,51-58,71-80,91-100` 等 8 个 `@JvmStatic synchronized` 方法），所有读写共享同一把类锁 | lib 4 个字段 `@Volatile` 只能保证**单个 long 写可见性**，但 `updateLastStartAppTime / updateLastRecentFinishTime / ...` 的实现仍是裸 `lastXxxTime = clock()`（`seq/AnimSeqTimeStamp.kt:29-43`），**没在 lock 内**。后果：写者 A 写 `lastStartAppTime` 同时写者 B 写 `lastRecentFinishTime` 没问题（不同字段），但同一字段并发写可能丢更新；读端 `gapTo()` 是 `clock() - timestamp` 多字段读，**可能读到撕裂的快照**——500/300ms 防抖窗口在并发触发下可能误判 |
+| 2 | **`AnimSeqTimeStamp` 整方法 synchronized vs 仅字段 @Volatile：粒度反向了** | 原厂：`@JvmStatic synchronized` 方法（类对象作 monitor）— 读路径也加锁，**简单粗暴但绝对正确** | lib：无锁读路径 + 无锁写路径（`seq/AnimSeqTimeStamp.kt:13-27, 29-43`）— 性能更好但正确性降级。原厂能扛住 14 路并发触发（多模块共享时间戳），lib 在并发密集场景下可能产生"时间戳回退"或"双触发都判 300ms 内" |
 | 3 | **`AnimationController.delayStartActivityIfNeed` 把互斥结构破坏为顺序 if**（高风险，跨线程时序错位） | 原厂 `if / else if / else if` 三层互斥（`:608, :627, :645`），第一层 listener 存在但条件不满足时**穿透到清理段返回 false** | lib 三个顺序 `if`（`:177, :186, :193`），第一层不满足会继续试第二、三层；叠加 review 03 §3-b 子项（漏 `isTablet()` / 漏 `isSpecialAppScene(intent)` / 时间窗 vs 运行态判定差异），最终落点也不会 dispose listener、清 Between 标志——状态残留可能影响下一次进出场。**这是 review 03 已记录的非并发原语相关偏差** |
-| 4 | **`TaskStateChangeTimeOutListener.handler` 字段不是 `val`、构造期 lazy 解析 + 无可见性同步（中风险）** | 原厂 `private Handler handler`（裸引用但**构造期一次性赋值 + 之后只读**，final 字段语义保证可见性） | lib `private val handler: Handler?` 看似 final，**但实际值在 init 块执行 `mainLooper()?.let(::Handler)` 才确定**——`val` 保证"该字段只赋一次"但不保证"其他线程看得到已构造的对象"。并发场景下：构造器还在跑 `init { handler?.postDelayed(...) }` 时，另一线程若持有引用并调 `dispose()`，可能 NPE。**真实场景下主线程构造 + UI 线程 dispose 无问题**（Handler 同 Looper 内可见），JVM 单测时构造期更短，**有微小 race window** |
-| 5 | **`OplusAnimManager.animationControllerImpl/SeqHelperImpl` 用裸 `var` 无同步（中风险）** | 原厂用 Kotlin `Lazy<T>` 委托（默认 `LazyThreadSafetyMode.SYNCHRONIZED`）— 多个线程同时首次访问只会创建一个实例 | lib `private var animationControllerImpl: AnimationController? = null`（`OplusAnimManager.kt:11-12`）— **裸 var 无锁**。并发首次访问 `animController` getter 可能创建两个 `AnimationController` 实例。生产代码多线程访问少见，但**理论 race window 存在** |
-| 6 | **`AnimationFeatureHelper` 两个列表字段无任何保护（中风险）** | 原厂 `m1pxPkgDisableList` / `m1pxCardDisableList` 是 `volatile List<>`，**且 `updateRusConfig` 写入时 `synchronized(this.m1pxPkgDisableList)` / `synchronized(this.m1pxCardDisableList)`**（`:320, :345`）。**读路径直接返回 volatile 引用**（`:376, :380`），靠"调用方只读不写"约定 | lib `onePxPkgDisableList` / `onePxCardDisableList` 是 `mutableListOf()` **裸 mutableList**，**没有任何锁或 volatile**。外部代码若拿到引用并 `.add(...)` / `.clear()`，**与 RUS 下发线程并发**时可能 CME（ArrayList 自身的 modCount 非原子）。原厂的 volatile 引用 + synchronized 重写段保证了"引用替换原子 + 段内互斥"，lib 完全没这层 |
+| 4 | **`TaskStateChangeTimeOutListener.handler` 字段不是 `val`、构造期 lazy 解析 + 无可见性同步（中风险）** | 原厂 `private Handler handler`（裸引用但**构造期一次性赋值 + 之后只读**，final 字段语义保证可见性） | lib `private val handler: Handler?`（`control/TaskStateChangeTimeOutListener.kt:24`）现已在**字段声明处**默认初始化（0e8a472）——本条风险已修，正文描述为修复前状态——`val` 保证"该字段只赋一次"但不保证"其他线程看得到已构造的对象"。并发场景下：构造器还在跑 `init { handler?.postDelayed(...) }` 时，另一线程若持有引用并调 `dispose()`，可能 NPE。**真实场景下主线程构造 + UI 线程 dispose 无问题**（Handler 同 Looper 内可见），JVM 单测时构造期更短，**有微小 race window** |
+| 5 | **`OplusAnimManager.animationControllerImpl/SeqHelperImpl` 用裸 `var` 无同步（中风险）** | 原厂用 Kotlin `Lazy<T>` 委托（默认 `LazyThreadSafetyMode.SYNCHRONIZED`）— 多个线程同时首次访问只会创建一个实例 | lib 字段已 @Volatile（`manager/OplusAnimManager.kt:20-23`）且 setter @Synchronized（`:53-64`，60bd048）— 本条风险已修，正文描述为修复前状态。生产代码多线程访问少见，但**理论 race window 存在** |
+| 6 | **`AnimationFeatureHelper` 两个列表字段无任何保护（中风险）** | 原厂 `m1pxPkgDisableList` / `m1pxCardDisableList` 是 `volatile List<>`，**且 `updateRusConfig` 写入时 `synchronized(this.m1pxPkgDisableList)` / `synchronized(this.m1pxCardDisableList)`**（`:320, :345`）。**读路径直接返回 volatile 引用**（`:376, :380`），靠"调用方只读不写"约定 | lib 现为 `@Volatile` 不可变快照（`manager/AnimationFeatureHelper.kt:32-36`）+ `synchronized(lock)` 内整段 `.toList()` 替换（`:47-60`），public getter 只读——已对齐原厂"引用替换原子 + 段内互斥"（60bd048），本条风险已修 |
 | 7 | **`AnimationFeatureHelper.simulateRemoteUpdate` 写锁粒度**（低风险，但与原厂对比粒度反向） | 原厂每字段一个 `synchronized` setter，**两字段之间不需要互斥** | lib 7 字段共享同一 `lock`，**全部写入必须串行**。功能正确（更粗的锁 = 更安全），但 demo 场景下没必要 |
-| 8 | **`AsyncAnimCallbacks.animListeners` 与 OPPO 同款裸 ArrayList 无锁，但 lib 的 remove 是 `mutableListOf` 而非 ArrayList**（低风险） | OPPO `ArrayList<NullableAnimatorListener> mAnimListeners`（`AsyncAnimCallbacks.java:34`）— `addListeners` / `removeListener` / `getListeners` 全部裸 ArrayList 操作，**靠"主线程 add + 迭代在主线程派发"的纪律**。**原厂自己也有 race 隐患**，不是 bug | lib `mutableListOf<NullableAnimatorListener?>()`（`AsyncAnimCallbacks.kt:21`）— 同款裸集合 + 同款纪律。lib 比原厂**多一层快照保护**（`removeAll { null }` 后 `filterNotNull` 拷快照），但**写者并发仍可能 CME**——这是**与原厂对齐的合理行为**，不是 lib 的 bug |
-| 9 | **`Trace.STACK` 用裸 ArrayDeque 多线程 race（低风险）** | 原厂 `android.os.Trace` 是 native，线程安全 | lib `STACK.addFirst` / `removeFirst` 多线程并发时**栈深度可能错乱**。但 trace 仅作 demo 日志，**实际不影响功能正确性** |
+| 8 | **`AsyncAnimCallbacks.animListeners` 与 OPPO 同款裸 ArrayList 无锁，但 lib 的 remove 是 `mutableListOf` 而非 ArrayList**（低风险） | OPPO `ArrayList<NullableAnimatorListener> mAnimListeners`（`AsyncAnimCallbacks.java:34`）— `addListeners` / `removeListener` / `getListeners` 全部裸 ArrayList 操作，**靠"主线程 add + 迭代在主线程派发"的纪律**。**原厂自己也有 race 隐患**，不是 bug | lib `mutableListOf<NullableAnimatorListener?>()`（`anim/AsyncAnimCallbacks.kt:33`）— 同款裸集合 + 同款纪律。lib 比原厂**多一层快照保护**（`removeAll { null }` 后 `filterNotNull` 拷快照），但**写者并发仍可能 CME**——这是**与原厂对齐的合理行为**，不是 lib 的 bug |
+| 9 | **`Trace.STACK` 用裸 ArrayDeque 多线程 race（低风险）** | 原厂 `android.os.Trace` 是 native，线程安全 | lib `core/Trace.kt:14` 的 STACK 已是 ThreadLocal（60bd048），此条已修 |
 | 10 | **`TaskStateHelper.TaskStateChangeTimeOutListener` 用 `URGENT_TRANSACTION_EXECUTOR` 而非 Main**（已知但非并发原语差异） | `TaskStateHelper.java:130` — 超时回调跑在 `-8` 优先级线程 | lib 用 Main Looper — 超时回调跑主线程，**与原厂线程模型不一致**（review 03 §2.2-5 已记） |
-| 11 | **`AnimationController` 其他 12+ 状态字段（`isLandScapeGesture` 等）全裸字段、无 @Volatile** | 原厂同样裸字段，**两者一致假设主线程访问**——但 OPPO 还有 `checkMainThread()`（`:233`）做纪律校验，lib 无此检查 | **与原厂行为对齐**（都靠纪律），但**lib 比原厂少一层兜底**——业务在非主线程调 `setOnAppExit` 时原厂会 throw，lib 静默改状态 |
+| 11 | **`AnimationController` 其他 12+ 状态字段（`isLandScapeGesture` 等）全裸字段、无 @Volatile** | 原厂同样裸字段，**两者一致假设主线程访问**——但 OPPO 还有 `checkMainThread()`（`:233`）做纪律校验，lib 无此检查（`control/AnimationController.kt`） | **与原厂行为对齐**（都靠纪律），但**lib 比原厂少一层兜底**——业务在非主线程调 `setOnAppExit` 时原厂会 throw，lib 静默改状态 |
 
 ---
 
@@ -101,12 +101,12 @@
 
 > ⚠️未修复（撕裂快照仅在真实多线程写场景下出现；60bd048 仅补 4 个 reset 方法 + clock 注入；写路径仍裸赋值，未与原厂"全方法 synchronized"对齐。JVM 单测下不触发）
 
-**位置**：`AnimSeqTimeStamp.kt:9-29, 30-38, 38-45`
+**位置**：`seq/AnimSeqTimeStamp.kt:13-27`（4 个 @Volatile 字段 + clock `:26-27`）、`:29-43`（4 个 update 裸赋值）、`:45-67`（4 个 reset + resetAllForTest）
 
 **问题**：
 - 原厂：4 个时间戳字段 + 8 个 `static synchronized` 方法（`@JvmStatic synchronized`），读写共享类对象 monitor，**绝对原子**。
 - lib：4 个字段标 `@Volatile`（仅单字段写可见性），但 `updateLastStartAppTime / updateLastRecentFinishTime` 等 4 个写方法**裸赋值无锁**。
-- `gapTo(timestamp)` 多字段读路径（`:42`）**读两个 volatile 字段**（`timestamp` + `clock()`）—— 实际只读一个字段，`clock()` 是当前时间无 race；但**两次连续读不同字段**（如 `canFinishRecent` 同时查 `lastRecentFinishTime`，`canInterceptGesture` 查 `lastStartAppTime`）如果两个写线程并发写，**可能读到"刚跨过 500ms 阈值又回退"** 的撕裂状态。
+- `gapTo(timestamp)` 读路径（`seq/AnimSeqTimeStamp.kt:69-70`）**读两个 volatile 字段**（`timestamp` + `clock()`）—— 实际只读一个字段，`clock()` 是当前时间无 race；但**两次连续读不同字段**（如 `canFinishRecent` 同时查 `lastRecentFinishTime`，`canInterceptGesture` 查 `lastStartAppTime`）如果两个写线程并发写，**可能读到"刚跨过 500ms 阈值又回退"** 的撕裂状态。
 
 **实际触发场景**：
 - 启动 app 后立即上滑（`updateLastStartAppTime` 在 `onAppStart`，`canInterceptGesture` 在 gesture 输入回调查时间窗）—— 两个线程并发更新。
@@ -120,37 +120,30 @@
 
 ---
 
-### 风险 2（高）：`AnimationFeatureHelper.onePxPkgDisableList / onePxCardDisableList` 完全无保护
+### 风险 2（已修复）：`AnimationFeatureHelper` 两个禁用列表已获 volatile 快照保护
 
-> **✔️保持简化（两列表当前恒空、字段类型为只读 List、simulateRemoteUpdate 不触碰——无写入路径即无并发源；将来做列表式 RUS 下发时再按原厂 volatile+COW 补，约 10 行）**
+> **✅已修复（60bd048 后：两列表改为 `@Volatile` 不可变快照 + `simulateRemoteUpdate` 在 `synchronized(lock)` 内整段 `.toList()` 替换；public getter 只读不可外改——原「裸 mutableList 无保护」已不存在；v1 的「✔️保持简化/恒空」判定前提亦已过时）**
 
-**位置**：`AnimationFeatureHelper.kt:21-22`
+**位置**：`manager/AnimationFeatureHelper.kt:32-36`（`@Volatile` 快照字段）、`:39-41`（只读 getter）、`:47-60`（9 参 `simulateRemoteUpdate` 整段替换）
 
-**问题**：
-- 原厂：`m1pxPkgDisableList / m1pxCardDisableList` 是 `volatile List<>`，且 `updateRusConfig` 的列表写入段用 `synchronized(this.m1pxPkgDisableList)` / `synchronized(this.m1pxCardDisableList)`（`:320, :345`）做"引用替换 + 内容重写"互斥。**读路径直接返回 volatile 引用**——靠"调用方只迭代不修改"的纪律。
-- lib：`onePxPkgDisableList: List<String> = mutableListOf()` —— **裸 mutableList**，既不是 volatile、也没有锁。`simulateRemoteUpdate` 函数**不修改这两个列表**（只改 6 个标量字段），**两个列表永远为空**——但 demo 通过 setter 模拟的"RUS 下发"如果未来扩展到改这两个列表，将**完全无保护**。
+**现状（v2 独立复核）**：
+- lib 现为 `@Volatile private var onePxPkgDisableSnapshot: List<String> = emptyList()` / `onePxCardDisableSnapshot: List<Int> = emptyList()`（`:32-36`）；公开 getter（`:39-41`）返回不可变 List——业务拿不到 mutable 引用，`.add()/clear()` 外改面不存在；
+- `simulateRemoteUpdate`（9 参版 `:47-60`）在 `synchronized(lock)` 内写 7 个标量 + 对两个列表 `.toList()` **整体替换引用**（null 入参保持旧值）——与原厂 `volatile List<>` + `synchronized(this.m1pxPkgDisableList)`/`synchronized(this.m1pxCardDisableList)` 重写段（`:320, :345`）语义一致（引用替换原子、段内互斥）；
+- 原厂证据不变：`AnimationFeatureHelper.java:52-60`（volatile 字段群）、`:320, :345`（列表 synchronized 段重写）、`:376, :380`（读路径返回 volatile 引用）。
 
-**实际触发场景**：
-- 现有 demo 不触发（列表内容为空，simulateRemoteUpdate 不碰它）。
-- 未来如果给 `simulateRemoteUpdate` 加列表参数 / 给 setter 暴露列表字段，**业务方拿到 `mutableListOf` 引用后 .add() 会与 RUS 线程并发**——`ArrayList` 的 `modCount` 字段非 volatile，迭代时可能 CME / `IndexOutOfBoundsException` / 静默丢元素。
-
-**影响**：
-- 当前 demo 没问题。
-- 扩展到列表下发时将是**潜在崩溃源**。
-
-**修复**：把列表字段改成 `volatile List<>` + 写时拷新 ArrayList 替换引用 + 读时返回引用——完全对齐原厂模式。10 行改动。
+**残余差异**：仅锁粒度——lib 一个 `lock` 管标量 + 列表，原厂分字段锁；功能正确，无新增并发源（锁粒度判定维持 §③-风险6）。
 
 ---
 
-### 风险 3（中）：`AnimationController` 12+ 状态字段全部非 volatile、无 `checkMainThread` 兜底
+### 风险 3（中）：`AnimationController` 状态字段全部非 volatile、无 `checkMainThread` 兜底
 
 > **✔️保持简化（demo 全主线程纪律调用、无触发；lib 定位演示库非真实 launcher；checkMainThread 约 20 行仅防御性断言）**
 
-**位置**：`AnimationController.kt:24-32`（12 个状态字段）+ 全方法（无 `checkMainThread`）
+**位置**：`control/AnimationController.kt:33-53`（bool 状态字段 + listener/maxTime/callback 字段，均非 @Volatile）+ 全方法（无 `checkMainThread`）
 
 **问题**：
 - 原厂：12 个字段（`mIsBetweenAppExitTransitionEndAndFinish / mIsLandScapeGesture / mIsSplitScreenGesture / mOnceGestureProcessing` 等）**裸字段无 volatile**，但 `private final boolean checkMainThread()`（`:233`）在每个 mutator / 关键 accessor 前调用——非主线程直接抛异常。**靠"业务方必须主线程调用"的纪律 + 显式断言**。
-- lib：12 个字段同样裸无 volatile，**且无任何 checkMainThread 检查**。`setOnAppExit / setOnceGestureProcessing / setAppToOverviewContinuationState` 等 mutator（`:157-166`）无线程约束。
+- lib：字段同样裸无 volatile（bool 现 6 个 `:33-38`，另有 listener/maxTime/callback 等 `:40-53`），**且无任何 checkMainThread 检查**。`setOnAppExit / setOnceGestureProcessing / setAppToOverviewContinuationState` 等 mutator（现 `control/AnimationController.kt:204-216`）无线程约束。
 
 **实际触发场景**：
 - 当前 demo 全在主线程调——无问题。
@@ -168,7 +161,7 @@
 
 > **✅已修复（handler 已改为字段声明处默认初始化——final 字段语义生效；mainLooper() 访问由 runCatching 兜底（0e8a472））**
 
-**位置**：`TaskStateChangeTimeOutListener.kt:24-32`（构造器）+ `:40-42`（dispose）
+**位置**：`control/TaskStateChangeTimeOutListener.kt:24`（handler 字段声明处默认初始化，0e8a472）+ `:30-32`（init）+ `:41-43`（dispose）
 
 **问题**：
 - 原厂：`TaskStateHelper.java:118` `private Handler handler` —— 构造期一次性赋值后只读（`init` 块内 `this.handler = OplusExecutors.URGENT_TRANSACTION_EXECUTOR().getHandler();`）；final 字段语义保证跨线程可见性（即使 Java 字段不写 final，构造期内发布到其他线程依赖 happens-before；final 字段有 JMM 额外保证）。
@@ -191,7 +184,7 @@
 
 > **✅已修复（60bd048：interruptionEnabled setter @Synchronized 后并发首访双建消除；Impl 字段仅经 init（类初始化锁）与同步 setter 写；toggle-disable 语义本就不适用 by lazy）**
 
-**位置**：`OplusAnimManager.kt:11-12`
+**位置**：`manager/OplusAnimManager.kt:20-23`（@Volatile 字段）
 
 **问题**：
 - 原厂：用 Kotlin `Lazy<T>` 委托（`f4.g`，即 `LazyThreadSafetyMode.SYNCHRONIZED`）—— **首次访问同步，多线程安全**。
@@ -234,7 +227,7 @@
 
 > **✅已修复（cdd125e：已改 if/else-if/else-if 互斥 + 末段 dispose/清标志清理段——当前 AnimationController.kt 即该形态；并发放大点消除）**
 
-**位置**：`AnimationController.kt:175-205`
+**位置**：`control/AnimationController.kt:220-251`
 
 **问题**：lib 三个顺序 `if`，原厂 `if / else if / else if` 互斥。review 03 §3-b 已记录，**非并发原语问题**但**并发触发下放大**：
 - 第一层 listener 存在但条件不满足时，原厂直接穿透到清理段返回 false，**dispose listener + 清 Between 标志**。
@@ -248,7 +241,7 @@
 
 > **✔️保持简化（与原厂裸 ArrayList + 主线程纪律对齐；lib 已多一层快照保护；CopyOnWriteArrayList 属超原厂增强，demo 无触发）**
 
-**位置**：`AsyncAnimCallbacks.kt:21`（声明）+ `:25-27`（addListener）+ `:29-32`（removeListener 懒删除）+ `:67-79`（`getListeners` 快照迭代）
+**位置**：`anim/AsyncAnimCallbacks.kt:33`（声明）+ `:37-39`（addListener）+ `:41-44`（removeListener 懒删除）+ `:76-79`（`getListeners` 快照迭代）
 
 **问题**：
 - 原厂 `mAnimListeners` 也是裸 ArrayList，**无任何并发原语**。原厂的纪律：业务 listener 注册/移除都在主线程；派发也强制 marshal 回主线程；快照迭代在主线程进行——**单线程访问约定**。
@@ -270,7 +263,7 @@
 
 > **❌已过期（215ecb5：ScheduledTickScheduler/HandlerTickScheduler 已删，只剩 ChoreographerTickScheduler——本条讨论的并发原语组合已随类删除）**
 
-**位置**：`ScheduledTickScheduler.kt:46-67` + `HandlerTickScheduler.kt:49-65`
+**位置**：（两实现已删 215ecb5）现 `core/ChoreographerTickScheduler.kt:24-31`（并发容器 + @Volatile）、`:66-76`（@Synchronized start/stop）
 
 **问题**：
 - lib：`@Volatile var running` + `@Synchronized fun start/stop`——读路径无锁直接访问 `running`（`tick()` 内 `:76`、`:78`、`scheduleNextFrame` 内 `:70, :72, :74`）。
@@ -293,7 +286,7 @@
 
 > **✔️保持简化（0e8a472 已统一 runCatching.getOrNull 兜底；文档自身修复建议即"保留"——JVM 单测便利 > 设备 NPE 风险）**
 
-**位置**：`LooperExecutor.kt:17-20`、`Executors.kt:17-19, 24-26`、`AnimationControlThread.kt:63-65`、`TaskStateChangeTimeOutListener.kt:39-41`
+**位置**：`thread/LooperExecutor.kt:22, 31-38`（handler null → 就地执行）、`thread/Executors.kt:20, 25-26`（mainHandlerOrNull runCatching）、`thread/AnimationControlThread.kt:70`（runCatching setThreadPriority）、`control/TaskStateChangeTimeOutListener.kt:45-46`（mainLooper runCatching）
 
 **问题**：
 - lib 多处用 `runCatching { Looper.getMainLooper() }?.getOrNull()` 兜底，handler 为 null 时退化为"就地执行"。
@@ -314,8 +307,8 @@
 
 | # | 改动 | 理由 | 工作量 |
 |---|---|---|---|
-| 1 | ⚠️未修复（同 §③-风险1：写路径仍裸赋值，未对齐原厂"全方法 synchronized"——约 8 行；60bd048 仅补 4 reset + clock 注入；demo 单线程写不触发） — **修 `AnimSeqTimeStamp` 写路径加 `synchronized(this)`**（`AnimSeqTimeStamp.kt:25,30,34,38`） | 与原厂 `@JvmStatic synchronized` 模式对齐；消除多字段并发写撕裂快照；500/300ms 防抖窗口误判修复 | 4 行（每个方法体外包 `synchronized(this)`） |
-| 2 | ✔️保持简化（同风险2：列表无写入路径、只读 List 类型已封外改） — **`AnimationFeatureHelper` 列表字段加 volatile + 写时拷新 ArrayList**（`:21-22`） | 与原厂 `volatile List<>` + `synchronized(this.m*)` 段模式对齐；为未来扩展留安全基础 | 10 行 |
+| 1 | ⚠️未修复（同 §③-风险1：写路径仍裸赋值，未对齐原厂"全方法 synchronized"——约 8 行；60bd048 仅补 4 reset + clock 注入；demo 单线程写不触发） — **修 `AnimSeqTimeStamp` 写路径加 `synchronized(this)`**（`seq/AnimSeqTimeStamp.kt:29-43`） | 与原厂 `@JvmStatic synchronized` 模式对齐；消除多字段并发写撕裂快照；500/300ms 防抖窗口误判修复 | 4 行（每个方法体外包 `synchronized(this)`） |
+| 2 | ✅已修复（60bd048 后：`@Volatile` 快照 + `synchronized(lock)` 整段替换落地，见 §③-风险2） — ~~列表字段加 volatile + 写时拷新 ArrayList~~（现 `manager/AnimationFeatureHelper.kt:32-36, 47-60`） | 与原厂 `volatile List<>` + `synchronized(this.m*)` 段模式对齐；为未来扩展留安全基础 | 10 行 |
 | 3 | ✔️保持简化（同风险3：demo 主线程纪律；20 行防御断言非必需） — **`AnimationController` 加 `checkMainThread()` 兜底**（基类或 Impl 入口） | 与原厂 `private final boolean checkMainThread()`（`:233`）对齐；非主线程访问状态机字段会 throw，避免撕裂态 | 20 行 |
 | 4 | ✅已修复（60bd048：setter @Synchronized 后并发 race 消除；by lazy 与 disable-toggle 语义冲突） — **`OplusAnimManager.Impl` 字段改 `by lazy(SYNCHRONIZED)`**（`:11-12`） | 与原厂 Kotlin `Lazy<T>` 委托对齐；消除 demo 8 / 多线程切换 race | 5 行 |
 | 5 | ✅已修复（0e8a472：handler 已字段声明处默认初始化） — **`TaskStateChangeTimeOutListener.handler` 字段默认初始化而非 init 块内赋值**（`:24-26`） | 让 Kotlin `val` 的 final 字段语义真正生效；构造期 lazy 解析变字段默认初始 | 5 行 |
@@ -342,21 +335,21 @@
 
 | 论断 | 证据（lib 路径 / 原厂 文件:行） |
 |---|---|
-| lib `AsyncValueAnimator.isEnd` AtomicBoolean CAS | `AsyncValueAnimator.kt:30,33,37` ↔ `com/android/quickstep/util/animation/AsyncValueAnimator.java:31,57,80` |
-| lib `asyncAnimCallbacks.animListeners` 裸 mutableList | `AsyncAnimCallbacks.kt:21` ↔ `AsyncAnimCallbacks.java:34`（`ArrayList mAnimListeners`） |
-| lib `AsyncAnimCallbacks.getListeners` 快照迭代 | `AsyncAnimCallbacks.kt:75-79` ↔ `AsyncAnimCallbacks.java:38-43` |
-| lib 异步消息投递 `Message.setAsynchronous(true)` | `LooperExecutor.kt:39-46` ↔ `Utilities.java:631-637`（被 `AsyncAnimCallbacks.java:120,160` 调用） |
-| lib `AnimSeqTimeStamp` @Volatile 字段 + 无锁读写 | `AnimSeqTimeStamp.kt:9-21,25-29` ↔ `AnimSeqTimeStamp.java:25-28, 31-138`（8 个 `@JvmStatic synchronized` 方法） |
-| lib `AnimationFeatureHelper.SyncedVar` 共享 lock | `AnimationFeatureHelper.kt:34-43,46-55` ↔ `AnimationFeatureHelper.java:52-60, 99-156`（每字段独立 synchronized） |
-| lib `AnimationFeatureHelper.onePxPkgDisableList` 裸 mutableList | `AnimationFeatureHelper.kt:21-22` ↔ `AnimationFeatureHelper.java:56-57`（`volatile List<>`）+ `:320,345`（`synchronized(this.m*)` 写段） |
-| lib `AnimationController.runningTaskInfo` @Volatile | `AnimationController.kt:33` ↔ `AnimationController.java:83`（`private volatile TaskInfo mRunningTask`） |
-| lib `AnimationController` 12+ 状态字段全裸 | `AnimationController.kt:24-32` ↔ `AnimationController.java:67-87`（同款裸字段，原厂另有 `checkMainThread()` `:233`） |
-| lib `OplusAnimManager.Impl` 裸 var 无 lazy 同步 | `OplusAnimManager.kt:11-12` ↔ `OplusAnimManager.java`（`f4.g` Kotlin `Lazy<T>` 委托） |
-| lib `TaskStateChangeTimeOutListener.handler` lazy 解析 | `TaskStateChangeTimeOutListener.kt:24-32` ↔ `TaskStateHelper.java:118,130`（构造期一次写 final） |
-| lib `AnimationControlThread.instance` lazy SYNCHRONIZED | `AnimationControlThread.kt:80-83` ↔ `OplusExecutors.java:95`（`static final` JVM 类初始化锁） |
-| lib `ScheduledTickScheduler / HandlerTickScheduler` `@Synchronized start/stop` + `@Volatile running` | `ScheduledTickScheduler.kt:46-67`、`HandlerTickScheduler.kt:49-65` ↔ vendored `FrameCallbackProvider14/16`（Looper 派发线程串行，**无对应原语**） |
-| lib `AnimationHandler.swapScheduler` / `TickSchedulerHolder.get` `@Synchronized` | `AnimationHandler.kt:113-115,131-141` ↔ vendored `AnimationHandler.setProvider`（framework 内部锁） |
-| lib `AnimationHandler` ThreadLocal 单例 | `AnimationHandler.kt:132-141` ↔ vendored core `:13,158-172`；`OplusExecutors.java:170`（框架 `android.animation.AnimationHandler` 同样 ThreadLocal） |
+| lib `AsyncValueAnimator.isEnd` AtomicBoolean CAS | `anim/AsyncValueAnimator.kt:26,35,30-40` ↔ `com/android/quickstep/util/animation/AsyncValueAnimator.java:31,57,80` |
+| lib `asyncAnimCallbacks.animListeners` 裸 mutableList | `anim/AsyncAnimCallbacks.kt:33` ↔ `AsyncAnimCallbacks.java:34`（`ArrayList mAnimListeners`） |
+| lib `AsyncAnimCallbacks.getListeners` 快照迭代 | `anim/AsyncAnimCallbacks.kt:76-79` ↔ `AsyncAnimCallbacks.java:38-43` |
+| lib 异步消息投递 `Message.setAsynchronous(true)` | `thread/LooperExecutor.kt:49-54` ↔ `Utilities.java:631-637`（被 `AsyncAnimCallbacks.java:120,160` 调用） |
+| lib `AnimSeqTimeStamp` @Volatile 字段 + 无锁读写 | `seq/AnimSeqTimeStamp.kt:13-27,29-43` ↔ `AnimSeqTimeStamp.java:25-28, 31-138`（8 个 `@JvmStatic synchronized` 方法） |
+| lib `AnimationFeatureHelper.SyncedVar` 共享 lock | `manager/AnimationFeatureHelper.kt:15,47-66,69-78` ↔ `AnimationFeatureHelper.java:52-60, 99-156`（每字段独立 synchronized） |
+| lib `AnimationFeatureHelper.onePxPkgDisableList` @Volatile 快照（60bd048） | `manager/AnimationFeatureHelper.kt:32-36,39-41` ↔ `AnimationFeatureHelper.java:56-57`（`volatile List<>`）+ `:320,345`（`synchronized(this.m*)` 写段） |
+| lib `AnimationController.runningTaskInfo` @Volatile | `control/AnimationController.kt:30-31` ↔ `AnimationController.java:83`（`private volatile TaskInfo mRunningTask`） |
+| lib `AnimationController` 状态字段全裸 | `control/AnimationController.kt:33-38` ↔ `AnimationController.java:67-87`（同款裸字段，原厂另有 `checkMainThread()` `:233`） |
+| lib `OplusAnimManager.Impl` @Volatile + @Synchronized setter（60bd048） | `manager/OplusAnimManager.kt:20-23,53-64` ↔ `OplusAnimManager.java`（`f4.g` Kotlin `Lazy<T>` 委托） |
+| lib `TaskStateChangeTimeOutListener.handler` 字段声明处默认初始化（0e8a472） | `control/TaskStateChangeTimeOutListener.kt:24` ↔ `TaskStateHelper.java:118,130`（构造期一次写 final） |
+| lib `AnimationControlThread.instance` lazy SYNCHRONIZED | `thread/AnimationControlThread.kt:86-88` ↔ `OplusExecutors.java:95`（`static final` JVM 类初始化锁） |
+| （215ecb5 已删）lib 现仅 `ChoreographerTickScheduler`：`@Synchronized start/stop` + `@Volatile running` | `core/ChoreographerTickScheduler.kt:24-31, 66-76` ↔ vendored `FrameCallbackProvider14/16`（Looper 派发线程串行，**无对应原语**） |
+| lib `AnimationHandler.swapScheduler` / `TickSchedulerHolder.get` `@Synchronized` | `core/AnimationHandler.kt:111-119, 122-127` ↔ vendored `AnimationHandler.setProvider`（framework 内部锁） |
+| lib `AnimationHandler` ThreadLocal 单例 | `core/AnimationHandler.kt:133, 140-142` ↔ vendored core `:13,158-172`；`OplusExecutors.java:170`（框架 `android.animation.AnimationHandler` 同样 ThreadLocal） |
 | 原厂"裸 ArrayList 无锁 + 主线程纪律"模式 | `AsyncAnimCallbacks.java:34-43`（mAnimListeners）、`AnimationController.java:67-87`（状态字段）、`AnimationSeqHelper.java:50-55`（seqId）—— **整套设计哲学是"靠纪律而非同步"** |
 | 原厂"全方法 synchronized"模式（与 lib 粒度反向） | `AnimSeqTimeStamp.java:31-138`（8 个 `@JvmStatic synchronized` 方法）—— **写少读多也要加锁，性能保守** |
 | 原厂"synchronized 段内重写 List"模式 | `AnimationFeatureHelper.java:320,345`（`synchronized(this.m1pxPkgDisableList) { clear(); add(); }`）—— **写时拷贝语义，但 OPPO 偷懒直接重写** |
@@ -388,3 +381,18 @@
 - **§④-4.1 表** — 1/4/5 ✅（60bd048、cdd125e、0e8a472），2/3/6 ✔️，见正文标注
 - **§④-4.2 表** — 8/10 ✅（60bd048/cdd125e），1 ❌已过期（215ecb5），4 ⚠️未修复（依赖 4.1-1），其余 ✔️
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本批不信任既有 ✅/✔️/⚠️/❌ 标记，逐条对照当前 lib 代码亲自复核（包重组后：core/anim→core、core/scheduler→core（scheduler 两实现已删）、launcher/animthread→thread、launcher/async→anim（LooperExecutor→thread）、launcher/controller→control、launcher/manager→manager、launcher/seq→seq、launcher/feature→manager、pending→playback、util→core）。仅改本文档。
+
+- **复核条目总数**：26（§③ 风险 10 + §④-4.1 表 6 + §④-4.2 表 10）
+- **结论不变**：24
+- **修正**：2
+  1. §③-风险2：✔️保持简化（列表恒空、无写入路径）→ ✅已修复（`manager/AnimationFeatureHelper.kt:32-36` 两个列表现为 `@Volatile` 不可变快照，`:39-41` 只读 getter，9 参 `simulateRemoteUpdate` `:47-60` 在 `synchronized(lock)` 内整段 `.toList()` 替换——原「裸 mutableList 无保护 / 业务可 .add() 并发 CME」已不存在，等效原厂 `volatile List<>` + synchronized 段重写）
+  2. §④-4.1 表行2：✔️保持简化 → ✅已修复（同风险2，随 60bd048 列表快照化落地）
+- **描述 / 证据刷新（结论不变）**：
+  - §① 表 / §②A / §②C / 附证据表全部 lib 路径按新包结构刷新并更新行号（代表性：`core/AnimationHandler.kt:133,140-142` ThreadLocal、`thread/AnimationControlThread.kt:86-88` lazy instance、`anim/AsyncValueAnimator.kt:26,35` isEnd CAS、`anim/AsyncAnimCallbacks.kt:33,76-79,97-100`、`thread/LooperExecutor.kt:22,28-29,49-54` postAsync、`seq/AnimSeqTimeStamp.kt:13-27,29-43`、`control/AnimationController.kt:30-31,33-53,220-251`、`control/DefaultAnimationController.kt:15,27`、`control/TaskStateChangeTimeOutListener.kt:24`、`manager/OplusAnimManager.kt:20-23,53-64`、`playback/PendingAnimation.kt:25-31`、`playback/AnimationSuccessListener.kt:20-33`+`NullableAnimatorListenerAdapter.kt:15`、`core/Trace.kt:13-14`）
+  - §① 行21/22 与 §③-风险9：ScheduledTickScheduler / HandlerTickScheduler 标注「已删（215ecb5）」，现状为 `core/ChoreographerTickScheduler.kt:24-31,66-76`
+  - §③ 风险 1/3/4/5/7/8/10 的位置行号刷新；风险 7（delayStartActivityIfNeed）实证 if/else-if/else-if + 末段清理（`control/AnimationController.kt:220-251`，cdd125e）；风险 4 handler 实证字段声明处默认初始化（0e8a472）
+  - 批次 1 复核记录中「§③-风险2 — ✔️保持简化」旧判定以本节为准（已翻转 ✅已修复）

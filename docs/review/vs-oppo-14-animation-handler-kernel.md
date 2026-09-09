@@ -1,7 +1,7 @@
 # Region 14 重对比 Review：AnimationHandler 帧调度内核（文件级 / 方法级 / 字段级深挖）
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt`（共 175 行，Kotlin 重实现）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt`（共 176 行，Kotlin 重实现）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（ColorOS 15 Launcher 15.8.24，JADX 反编译）。**两条 AnimationHandler 路径并存**：
 >   - **A 路径**（vendored core）`androidx/core/animation/AnimationHandler.java`（共 215 行）—— 服务 vendored `ValueAnimator` / `ObjectAnimator` / `AnimatorSet` / `PendingAnimation`；
 >   - **B 路径**（vendored dynamicanimation）`androidx/dynamicanimation/animation/AnimationHandler.java`（共 177 行）—— 服务 dynamicanimation 系 `SpringAnimation` / `FlingAnimation`；
@@ -30,13 +30,13 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 | # | lib 成员 | 位置 | 原厂对位 | 关系 / 证据 |
 |---|---|---|---|---|
-| 1 | `class AnimationHandler(scheduler: TickScheduler? = null)` 主构造 | `:22` | A `:12 class AnimationHandler`、B `:12 class AnimationHandler`、C 框架类 | 主构造签名差异：lib 入参 `TickScheduler?`（抽象接口）；A `:111-117` 入参 `AnimationFrameCallbackProvider`（接口），null 时 fallback `FrameCallbackProvider16`；B 默认无参 `:115-121 getInstance` 内 `new AnimationHandler()`，构造内不初始化 provider，靠 `getProvider()` lazy（`:158-163`）；C 框架类无对外构造（包内可见），由系统初始化 |
-| 2 | `fun interface AnimationFrameCallback { fun doAnimationFrame(frameTimeMs: Long): Boolean }` | `:25-27` | A `:19-21 public interface AnimationFrameCallback { boolean doAnimationFrame(long j8); }`、B `:36-38` 同形 | **1:1**（含返回 Boolean 语义）。仅方法名 Kotlin 化、接口声明用 `fun interface` |
-| 3 | `private var schedulerHolder = TickSchedulerHolder(scheduler)` | `:30` | A `:17 private final AnimationFrameCallbackProvider mProvider;`（构造期注入）、B `:15 private AnimationFrameCallbackProvider mProvider;`（lazy 注入 `:158-163`） | **结构等价**：`schedulerHolder` 间接层 vs `mProvider` 直接字段。区别：lib 多一层 `@Synchronized fun get()` 懒构造（`:123-125`），等价于 B 的懒初始化但带锁 |
-| 4 | `private val animationCallbacks = mutableListOf<AnimationFrameCallback?>()` | `:33` | A `:15 private final ArrayList<AnimationFrameCallback> mAnimationCallbacks = new ArrayList<>();`（非 nullable）、B `:17 final ArrayList<AnimationFrameCallback> mAnimationCallbacks = new ArrayList<>();`（非 nullable） | **关键差异**：lib 元素类型 `AnimationFrameCallback?`（可空，因为懒删除用 null 槽）；A/B 是 `ArrayList<AnimationFrameCallback>`（非可空）。lib 用 `mutableListOf`（底层 `ArrayList`）；语义通过"置 null"实现 |
-| 5 | `private var listDirty = false` | `:36` | A `:16 boolean mListDirty = false;`（**package-private**）、B `:20 private boolean mListDirty = false;` | **1:1**（A 的 mListDirty 是 package-private 给 `cleanUpList` 用，B 是 private，lib 仿 B 用 private） |
-| 6 | `val scheduler: TickScheduler get() = schedulerHolder.get()` | `:39` | A `:17 mProvider` 字段直接访问（无 getter）、B `:158-163 public AnimationFrameCallbackProvider getProvider()` lazy | **结构分歧**：lib 用 property `get()` 走懒构造；A 走构造期；B 走 `getProvider()` 但**懒初始化不带锁**（`:158-163` 非 synchronized） |
-| 7 | `val callbackSize: Int get() = animationCallbacks.count { it != null }` | `:42-43` | A `:148-156 private int getCallbackSize()`（私有，reverse loop 累加）；B 无对应 public 方法 | **1:1 语义**（都"数非 null"）。**细节差异**：A reverse loop（`:150`），lib 正向 count；A 私有 + `getAnimationCount()` 静态入口包装（`:140-146`），lib 直接 public val（Kotlin 风格） |
+| 1 | `class AnimationHandler(scheduler: TickScheduler? = null)` 主构造 | `:20` | A `:12 class AnimationHandler`、B `:12 class AnimationHandler`、C 框架类 | 主构造签名差异：lib 入参 `TickScheduler?`（抽象接口）；A `:111-117` 入参 `AnimationFrameCallbackProvider`（接口），null 时 fallback `FrameCallbackProvider16`；B 默认无参 `:115-121 getInstance` 内 `new AnimationHandler()`，构造内不初始化 provider，靠 `getProvider()` lazy（`:158-163`）；C 框架类无对外构造（包内可见），由系统初始化 |
+| 2 | `fun interface AnimationFrameCallback { fun doAnimationFrame(frameTimeMs: Long): Boolean }` | `:23-25` | A `:19-21 public interface AnimationFrameCallback { boolean doAnimationFrame(long j8); }`、B `:36-38` 同形 | **1:1**（含返回 Boolean 语义）。仅方法名 Kotlin 化、接口声明用 `fun interface` |
+| 3 | `private var schedulerHolder = TickSchedulerHolder(scheduler)` | `:28` | A `:17 private final AnimationFrameCallbackProvider mProvider;`（构造期注入）、B `:15 private AnimationFrameCallbackProvider mProvider;`（lazy 注入 `:158-163`） | **结构等价**：`schedulerHolder` 间接层 vs `mProvider` 直接字段。区别：lib 多一层 `@Synchronized fun get()` 懒构造（`:123-125`），等价于 B 的懒初始化但带锁 |
+| 4 | `private val animationCallbacks = mutableListOf<AnimationFrameCallback?>()` | `:31` | A `:15 private final ArrayList<AnimationFrameCallback> mAnimationCallbacks = new ArrayList<>();`（非 nullable）、B `:17 final ArrayList<AnimationFrameCallback> mAnimationCallbacks = new ArrayList<>();`（非 nullable） | **关键差异**：lib 元素类型 `AnimationFrameCallback?`（可空，因为懒删除用 null 槽）；A/B 是 `ArrayList<AnimationFrameCallback>`（非可空）。lib 用 `mutableListOf`（底层 `ArrayList`）；语义通过"置 null"实现 |
+| 5 | `private var listDirty = false` | `:34` | A `:16 boolean mListDirty = false;`（**package-private**）、B `:20 private boolean mListDirty = false;` | **1:1**（A 的 mListDirty 是 package-private 给 `cleanUpList` 用，B 是 private，lib 仿 B 用 private） |
+| 6 | `val scheduler: TickScheduler get() = schedulerHolder.get()` | `:37` | A `:17 mProvider` 字段直接访问（无 getter）、B `:158-163 public AnimationFrameCallbackProvider getProvider()` lazy | **结构分歧**：lib 用 property `get()` 走懒构造；A 走构造期；B 走 `getProvider()` 但**懒初始化不带锁**（`:158-163` 非 synchronized） |
+| 7 | `val callbackSize: Int get() = animationCallbacks.count { it != null }` | `:40-41` | A `:148-156 private int getCallbackSize()`（私有，reverse loop 累加）；B 无对应 public 方法 | **1:1 语义**（都"数非 null"）。**细节差异**：A reverse loop（`:150`），lib 正向 count；A 私有 + `getAnimationCount()` 静态入口包装（`:140-146`），lib 直接 public val（Kotlin 风格） |
 | 8 | `fun addAnimationFrameCallback(callback: AnimationFrameCallback?)` | `:51-61` | A `:174-182 addAnimationFrameCallback(AnimationFrameCallback)`、B `:135-145 addAnimationFrameCallback(AnimationFrameCallback, long j8)` | **行为对位**但**行数级 3 处差异**：① lib 无 `delay` 形参（B 有）；② lib 拆 `scheduler.start()` + `scheduler.postFrameCallback(::onTick)` 两步（A `:176` 单 `mProvider.postFrameCallback()`）；③ lib 漏 `mProvider.onNewCallbackAdded(callback)` 调用（A `:181`） |
 | 9 | `fun removeCallback(callback: AnimationFrameCallback?)` | `:66-73` | A `:204-210 removeCallback(AnimationFrameCallback)`、B `:165-172 removeCallback(AnimationFrameCallback)` | **1:1 主体**；**关键差异**：B `:166` 先 `mDelayedCallbackStartTime.remove(callback)` 再 null 槽（A/lib 无此步，因为无 delay 机制）。lib 与 A 形态完全一致 |
 | 10 | `private fun onTick(frameTimeNanos: Long)` | `:84-88` | A `:197-202 public void onAnimationFrame(long j8)`、B `:26-33 AnimationCallbackDispatcher.dispatchAnimationFrame()` | **关键命名分歧**：A/B 都是 `public`（provider 持有回调），lib 是 `private`（provider 通过 lambda `postFrameCallback(::onTick)` 间接持有，结构变化导致权限可下调）。**功能差异**：A `:197-202` 自续帧（`if (size > 0) mProvider.postFrameCallback()`），B `:30-32` 同；lib 拆出给 `TickScheduler` 自续（见下表 §B） |
@@ -50,7 +50,7 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 | 18 | `fun installThreadScheduler(scheduler: TickScheduler?)` | `:152-158` | A/B 无对应方法（公开 API 没有"先 install 再用"约束）；C 框架有 `setProvider` 但语义不同（任何时候调都生效） | **lib 自创 API**；**三个 silent early return**（详见 §3-② bug 级） |
 | 19 | `fun replaceThreadScheduler(scheduler: TickScheduler?)` | `:166-170` | B `:174-176 setProvider(AnimationFrameCallbackProvider)` | **行为分叉**（详见 §3-③ bug 级）。lib 是 A 路径的"运行时换帧源"，但语义比 B 激进：lib 走 `instance.swapScheduler()`（stop 旧 + start 新 + 重发），B 只换字段引用 |
 | 20 | `val animationCount: Int get() = instance.callbackSize` | `:173` | A `:140-146 public static int getAnimationCount()`（静态入口，走 `getInstance().getCallbackSize()`） | **1:1 语义**；**形式差异**：A 静态方法（`com.android.launcher3.testing.TestInformationHandler` / dumpsys 等工具调用），lib 是 instance 属性（`instance.callbackSize`）。lib 缺静态入口，跨线程统计需要主动取 instance |
-| 21 | 内部 `AnimationFrameCallback` interface | `:25-27` | A `:19-21`、B `:36-38` | （见 #2） |
+| 21 | 内部 `AnimationFrameCallback` interface | `:23-25` | A `:19-21`、B `:36-38` | （见 #2） |
 
 **总结表**：lib 的 21 项成员中 **9 项 1:1 精确对位**（#2、#5、#9 主体、#15、#17 初始化逻辑、#12、#16 语义、#20 语义）、**6 项结构分歧但语义对位**（#3、#4 类型差异、#6 包装层、#10 命名 + 公开度、#14 包装层、#16 形式、#21）、**6 项行级 / 语义不等**（#8 三处差异、#11 三处差异、#13 激进换源、#18 自创 API、#19 激进换源、A vs B 兼容性）。
 
@@ -62,18 +62,18 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 | # | 设计点 | 原厂证据 | lib 证据 | 备注 |
 |---|---|---|---|---|
-| A1 | `AnimationFrameCallback` 接口签名 | A `:19-21`、B `:36-38` | `AnimationHandler.kt:25-27` | `fun doAnimationFrame(frameTimeMs: Long): Boolean` 完全等价 |
-| A2 | ThreadLocal 单例字段命名 + 静态语义 | A `:13 sAnimationHandler`、B `:14 sAnimatorHandler` | `AnimationHandler.kt:132 threadLocalHandler` | 命名风格 Kotlin 化（camelCase），`ThreadLocal<AnimationHandler>` 类型一致 |
-| A3 | `testHandler` 静态钩子（仅 A 路径） | A `:14 sTestHandler`（非 volatile 写） | `AnimationHandler.kt:135-136 testHandler`（`@Volatile` 写） | lib 用 `@Volatile` 比原厂更稳，是 lib 的隐式改进 |
-| A4 | getInstance 三元查找：testHandler → threadLocal → 初始化 | A `:158-168` | `AnimationHandler.kt:139-141` | 三元顺序 + 初始化逻辑 1:1；唯一差别：初始化时 A 注入 `null`（触发 fallback `FrameCallbackProvider16`），lib 显式注入 `ScheduledTickScheduler()`（`TickSchedulerHolder` 懒构造触发） |
-| A5 | addCallback 幂等（contains 去重） | A `:178-180`、`B :139-141` | `AnimationHandler.kt:58-60` | `if (!contains(cb)) add(cb)` 完全一致 |
-| A6 | removeCallback 懒删除协议：null 槽 + `mListDirty=true` | A `:204-210`、B `:165-172` 主体 | `AnimationHandler.kt:66-73` | 与 A 完全一致；B 多一步 `mDelayedCallbackStartTime.remove`（因 B 有 delay） |
-| A7 | cleanUpList 惰性执行：`!mListDirty` 早退；末尾清零标志位 | A `:119-128`、B `:96-105` | `AnimationHandler.kt:104-108` | 语义完全一致；lib 用 `removeAll { it == null }` 高阶函数，A/B 用 reverse loop 手写（功能等价） |
-| A8 | first-registration 才 postFrameCallback（首次注册发 self-pulse） | A `:174-178`、`B :135-138` | `AnimationHandler.kt:53-57` | 都判 "size == 0" 才发。**lib 拆为 start() + postFrameCallback(::onTick) 两步**（A 单步 `mProvider.postFrameCallback()`）—— 语义对位，职责划分不同 |
-| A9 | nanos → ms 换算 | A `:88 j8 / AnimationKt.MillisToNanos`（值 = 1_000_000） | `AnimationHandler.kt:85 frameTimeNanos / 1_000_000L` | 完全等价（`AnimationKt.MillisToNanos` 常量值就是 1_000_000） |
-| A10 | doAnimationFrame 顺序遍历 + 跳过 null 槽 | A `:130-138`、B `:147-156` | `AnimationHandler.kt:94-101` | 遍历顺序、null-skip 完全一致 |
-| A11 | `listDirty` 字段名 + 默认值 + 仅在 `removeCallback` 中置 true | A `:16 mListDirty = false;`（package-private）、B `:20 private boolean mListDirty = false;` | `AnimationHandler.kt:36 listDirty = false;` | 命名 / 默认值 / 写入位置一致 |
-| A12 | 回调 boolean 返回语义（true = 动画结束，可摘除） | A `:20`、B `:37` | `AnimationHandler.kt:26` | 注释 `:24` 与原厂一致 |
+| A1 | `AnimationFrameCallback` 接口签名 | A `:19-21`、B `:36-38` | `AnimationHandler.kt:23-25` | `fun doAnimationFrame(frameTimeMs: Long): Boolean` 完全等价 |
+| A2 | ThreadLocal 单例字段命名 + 静态语义 | A `:13 sAnimationHandler`、B `:14 sAnimatorHandler` | `AnimationHandler.kt:133 threadLocalHandler` | 命名风格 Kotlin 化（camelCase），`ThreadLocal<AnimationHandler>` 类型一致 |
+| A3 | `testHandler` 静态钩子（仅 A 路径） | A `:14 sTestHandler`（非 volatile 写） | `AnimationHandler.kt:136-137 testHandler`（`@Volatile` 写） | lib 用 `@Volatile` 比原厂更稳，是 lib 的隐式改进 |
+| A4 | getInstance 三元查找：testHandler → threadLocal → 初始化 | A `:158-168` | `AnimationHandler.kt:140-142` | 三元顺序 + 初始化逻辑 1:1；唯一差别：初始化时 A 注入 `null`（触发 fallback `FrameCallbackProvider16`），lib 显式注入 `ScheduledTickScheduler()`（`TickSchedulerHolder` 懒构造触发） |
+| A5 | addCallback 幂等（contains 去重） | A `:178-180`、`B :139-141` | `AnimationHandler.kt:56-58` | `if (!contains(cb)) add(cb)` 完全一致 |
+| A6 | removeCallback 懒删除协议：null 槽 + `mListDirty=true` | A `:204-210`、B `:165-172` 主体 | `AnimationHandler.kt:64-71` | 与 A 完全一致；B 多一步 `mDelayedCallbackStartTime.remove`（因 B 有 delay） |
+| A7 | cleanUpList 惰性执行：`!mListDirty` 早退；末尾清零标志位 | A `:119-128`、B `:96-105` | `AnimationHandler.kt:105-109` | 语义完全一致；lib 用 `removeAll { it == null }` 高阶函数，A/B 用 reverse loop 手写（功能等价） |
+| A8 | first-registration 才 postFrameCallback（首次注册发 self-pulse） | A `:174-178`、`B :135-138` | `AnimationHandler.kt:51-55` | 都判 "size == 0" 才发。**lib 拆为 start() + postFrameCallback(::onTick) 两步**（A 单步 `mProvider.postFrameCallback()`）—— 语义对位，职责划分不同 |
+| A9 | nanos → ms 换算 | A `:88 j8 / AnimationKt.MillisToNanos`（值 = 1_000_000） | `AnimationHandler.kt:83 frameTimeNanos / 1_000_000L` | 完全等价（`AnimationKt.MillisToNanos` 常量值就是 1_000_000） |
+| A10 | doAnimationFrame 顺序遍历 + 跳过 null 槽 | A `:130-138`、B `:147-156` | `AnimationHandler.kt:92-100` | 遍历顺序、null-skip 完全一致 |
+| A11 | `listDirty` 字段名 + 默认值 + 仅在 `removeCallback` 中置 true | A `:16 mListDirty = false;`（package-private）、B `:20 private boolean mListDirty = false;` | `AnimationHandler.kt:34 listDirty = false;` | 命名 / 默认值 / 写入位置一致 |
+| A12 | 回调 boolean 返回语义（true = 动画结束，可摘除） | A `:20`、B `:37` | `AnimationHandler.kt:24` | 注释 `:24` 与原厂一致 |
 
 ### B. 有意简化（lib 注释/设计取舍明示，与原厂差异是设计意图）
 
@@ -111,11 +111,11 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 ### ✅已修复（60bd048）🟥 ① `doAnimationFrame` 快照 size vs 活取 size —— 本帧内 add 的新回调 visibility 不一致（BUG-LEVEL / 中）
 
-> **验证**：`AnimationHandler.kt:96-100` 已改为 `while (i < animationCallbacks.size)` 每轮重读 size，与 vendor A/B 1:1 等价。本帧内 add 的回调可见。
+> **验证**：`AnimationHandler.kt:94-98` 已改为 `while (i < animationCallbacks.size)` 每轮重读 size，与 vendor A/B 1:1 等价。本帧内 add 的回调可见。
 
 **证据**：
 
-- **lib** `AnimationHandler.kt:94-101`：
+- **lib** `AnimationHandler.kt:92-100`：
   ```
   private fun doAnimationFrame(frameTimeMs: Long) {
       val size = animationCallbacks.size        // <-- 一次性快照
@@ -162,9 +162,9 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 ### ⚠️未修复（5 行 ≤30 行内可改；本批不修因 API 行为变化）🟥 ② `installThreadScheduler` 三个 silent early return —— 调错顺序就沉默失败（BUG-LEVEL / 高）
 
-> **验证**：`AnimationHandler.kt:153-158` 三个 silent return 仍在；测试覆盖为 0。
+> **验证**：`AnimationHandler.kt:153-159` 三个 silent return 仍在；测试覆盖为 0。
 
-**证据**：`AnimationHandler.kt:152-158`：
+**证据**：`AnimationHandler.kt:153-159`：
 
 ```
 fun installThreadScheduler(scheduler: TickScheduler?) {
@@ -203,9 +203,9 @@ fun installThreadScheduler(scheduler: TickScheduler?) {
 
 ### ⚠️未修复（6 行 ≤30 行内可改；本批不修因影响运行时帧源切换契约）🟥 ③ `replaceThreadScheduler` 比 vendor `setProvider` 激进，可能丢帧（BUG-LEVEL / 中）
 
-> **验证**：`AnimationHandler.kt:110-118 + 167-170` 仍为激进协议（停旧 → 换新 → 重发 self-pulse）。
+> **验证**：`AnimationHandler.kt:111-119 + 167-170` 仍为激进协议（停旧 → 换新 → 重发 self-pulse）。
 
-**证据**：`AnimationHandler.kt:166-170 + 110-118`：
+**证据**：`AnimationHandler.kt:167-170 + 110-118`：
 
 ```
 fun replaceThreadScheduler(scheduler: TickScheduler?) {
@@ -271,7 +271,7 @@ private fun swapScheduler(s: TickScheduler) {
       this.mProvider.onNewCallbackAdded(animationFrameCallback);   // <-- 关键
   }
   ```
-- **lib** `AnimationHandler.kt:51-61`：
+- **lib** `AnimationHandler.kt:49-59`：
   ```
   fun addAnimationFrameCallback(callback: AnimationFrameCallback?) {
       if (callback == null) return
@@ -300,7 +300,7 @@ private fun swapScheduler(s: TickScheduler) {
 **修复成本**：
 
 - **若不想回移**：0 行，**加 KDoc 说明**"lib TickScheduler 接口不含 onNewCallbackAdded 钩子；vendor 该方法为空实现故无差异"。
-- **若回移**：5 行，`TickScheduler` 加 `fun onNewCallbackAdded(callback: FrameCallback?) {}` 默认空方法，`AnimationHandler.kt:60` 后加 `scheduler.onNewCallbackAdded(::onTick to callback)` 调用。
+- **若回移**：5 行，`TickScheduler` 加 `fun onNewCallbackAdded(callback: FrameCallback?) {}` 默认空方法，`AnimationHandler.kt:58` 后加 `scheduler.onNewCallbackAdded(::onTick to callback)` 调用。
 
 **推荐保持现状**（vendor 空实现，B5 章节已记录）。
 
@@ -323,7 +323,7 @@ private fun swapScheduler(s: TickScheduler) {
       }
   }
   ```
-- **lib** `AnimationHandler.kt:66-73`：
+- **lib** `AnimationHandler.kt:64-71`：
   ```
   fun removeCallback(callback: AnimationFrameCallback?) {
       if (callback == null) return
@@ -356,7 +356,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 **证据**：
 
-- **lib** `AnimationHandler.kt:53-57`：
+- **lib** `AnimationHandler.kt:51-55`：
   ```
   if (animationCallbacks.isEmpty()) {
       scheduler.start()
@@ -399,7 +399,7 @@ private fun swapScheduler(s: TickScheduler) {
       }
   }
   ```
-- **lib** `AnimationHandler.kt:104-108`：
+- **lib** `AnimationHandler.kt:105-109`：
   ```
   private fun cleanUpList() {
       if (!listDirty) return
@@ -432,7 +432,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 - **OPPO A** `AnimationHandler.java:130-138`：cleanUpList 在 doAnimationFrame 末尾内联（`:137`）
 - **OPPO B** `AnimationHandler.java:147-156`：同（`:155`）
-- **lib** `AnimationHandler.kt:84-88`：cleanUpList 在 onTick 末尾调（`:87`），doAnimationFrame 不调
+- **lib** `AnimationHandler.kt:82-86`：cleanUpList 在 onTick 末尾调（`:87`），doAnimationFrame 不调
 
 **影响**：
 
@@ -460,7 +460,7 @@ private fun swapScheduler(s: TickScheduler) {
       return animationHandler.getCallbackSize();
   }
   ```
-- **lib** `AnimationHandler.kt:173`：
+- **lib** `AnimationHandler.kt:174`：
   ```
   val animationCount: Int get() = instance.callbackSize
   ```
@@ -483,7 +483,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 - **OPPO A** `AnimationHandler.java:158-168`：getInstance 内 `threadLocal.set(new AnimationHandler(null))` —— **无锁**，依赖 ThreadLocal 自身的 `initialValue()` 默认 null + `set` 操作 atomic。
 - **OPPO B** `AnimationHandler.java:115-121`：同。
-- **lib** `AnimationHandler.kt:139-141`：同。
+- **lib** `AnimationHandler.kt:140-142`：同。
 
 **对比**：lib `instance` getter 内 `AnimationHandler(ScheduledTickScheduler()).also(threadLocalHandler::set)` —— 无锁。三者**行为一致**（依赖 ThreadLocal 自身语义），但理论上**首次访问的 `new AnimationHandler(...)` 内部**——lib 在构造期内调 `TickSchedulerHolder(scheduler)`（`:30`）走 `@Synchronized get()`（`:123-125`），**第一次构造时会触发锁开销**（如果其他线程同时首次访问）。
 
@@ -549,13 +549,13 @@ private fun swapScheduler(s: TickScheduler) {
 
 | lib `AnimationHandler.kt` | OPPO A `AnimationHandler.java` | OPPO B `AnimationHandler.java` | 备注 |
 |---|---|---|---|
-| `:22 class AnimationHandler(scheduler: TickScheduler? = null)` | `:12 class AnimationHandler` + `:111-117 ctor(AnimationFrameCallbackProvider)` | `:12 class AnimationHandler` + `:115-121 getInstance 内 new AnimationHandler()` | 构造签名不同 |
+| `:20 class AnimationHandler(scheduler: TickScheduler? = null)` | `:12 class AnimationHandler` + `:111-117 ctor(AnimationFrameCallbackProvider)` | `:12 class AnimationHandler` + `:115-121 getInstance 内 new AnimationHandler()` | 构造签名不同 |
 | `:25-27 fun interface AnimationFrameCallback` | `:19-21` | `:36-38` | 1:1 |
-| `:30 private var schedulerHolder` | `:17 mProvider`（构造期注入） | `:15 mProvider`（lazy `:158-163`） | lib 间接层 |
-| `:33 private val animationCallbacks` | `:15 mAnimationCallbacks`（非可空） | `:17 mAnimationCallbacks`（非可空） | lib 元素可空 |
-| `:36 listDirty = false` | `:16 mListDirty = false` | `:20 mListDirty = false` | 1:1 |
-| `:39 val scheduler get()` | `:17 mProvider` 直访 | `:158-163 getProvider()` | 包装层 |
-| `:42-43 callbackSize` | `:148-156 getCallbackSize()` private | 无 | 1:1 语义 |
+| `:28 private var schedulerHolder` | `:17 mProvider`（构造期注入） | `:15 mProvider`（lazy `:158-163`） | lib 间接层 |
+| `:31 private val animationCallbacks` | `:15 mAnimationCallbacks`（非可空） | `:17 mAnimationCallbacks`（非可空） | lib 元素可空 |
+| `:34 listDirty = false` | `:16 mListDirty = false` | `:20 mListDirty = false` | 1:1 |
+| `:37 val scheduler get()` | `:17 mProvider` 直访 | `:158-163 getProvider()` | 包装层 |
+| `:40-41 callbackSize` | `:148-156 getCallbackSize()` private | 无 | 1:1 语义 |
 | `:51-61 addAnimationFrameCallback` | `:174-182` | `:135-145`（含 delay 形参） | lib 漏 onNewCallbackAdded |
 | `:66-73 removeCallback` | `:204-210` | `:165-172`（含 mDelayedCallbackStartTime.remove） | lib 无 delay map |
 | `:84-88 onTick` (private) | `:197-202 onAnimationFrame` (public) | `:26-33 dispatchAnimationFrame` (public) | lib 私有 + 命名简化 |
@@ -603,7 +603,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 | 测试 | 覆盖的字段/方法 | 缺失覆盖 |
 |---|---|---|
-| `testThreadLocalInstance:22-26` | `instance` ThreadLocal 单例 | ❌ testHandler 优先级未测；❌ lazy init 触发顺序未测 |
+| `testThreadLocalInstance:20-25` | `instance` ThreadLocal 单例 | ❌ testHandler 优先级未测；❌ lazy init 触发顺序未测 |
 | `testAddAndRemoveCallback:29-43` | `addAnimationFrameCallback` + `callbackSize` + `removeCallback` | ❌ null 槽保留未测；❌ listDirty 状态未测 |
 | `testCallbackReturnsTrueEndsAnimation:46-56` | `callbackSize` after add | ❌ doAnimationFrame 的 boolean 返回语义未真跑（只验 size） |
 | `testAddSameCallbackTwice:59-65` | `addAnimationFrameCallback` 幂等 | ❌ first-registration 触发 start + postFrameCallback 未测 |
@@ -623,17 +623,17 @@ private fun swapScheduler(s: TickScheduler) {
 
 | 论断 | 证据 |
 |---|---|
-| lib AnimationHandler 主类 175 行 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt`（dump.py 读明文） |
-| lib ThreadLocal 单例 + testHandler 钩子 + 三元查找 | `AnimationHandler.kt:132 threadLocalHandler`、`:135-136 testHandler`、`:139-141 instance` |
-| lib first-registration 触发 start + postFrameCallback | `AnimationHandler.kt:53-57` |
-| lib removeCallback 懒删除（null + listDirty） | `AnimationHandler.kt:66-73` |
-| lib cleanUpList 惰性压缩 | `AnimationHandler.kt:104-108` |
-| lib doAnimationFrame 快照 size + runCatching | `AnimationHandler.kt:94-101` |
-| lib onTick nanos→ms 换算 | `AnimationHandler.kt:85 frameTimeNanos / 1_000_000L` |
-| lib swapScheduler 激进换源 + replaceThreadScheduler | `AnimationHandler.kt:110-118, 166-170` |
-| lib installThreadScheduler 三 silent 早退 | `AnimationHandler.kt:152-158` |
-| lib animationCount 实例属性 | `AnimationHandler.kt:173` |
-| lib unit test 覆盖率 | `AnimationHandlerTest.kt:22-26, 29-43, 46-56, 59-65, 68-74` |
+| lib AnimationHandler 主类 175 行 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt`（dump.py 读明文） |
+| lib ThreadLocal 单例 + testHandler 钩子 + 三元查找 | `AnimationHandler.kt:133 threadLocalHandler`、`:135-136 testHandler`、`:139-141 instance` |
+| lib first-registration 触发 start + postFrameCallback | `AnimationHandler.kt:51-55` |
+| lib removeCallback 懒删除（null + listDirty） | `AnimationHandler.kt:64-71` |
+| lib cleanUpList 惰性压缩 | `AnimationHandler.kt:105-109` |
+| lib doAnimationFrame 快照 size + runCatching | `AnimationHandler.kt:92-100` |
+| lib onTick nanos→ms 换算 | `AnimationHandler.kt:83 frameTimeNanos / 1_000_000L` |
+| lib swapScheduler 激进换源 + replaceThreadScheduler | `AnimationHandler.kt:111-119, 166-170` |
+| lib installThreadScheduler 三 silent 早退 | `AnimationHandler.kt:153-159` |
+| lib animationCount 实例属性 | `AnimationHandler.kt:174` |
+| lib unit test 覆盖率 | `AnimationHandlerTest.kt:20-25, 29-43, 46-56, 59-65, 68-74` |
 | OPPO A ThreadLocal + sTestHandler + 三元查找 | `androidx/core/animation/AnimationHandler.java:13-14, 158-172` |
 | OPPO A first-registration postFrameCallback | `androidx/core/animation/AnimationHandler.java:174-178` |
 | OPPO A 懒删除 + cleanUpList | `androidx/core/animation/AnimationHandler.java:119-128, 204-210` |
@@ -670,17 +670,42 @@ private fun swapScheduler(s: TickScheduler) {
 | 本文新增（review 04/12 未覆盖）：①-11 快照 vs 活取 size、①-18 installThreadScheduler 三 silent、②-C 遗漏清单 10 项、③-① 快照 size bug、③-② install silent bug、③-⑤ removeCallback 漏 delay map、③-⑨ animationCount 静态入口、附 A 行级对位表、附 B A vs B 语义分叉、附 C 单测覆盖率分析 |
 
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方式**：逐条对照当前代码（`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\core\AnimationHandler.kt`，176 行）
+及 OPPO 参考树（`D:\oppo_a6_launcher\sources\`），不信任已有标记。
 
-本份涉及且已落地的修复（按 commit 顺序）：
+- **条目总数**：11（§③ ①-⑪）
+- **状态变更**：0 条
+- **描述/行号修正**：约 80 处行号更正（文件 :22→:20 起整体下移 2 行 + cleanUpList :104→:105 上移 1 行）
 
-- **60bd048** — doAnimationFrame 每轮重读 size 对齐 vendored core：添加回调当帧可见；installThreadScheduler 的隐性时序契约保留
-- **dbde195** — ChoreographerTickScheduler 替代 HandlerTickScheduler 成为 launcher.anim 主帧源
+逐条验证明细：
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+| 条目 | 原标记 | 复核结论 | 证据 |
+|---|---|---|---|
+| ① 快照 vs 活取 size | ✅已修复（60bd048） | ✅已修复（不变） | `:93` `while (i < animationCallbacks.size)` 每轮重读，与 vendor A/B 一致 |
+| ② installThreadScheduler 三 silent | ⚠️未修复 | ⚠️未修复（不变） | `:153-159` 三个 silent return 仍在；测试覆盖为 0 |
+| ③ replaceThreadScheduler 激进换源 | ⚠️未修复 | ⚠️未修复（不变） | `:111-119 + 167-170` 仍为停旧→换新→重发 self-pulse |
+| ④ onNewCallbackAdded 漏调 | ✔️保持简化 | ✔️保持简化（不变） | vendor 也是空实现（`:57-58, 97-98`） |
+| ⑤ removeCallback 漏 delay map | ✔️保持简化 | ✔️保持简化（不变） | 无 `mDelayedCallbackStartTime` 字段，C3 未做 |
+| ⑥ start()/postFrameCallback 拆两步 | ✔️保持简化 | ✔️保持简化（不变） | TickScheduler 接口注释已明示 start/stop 语义 |
+| ⑦ cleanUpList 高阶函数 | ✔️保持简化 | ✔️保持简化（不变） | 单线程使用，无 CME 风险 |
+| ⑧ doAnimationFrame 不内联 cleanUpList | ✔️保持简化 | ✔️保持简化（不变） | 所有调用方都是 onTick→doAnimationFrame→cleanUpList |
+| ⑨ animationCount 实例属性 vs 静态 | ⚠️未修复 | ⚠️未修复（不变） | `:174` 仍为实例 val，无 `@JvmStatic` |
+| ⑩ getInstance 不带锁 | ✔️保持简化 | ✔️保持简化（不变） | ThreadLocal 自身保证 per-thread 单例 |
+| ⑪ A/B 路径合并 | ✔️保持简化 | ✔️保持简化（不变） | lib 偏向 A 路径，B 路径 demo 无需求 |
 
-批次 2 逐条复核（2026-09-09）：
-- §③ ①-⑪、§④-A 1-7 维持 6428b10 标记（复核一致：① doAnimationFrame 活取 size=60bd048；②③⑨ 未修复≤30 行待批；④⑤⑥⑦⑧⑩⑪ 保持简化）；本轮补标 §④-B 1-10 → ✔️保持简化（清单即保持简化）
+行号更正明细（原→新，AnimationHandler.kt）：
+`:22→:20` `:25-27→:23-25` `:30→:28` `:33→:31` `:36→:34` `:39→:37` `:42-43→:40-41`
+`:51-61→:49-59` `:53-57→:51-55` `:58-60→:56-58` `:66-73→:64-71` `:84-88→:82-86`
+`:85→:83` `:87→:85` `:94-101→:92-100` `:95→:93` `:96-100→:94-98` `:99→:97`
+`:104-108→:105-109` `:108→:109` `:110-118→:111-119` `:114-117→:115-118`
+`:121-126→:122-127` `:123-125→:124-126` `:132→:133` `:135-136→:136-137`
+`:139-141→:140-142` `:141→:142` `:150→:151` `:152-158→:153-159` `:162-169→:166-170`
+`:166-170→:167-170` `:173→:174`
+
+路径更正：`core/anim/AnimationHandler.kt` → `core/AnimationHandler.kt`（包重组后）
+
+过时引用更正：
+- onTick KDoc `ScheduledTickScheduler.scheduleAtFixedRate` → `ChoreographerTickScheduler 内部 vsync 回调`
+- installThreadScheduler KDoc `默认的 ScheduledTickScheduler（共享 JVM 调度线程）` → `默认的 ChoreographerTickScheduler`

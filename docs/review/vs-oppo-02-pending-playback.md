@@ -1,7 +1,7 @@
 # vs-oppo-02-pending-playback — Pending / Playback 层 lib vs OPPO 对比
 
 > 对比双方：
-> - **lib**：`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\launcher\pending\`（5 个 .kt）+ `...\playback\`（3 个 .kt）
+> - **lib**：`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\playback\`（8 个 .kt；e62dbff 包重组后原 `launcher/pending`（5 个）与 `launcher/playback`（3 个）合并至此）
 > - **原厂**：`D:\oppo_a6_launcher\sources\com\android\launcher3\anim\`（`PendingAnimation`、`AnimationSuccessListener`、`AnimatorListeners`、`NullableAnimatorListener`、`NullableAnimatorListenerAdapter`、`AnimatorPlaybackController`、`PropertySetter`、`Interpolators`；辅助 `SpringProperty`、`SpringAnimationBuilder`、`AlphaUpdateListener`）
 > 原厂文件以 DLP 加密形式存档（`Read` 返回非 UTF-8 错误），本报告全部经 `python open(...).read()`（明文通道）核对；行号即 JADX 文本行号。
 >
@@ -13,14 +13,14 @@
 
 | lib 类（文件） | 原厂类（文件:行） | 关系 | 关键证据 |
 |---|---|---|---|
-| `pending/PendingAnimation.kt`（`internal class`，178 行） | `com/android/launcher3/anim/PendingAnimation.java:23`（`public class implements PropertySetter`，235 行） | 精确对应；字段一一对齐：`anim`↔`mAnim`(:24)、`animHolders`↔`mAnimHolders`(:29)、`progressAnimator`↔`mProgressAnimator`(:27)、`isAnimFinished`↔`isAnimFinished`(:30)、`durationMs`↔`mDuration`(:25) | lib `:34-40` 的 listener 维护 `isAnimFinished` ↔ 原厂 `:35-50`；`buildAnim()` 的 progressAnimator `add` 兜底 ↔ 原厂 `:91-100`；`createPlaybackController` 单例缓存 ↔ 原厂 `:105-110` |
-| `pending/AnimationSuccessListener.kt`（33 行） | `com/android/launcher3/anim/AnimationSuccessListener.java:7`（24 行）+ 父类 `com/android/quickstep/util/animation/ActualEndAnimListener.java`（仅一个空钩子 `onAnimActualEnd`） | 精确对应；lib 已合并 `ActualEndAnimListener` 中间层（仅 1 个空方法 `onAnimActualEnd`，合并不损失语义），用 `ActualEndAnimListener()` 作为父类 | lib `:19-27` ↔ 原厂 `:13-22`（cancel 置位 + end 跳过 cancelled）；原厂父类链 `ActualEndAnimListener → NullableAnimatorListenerAdapter → AnimatorListenerAdapter`，lib 直接 `extends ActualEndAnimListener` |
-| `pending/AnimatorListeners.kt`（`internal object`，67 行） | `com/android/launcher3/anim/AnimatorListeners.java:10`（81 行） | 精确对应三工厂方法 | lib `forEndCallback(Runnable)` `:46-52` ↔ 原厂 `:73-80` 的匿名 `NullableAnimatorListenerAdapter`；`forEndCallback(Consumer<Boolean>)` `:25-37` ↔ 原厂 `EndStateCallbackWrapper` `:14-43`；`forSuccessCallback(Runnable)` `:39-44` ↔ 原厂 `RunnableSuccessListener` `:45-66` |
-| `pending/NullableAnimatorListener.kt`（13 行） | `com/android/launcher3/anim/NullableAnimatorListener.java:7`（16 行） | 精确对应；原厂 `@Nullable` 注解 lib 删去（Kotlin 平台 `Animator` listener 必传非 null，改注解只保留历史注释） | 三个默认空方法 `onAnimationCancel/End/Start` 一一对应 |
-| `pending/NullableAnimatorListenerAdapter.kt`（26 行） | `com/android/launcher3/anim/NullableAnimatorListenerAdapter.java:8`（30 行） | 精确对应 + lib 把 `cancelled` 标志位置上移到本类 | lib `cancelled` `:15` ↔ 原厂 `AnimationSuccessListener.mCancelled`(:8)（父类继承可见）；`animationId` ↔ `mAnimationId`（原厂 `:9`，有 getter/setter `:11-13, 28-30`）；**lib `onAnimationCancel` 主动置 `cancelled = true`**（lib `:19-21`），原厂 Adapter 该方法是空（`:16-17`，置位由 `AnimationSuccessListener` 覆盖父类时做）——属"原厂语义的超集"，对成功路径等价 |
-| `playback/AnimatorPlaybackController.kt`（194 行） | `com/android/launcher3/anim/AnimatorPlaybackController.java:25`（467 行） | 大体精确（核心播放模型逐行一致），但 lib 砍掉 startWithVelocity 全链路 + OPPO 定制 grid 补丁 + 7 个工具方法 | `Holder` 内部类 lib `:74-89` ↔ 原厂 `:38-56`；`OnAnimationEndDispatcher` lib `:139-159` ↔ 原厂 `:63-96`；`ProgressMapper` lib `:11-13` ↔ 原厂 `:108-125`；`setPlayFraction` lib `:97-102` ↔ 原厂 `:364-373`；`start/reverse/pause` lib `:106-123` ↔ 原厂 `:375-380, 348-353, 315-320`；`clampDuration` lib `:125-126` ↔ 原厂 `:222-229`；`forceFinishIfCloseToEnd` lib `:128-131` ↔ 原厂 `:256-261`（常量 `:26`）；`addHoldersRecur` lib `:186-194` ↔ 原厂 `:161-182` |
-| `playback/Interpolators.kt`（`internal object`，9 行） | `com/android/launcher3/anim/Interpolators.java:17`（215 行） | 严重裁剪；只保 `LINEAR` | lib `LINEAR = TimeInterpolator { it }` ↔ 原厂 `LINEAR = new LinearInterpolator()`（`:35`）；其余 40+ 常量 + `clampToProgress`/`mapToProgress`/`reverse`/`scrollInterpolatorForVelocity`/`overshootInterpolatorForVelocity` + ZOOM_IN/OUT + COUI 插值器（`RECENT_LAUNCH_TASK_INTERPOLATOR` 等）全部砍掉 |
-| `playback/PropertySetter.kt`（30 行） | `com/android/launcher3/anim/PropertySetter.java:10`（65 行） | 接口骨架精确；**View 侧方法、`setInt`、`add(Animator)` 全部砍掉** | `NO_ANIM_PROPERTY_SETTER` lib `:26-28` ↔ 原厂 `:11-12`（匿名空类）；`setFloat` 默认 no-op lib `:15-21` ↔ 原厂 `:23-28` |
+| `playback/PendingAnimation.kt`（`internal class`，179 行） | `com/android/launcher3/anim/PendingAnimation.java:23`（`public class implements PropertySetter`，235 行） | 精确对应；字段一一对齐：`anim`↔`mAnim`(:24)、`animHolders`↔`mAnimHolders`(:29)、`progressAnimator`↔`mProgressAnimator`(:27)、`isAnimFinished`↔`isAnimFinished`(:30)、`durationMs`↔`mDuration`(:25) | lib `:34-40` 的 listener 维护 `isAnimFinished` ↔ 原厂 `:35-50`；`buildAnim()` 的 progressAnimator `add` 兜底 ↔ 原厂 `:91-100`；`createPlaybackController` 单例缓存 ↔ 原厂 `:105-110` |
+| `playback/AnimationSuccessListener.kt`（34 行） | `com/android/launcher3/anim/AnimationSuccessListener.java:7`（24 行）+ 父类 `com/android/quickstep/util/animation/ActualEndAnimListener.java`（仅一个空钩子 `onAnimActualEnd`） | 精确对应；lib 已合并 `ActualEndAnimListener` 中间层（仅 1 个空方法 `onAnimActualEnd`，合并不损失语义），用 `ActualEndAnimListener()` 作为父类 | lib `:19-27` ↔ 原厂 `:13-22`（cancel 置位 + end 跳过 cancelled）；原厂父类链 `ActualEndAnimListener → NullableAnimatorListenerAdapter → AnimatorListenerAdapter`，lib 直接 `extends ActualEndAnimListener` |
+| `playback/AnimatorListeners.kt`（`internal object`，58 行） | `com/android/launcher3/anim/AnimatorListeners.java:10`（81 行） | 精确对应三工厂方法 | lib `forEndCallback(Runnable)` `:46-52` ↔ 原厂 `:73-80` 的匿名 `NullableAnimatorListenerAdapter`；`forEndCallback(Consumer<Boolean>)` `:25-37` ↔ 原厂 `EndStateCallbackWrapper` `:14-43`；`forSuccessCallback(Runnable)` `:39-44` ↔ 原厂 `RunnableSuccessListener` `:45-66` |
+| `playback/NullableAnimatorListener.kt`（16 行） | `com/android/launcher3/anim/NullableAnimatorListener.java:7`（16 行） | 精确对应；原厂 `@Nullable` 注解 lib 删去（Kotlin 平台 `Animator` listener 必传非 null，改注解只保留历史注释） | 三个默认空方法 `onAnimationCancel/End/Start` 一一对应 |
+| `playback/NullableAnimatorListenerAdapter.kt`（27 行） | `com/android/launcher3/anim/NullableAnimatorListenerAdapter.java:8`（30 行） | 精确对应 + lib 把 `cancelled` 标志位置上移到本类 | lib `cancelled` `:15` ↔ 原厂 `AnimationSuccessListener.mCancelled`(:8)（父类继承可见）；`animationId` ↔ `mAnimationId`（原厂 `:9`，有 getter/setter `:11-13, 28-30`）；**lib `onAnimationCancel` 主动置 `cancelled = true`**（lib `:19-21`），原厂 Adapter 该方法是空（`:16-17`，置位由 `AnimationSuccessListener` 覆盖父类时做）——属"原厂语义的超集"，对成功路径等价 |
+| `playback/AnimatorPlaybackController.kt`（207 行） | `com/android/launcher3/anim/AnimatorPlaybackController.java:25`（467 行） | 大体精确（核心播放模型逐行一致），但 lib 砍掉 startWithVelocity 全链路 + OPPO 定制 grid 补丁 + 7 个工具方法 | `Holder` 内部类 lib `:74-89` ↔ 原厂 `:38-56`；`OnAnimationEndDispatcher` lib `:139-159` ↔ 原厂 `:63-96`；`ProgressMapper` lib `:11-13` ↔ 原厂 `:108-125`；`setPlayFraction` lib `:97-102` ↔ 原厂 `:364-373`；`start/reverse/pause` lib `:106-123` ↔ 原厂 `:375-380, 348-353, 315-320`；`clampDuration` lib `:125-126` ↔ 原厂 `:222-229`；`forceFinishIfCloseToEnd` lib `:128-131` ↔ 原厂 `:256-261`（常量 `:26`）；`addHoldersRecur` lib `:186-194` ↔ 原厂 `:161-182` |
+| `playback/Interpolators.kt`（`internal object`，12 行） | `com/android/launcher3/anim/Interpolators.java:17`（215 行） | 严重裁剪；只保 `LINEAR` | lib `LINEAR = TimeInterpolator { it }` ↔ 原厂 `LINEAR = new LinearInterpolator()`（`:35`）；其余 40+ 常量 + `clampToProgress`/`mapToProgress`/`reverse`/`scrollInterpolatorForVelocity`/`overshootInterpolatorForVelocity` + ZOOM_IN/OUT + COUI 插值器（`RECENT_LAUNCH_TASK_INTERPOLATOR` 等）全部砍掉 |
+| `playback/PropertySetter.kt`（29 行） | `com/android/launcher3/anim/PropertySetter.java:10`（65 行） | 接口骨架精确；**View 侧方法、`setInt`、`add(Animator)` 全部砍掉** | `NO_ANIM_PROPERTY_SETTER` lib `:26-28` ↔ 原厂 `:11-12`（匿名空类）；`setFloat` 默认 no-op lib `:15-21` ↔ 原厂 `:23-28` |
 | （lib 缺） | `SpringProperty.java:4`（54 行） | **未移植**；OPPO `Holder.springProperty` 字段类型（`AnimatorPlaybackController.java:43`）。lib `Holder.springProperty: Any? = null` 占位（`:79`），`PendingAnimation.add` 三参版本直接丢弃 | 原厂构造器默认 `(int flags=0)` + `(0)` → `mDampingRatio=0.5/mStiffness=1500/mUseDiffSpringForce=false`（`:44-52`）；提供 `FLAG_CAN_SPRING_ON_END/START` 两个常量（`:7-8`） |
 | （lib 缺） | `AlphaUpdateListener.java:9`（62 行） | **未移植**；OPPO `setViewAlpha` 的可见性联动。原厂 `PendingAnimation.setViewAlpha` 与 `PropertySetter.setViewAlpha` 都挂该 listener（`:170, 229`），lib 无 `setViewAlpha` | `ALPHA_CUTOFF_THRESHOLD=0.01f` + 切线程到 MAIN_EXECUTOR 跑 `updateVisibility`（`:24-29, 39-60`） |
 | （lib 缺） | `SpringAnimationBuilder.java:18`（186 行） | **未移植**；`startWithVelocity`（原厂 `:382-461`）逐 Holder 算弹簧参数时调用 | 详情未取，仅作为依赖标注 |
@@ -36,7 +36,7 @@
 | A1 | `PendingAnimation` 构造挂 AnimatorSet listener 维护 `isAnimFinished` | `PendingAnimation.java:31-50`（cancel/end 置 true、start 置 false） | `PendingAnimation.kt:34-40` |
 | A2 | `progressAnimator` 懒建 + `addEndListener`/`addOnFrameCallback` 复用同一实例 | 原厂 `:60-65, 81-86` | lib `:72-78, 100-101` |
 | A3 | `buildAnim()` 把 `progressAnimator` 通过 `add()` 装进 AnimatorSet（这会同时被 `addAnimationHoldersRecur` 收进 Holder 链） | 原厂 `:91-95` | lib `:83-86` |
-| A4 | AnimatorSet 子动画为空时补 0→1 占位 ValueAnimator | 原厂 `:99-101`（`add(ValueAnimator.ofFloat(0f,1f).setDuration(mDuration))`） | lib `:89-91`（用 `addWithoutDuration` + 显式 `setDuration(durationMs)`）——**见 ③-R4**，差异是路径 |
+| A4 | AnimatorSet 子动画为空时补 0→1 占位 ValueAnimator | 原厂 `:99-101`（`add(ValueAnimator.ofFloat(0f,1f).setDuration(mDuration))`） | lib `:90-97`（progressAnimator 走 `add(it)` 覆写时长 `:92`；仅 `animHolders` 为空补 `addWithoutDuration(ofFloat(0,1).setDuration(durationMs))` `:95-97`）——**见 ③-R4**，机制已与原厂同路径 |
 | A5 | `createPlaybackController` 单例缓存 + 懒构造 | 原厂 `:105-110` | lib `:103-105` |
 | A6 | `addFloat(target, prop, from, to, ip)`：构造平台 ObjectAnimator、setInterpolator、add | 原厂 `:67-71` | lib `:62-66`（构造 lib 自己的 `ObjectAnimator`，见 A16） |
 | A7 | `setFloat` 的 null/等值短路 + ObjectAnimator.from=property.get(target) | 原厂 `:127-134`（先 setDuration 再 setInterpolator 后 add） | lib `:68-77`（只 setInterpolator，duration 靠 `add(Animator)` 兜底，**见 ③-R5**） |
@@ -99,36 +99,36 @@
 
 ### R1. `forEndCallback(Consumer<Boolean>)` 的 success 判定 ★
 > **✔️无差异（文档已自证：threshold 判定逐字对齐）**
-**严重度：高。** 原厂 `EndStateCallbackWrapper.onAnimationEnd` 检查 `animator instanceof ValueAnimator && ((ValueAnimator) animator).getAnimatedFraction() <= 0.5f` → 报 `false`（`AnimatorListeners.java:34-40`）。lib `AnimatorListeners.kt:30` 的判定 `va == null || va.animatedFraction > 0.5f` 已**逐字对齐**——**与既有 review 02 §③-1 结论相反**。**复核结果：R1 在当前 lib 已对齐**，手势收尾"半程前 cancel→报未成功"语义保留。`animatedFraction` 在 `end()` 时返回的是动画**结束那一刻**的归一化进度，而非 1.0——这正是原厂用 0.5 阈值判断"自然播完 vs 中途 cancel"的关键。**但**该判定把"播完但停在 ≤0.5 位置"也判失败——这是原厂 quirk，lib 一并保留。
-*修正前情*：review 02 §③-1 把 R1 列为"lib 无条件报 true"，但通读当前 lib 代码（`AnimatorListeners.kt:25-37`）确认阈值判定已实现。
+**严重度：高。** 原厂 `EndStateCallbackWrapper.onAnimationEnd` 检查 `animator instanceof ValueAnimator && ((ValueAnimator) animator).getAnimatedFraction() <= 0.5f` → 报 `false`（`AnimatorListeners.java:34-40`）。lib `playback/AnimatorListeners.kt:39` 的判定 `va == null || va.animatedFraction > 0.5f` 已**逐字对齐**——**与既有 review 02 §③-1 结论相反**。**复核结果：R1 在当前 lib 已对齐**，手势收尾"半程前 cancel→报未成功"语义保留。`animatedFraction` 在 `end()` 时返回的是动画**结束那一刻**的归一化进度，而非 1.0——这正是原厂用 0.5 阈值判断"自然播完 vs 中途 cancel"的关键。**但**该判定把"播完但停在 ≤0.5 位置"也判失败——这是原厂 quirk，lib 一并保留。
+*修正前情*：review 02 §③-1 把 R1 列为"lib 无条件报 true"，但通读当前 lib 代码（`playback/AnimatorListeners.kt:33-49`）确认阈值判定已实现。
 
 ### R2. `isDispatchStartPending` 字段语义反转 ★
-> **⚠️未修复（死字段潜藏；补 getter 前语义反转不暴露）**
-**严重度：中（潜藏）。** 原厂 `start()` 置 `mIsDispatchStartPending = false`（`:379`），仅 `dispatchOnStart()` 置 true（`:248`）。语义："true = 已派发 start 给所有 listener 但 AnimatorSet 还没真的开始"——给 `dispatchOnStart` 用作幂等闸门。lib `start()` 置 **true**（`AnimatorPlaybackController.kt:110`），与原厂相反。当前 lib 字段 `private` 且无 getter，外部无读取方（`isIsDispatchStartPending` 未实现）——**死字段**。一旦将来补 getter（手势链路需要：`OplusBaseSwipeUpHandler` 等点位都会读），语义反转会直接把外部判断颠倒。
+> **✅已修复（086844e：start()/reverse()/根 animator 三触点均置 `isDispatchStartPending=false`，语义已对齐原厂）**
+**严重度：中（潜藏）。** 原厂 `start()` 置 `mIsDispatchStartPending = false`（`:379`），仅 `dispatchOnStart()` 置 true（`:248`）。语义："true = 已派发 start 给所有 listener 但 AnimatorSet 还没真的开始"——给 `dispatchOnStart` 用作幂等闸门。lib 当前（HEAD）：`start()` 置 **false**（`AnimatorPlaybackController.kt:112`）、`reverse()` 置 false（`:119`）、构造器对根 animator 的 cancel/end/start 三触点同步置 false（`:56-71`）；仅 `dispatchOnStart()` 置 true（`:179`）——与原厂“`start()` 置 false、`dispatchOnStart()` 置 true”一致（086844e 修复，不再反转）。字段仍 `private` 且无 getter（`isIsDispatchStartPending` 未实现），将来补 getter 无需再对齐。
 
 ### R3. addFloat 产物可进 Holder 链（既有 review 02 §③-3 的判定需更新）★
 > **✅已修复（60bd048：buildAnimator 返回 ValueAnimator，addFloat 进 Holder 链）**
-**严重度：低（既有结论需修正）。** 既有 review 02 §③-3 把"addFloat 产物进不了 Holder 链"列为高风险。**通读 lib 当前代码**：lib 内嵌 `ObjectAnimator.buildAnimator()` **返回 `ValueAnimator`**（`PendingAnimation.kt:149`，注释 `:142-147` 自述"此前 lib 返回匿名 Animator，会被 Holder 收集静默丢弃"——属于已修复历史 bug）。`addHoldersRecur` 的 `is ValueAnimator ->` 分支（`AnimatorPlaybackController.kt:188`）正常收 Holder，整条 addFloat → add → playTogether → Holder 链可工作。**既有 review 描述的是旧版本代码**，当前风险已消除。**仍存在的隐患**：`PendingAnimation.kt:75` 的 Holder 构造器 `animator as ValueAnimator` 强转——若调用方传非 ValueAnimator 会 ClassCastException；addHoldersRecur 已在 else 分支抛 `RuntimeException("Unknown animation type $anim")`（`:192`），所以非 ValueAnimator 走不到 Holder 构造器，强转是安全的（前提是调用方不绕过 `add` 直接 `addToHolders`）。
+**严重度：低（既有结论需修正）。** 既有 review 02 §③-3 把"addFloat 产物进不了 Holder 链"列为高风险。**通读 lib 当前代码**：lib 内嵌 `ObjectAnimator.buildAnimator()` **返回 `ValueAnimator`**（`PendingAnimation.kt:149`，注释 `:142-147` 自述"此前 lib 返回匿名 Animator，会被 Holder 收集静默丢弃"——属于已修复历史 bug）。`addHoldersRecur` 的 `is ValueAnimator ->` 分支（`AnimatorPlaybackController.kt:198`）正常收 Holder，整条 addFloat → add → playTogether → Holder 链可工作。**既有 review 描述的是旧版本代码**，当前风险已消除。**仍存在的隐患**：`AnimatorPlaybackController.Holder` 构造器 `animator as ValueAnimator` 强转（`playback/AnimatorPlaybackController.kt:76-77`）——若调用方传非 ValueAnimator 会 ClassCastException；addHoldersRecur 已在 else 分支抛 `RuntimeException("Unknown animation type $anim")`（`:202`），所以非 ValueAnimator 走不到 Holder 构造器，强转是安全的（前提是调用方不绕过 `add` 直接 `addToHolders`）。
 
 ### R4. progressAnimator 时长不一致
 > **✔️无差异（文档已自证：add() 内部覆写时长）**
-**严重度：中。** 原厂 `buildAnim` 用 `add(valueAnimator)` 把 progressAnimator 时长覆写为 `mDuration`（`PendingAnimation.java:91-95 → :189-193`，即 `add(Animator, SpringProperty)` 内 `animator.setDuration(mDuration)`）；lib 用 `addWithoutDuration(valueAnimator)` + 显式 `setDuration(durationMs)`（`PendingAnimation.kt:86-88`），等价但路径不同——lib 的 valueAnimator 是**新构造的临时对象**，未持任何外部引用，时长覆写是"先 set 再 add"，顺序与原厂完全相同。**功能等价**——既有 review 02 §③-4 的"progressAnimator 保持 ValueAnimator 默认 300ms"描述不准确：lib `:91` 实际是 `ValueAnimator.ofFloat(0f, 1f).setDuration(durationMs)` 后才 `add`，正确。复核：与既有结论**相反**，无差异。
+**严重度：中。** 原厂 `buildAnim` 用 `add(valueAnimator)` 把 progressAnimator 时长覆写为 `mDuration`（`PendingAnimation.java:91-95 → :189-193`，即 `add(Animator, SpringProperty)` 内 `animator.setDuration(mDuration)`）；lib 当前（HEAD）走 `add(it)`（`playback/PendingAnimation.kt:90-93`；`add()` 内 `child.duration = durationMs` 于 `:43-47`），与原厂 `add(valueAnimator)` 内覆写时长**同路径**——本条旧描述（“用 `addWithoutDuration(valueAnimator)` + 显式 `setDuration(durationMs)`”，对应 `PendingAnimation.kt:86-88`）是更早版本代码，已更新。空子动画兜底 `addWithoutDuration(ValueAnimator.ofFloat(0f, 1f).setDuration(durationMs))`（`:95-97`）仅在 `animHolders.isEmpty()` 时补位，与原厂 `:99-101` 相同。结论：**无差异**（且比旧描述路径更贴近原厂）。
 
 ### R5. setFloat 不显式设时长
 > **✔️无差异（add() 兜底 durationMs；仅 API 说谎）**
-**严重度：低。** 原厂 `setFloat`：`ObjectAnimator.ofFloat(...).setDuration(mDuration).setInterpolator(ip).add(...)`（`PendingAnimation.java:127-134`）——先 setDuration 再 setInterpolator 再 add。lib `setFloat`：`ObjectAnimator.ofFloat(...).setInterpolator(ip).add(oa.buildAnimator())`（`PendingAnimation.kt:68-77`）——**只 setInterpolator**，时长由 `add(Animator)` 兜底（`add(Animator)` 内 `child.duration = durationMs`，`:46`）。两条路径都最终把 duration 设为 `durationMs`，但**顺序**不同：原厂 ObjectAnimator 自己持时长 → 加进 AnimatorSet；lib ObjectAnimator 子对象 va 持默认 300ms → add() 把 va.duration 改为 durationMs。**API 行为等价**（因 add 内部覆写）；唯一差异是：**若调用方在 add 之前主动读 `oa.duration`，lib 给的是默认值 300ms，原厂给的是 mDuration**。属于"API 说谎"而非语义差异。
+**严重度：低。** 原厂 `setFloat`：`ObjectAnimator.ofFloat(...).setDuration(mDuration).setInterpolator(ip).add(...)`（`PendingAnimation.java:127-134`）——先 setDuration 再 setInterpolator 再 add。lib `setFloat`：`ObjectAnimator.ofFloat(...).setInterpolator(ip).add(oa.buildAnimator())`（`playback/PendingAnimation.kt:70-76`）——**只 setInterpolator**，时长由 `add(Animator)` 兜底（`add()` 内 `child.duration = durationMs`，`:44`）。两条路径都最终把 duration 设为 `durationMs`，但**顺序**不同：原厂 ObjectAnimator 自己持时长 → 加进 AnimatorSet；lib ObjectAnimator 子对象 va 持默认 300ms → add() 把 va.duration 改为 durationMs。**API 行为等价**（因 add 内部覆写）；唯一差异是：**若调用方在 add 之前主动读 `oa.duration`，lib 给的是默认值 300ms，原厂给的是 mDuration**。属于"API 说谎"而非语义差异。
 
 ### R6. addHoldersRecur 的 else 分支（既有 review 02 §②-遗漏 6 误述）
 > **✔️已对齐（else 抛 RuntimeException 与原厂一致）**
-**严重度：低（既有结论需修正）。** 既有 review 02 §②-遗漏 6 描述"lib 两者皆无，静默跳过（`AnimatorPlaybackController.kt:186-191`）"。**通读当前 lib 代码**（`:186-194`）：else 分支是 `throw RuntimeException("Unknown animation type $anim")`（`:192`），注释 `:190-191` 自述"原厂抛 RuntimeException ... 不认识的动画类型显式失败，而不是静默丢弃出 Holder 链"——**与原厂一致**。既有 review 描述的是更早版本；当前已对齐。
+**严重度：低（既有结论需修正）。** 既有 review 02 §②-遗漏 6 描述"lib 两者皆无，静默跳过（`AnimatorPlaybackController.kt:186-191`）"。**通读当前 lib 代码**（`playback/AnimatorPlaybackController.kt:196-204`）：else 分支是 `throw RuntimeException("Unknown animation type $anim")`（`:202`），注释 `:200-201` 自述"原厂抛 RuntimeException ... 不认识的动画类型显式失败，而不是静默丢弃出 Holder 链"——**与原厂一致**。既有 review 描述的是更早版本；当前已对齐。
 
 ### R7. dispatch 不递归嵌套 AnimatorSet
 > **⚠️未修复（当前无嵌套 AnimatorSet 触发面）**
-**严重度：低。** lib `dispatchToListeners` 只拍平 `anims` 一层（`AnimatorPlaybackController.kt:161-165`）。原厂 `callListenerCommandRecursively → callAnimatorCommandRecursively` 递归进嵌套 `AnimatorSet`（`AnimatorPlaybackController.java:184-203`）。当前 lib 构造路径不会产生嵌套 AnimatorSet（`add` 走 `anim.playTogether(child)` 平铺），**暂无触发面**；一旦补 `add(animator: Animator)` 改用 `anim.play(animator)` + 业务传嵌套 AnimatorSet，dispatch 会漏内层 listener。
+**严重度：低。** lib `dispatchToListeners` 只遍历“根 + 直接子动画”的平铺列表（`AnimatorPlaybackController.kt:166-175`：`targets = if (anims.size==1 && anims[0]===rootAnim) anims else listOf(rootAnim)+anims`），对嵌套 `AnimatorSet` 的子层仍不递归（60bd048/086844e 只补了根层派发与根层跟踪）。原厂 `callListenerCommandRecursively → callAnimatorCommandRecursively` 递归进嵌套 `AnimatorSet`（`AnimatorPlaybackController.java:184-203`）。当前 lib 构造路径不会产生嵌套 AnimatorSet（`add` 走 `anim.playTogether(child)` 平铺），**暂无触发面**；一旦补 `add(animator: Animator)` 改用 `anim.play(animator)` + 业务传嵌套 AnimatorSet，dispatch 会漏内层 listener。
 
 ### R8. cancel 跟踪挂在第一个子动画而非 AnimatorSet 本体
-> **⚠️未修复（60bd048 只修 root dispatch，cancel 仍挂第一个子动画）**
-**严重度：中。** 原厂 cancel listener 挂 **AnimatorSet 本体**（`AnimatorPlaybackController.java:135-156` 处的 `animatorSet.addListener(...)`，监听 `AnimatorSet.cancel()`），且同时维护 `mIsDispatchStartPending`；lib 挂在 `anims[0]`（**第一个子动画**，`AnimatorPlaybackController.kt:57`）。若**直接 cancel AnimatorSet 而非子动画**，原厂能置 `mTargetCancelled=true` 阻断后续 `setPlayFraction`（`:365-369`），lib 不会触发——`setPlayFraction` 会继续往已取消的 AnimatorSet 的子动画写进度。AnimatorSet.cancel 内部是否会回调子动画 listener？答案是**会**——AnimatorSet 在 cancel 时会逐子动画 cancel 并触发子动画 listener，但时序依赖 AnimatorSet 实现。属于"测试覆盖不到就静默出错"的类型。
+> **✅已修复（086844e：cancel/end/start 跟踪 listener 改挂根 animator）**
+**严重度：中。** 原厂 cancel listener 挂 **AnimatorSet 本体**（`AnimatorPlaybackController.java:135-156` 处的 `animatorSet.addListener(...)`，监听 `AnimatorSet.cancel()`），且同时维护 `mIsDispatchStartPending`；lib 现挂在构造器收到的**根 animator** 上（`anim.addListener(...)`，`AnimatorPlaybackController.kt:56-71`：cancel → `targetCancelled=true` + `isDispatchStartPending=false`；end/start → `targetCancelled=false` + false）。**直接 cancel AnimatorSet** 会触发根 listener → `setPlayFraction` 的 `if (targetCancelled) return`（`:99-104`）阻断后续写进度——与原厂 `:365-369` 一致；同时消除空子动画列表时 `anims[0]` 的越界风险（086844e）。AnimatorSet.cancel 内部是否会回调子动画 listener？答案是**会**——AnimatorSet 在 cancel 时会逐子动画 cancel 并触发子动画 listener，但时序依赖 AnimatorSet 实现。属于"测试覆盖不到就静默出错"的类型。
 
 ### R9. PendingAnimation.setFloat 不支持 null target（Kotlin 类型系统）
 > **✔️保持（Kotlin 类型系统非空）**
@@ -153,11 +153,11 @@
 
 ### 4.1 值得补进 lib（性价比高）
 
-1. **修正 `isDispatchStartPending` 的 start() 赋值**（`AnimatorPlaybackController.kt:110`）：把 `true` 改为 `false`（对齐原厂 `:379`）；若 lib 后续要暴露 `isIsDispatchStartPending()` getter，必须先把这里对齐——一行改动，消除 R2 潜藏风险。
+1. ✅已修复（086844e）——**`isDispatchStartPending` 的 start() 赋值已改为 `false`**（`AnimatorPlaybackController.kt:112`；`reverse()` `:119` 与根 animator 三触点 `:56-71` 同步 false，对齐原厂 `:379`）。若后续暴露 `isIsDispatchStartPending()` getter，语义已对齐，R2 消除。
 
-2. **修 `cancel listener` 挂到 AnimatorSet 本体**（`AnimatorPlaybackController.kt:57`）：当前挂在 `anims[0]`，改成 `anim`（构造器收的顶层 AnimatorSet，必要时在 init 里 cast）。同时**把 `isDispatchStartPending = false` 写进 cancel listener**（对齐原厂 `:138-140` 的 cancel 路径），消除 R8 + 修复 R2 的半边。
+2. ✅已修复（086844e）——**cancel/end/start 跟踪 listener 已挂到根 animator**（`AnimatorPlaybackController.kt:56-71` `anim.addListener(...)`，不再用 `anims[0]`）：cancel 写 `targetCancelled=true` + `isDispatchStartPending=false`，end/start 写 false。消除 R8（直接 cancel AnimatorSet 可阻断 `setPlayFraction`）+ 空子动画列表越界。
 
-3. **补 `dispatch` 递归**：把 `dispatchToListeners` 改为遍历 `callAnimatorCommandRecursively(mAnim, BiConsumer<Animator, Animator.AnimatorListener>)` 形态，对齐原厂 `:184-203`。成本小（10-15 行），消除 R7 潜藏风险——一旦补 R1/C1 涉及的"手势跟手→动画接管"路径，必须有递归 dispatch。
+3. **补 `dispatch` 递归**：把 `dispatchToListeners` 改为遍历 `callAnimatorCommandRecursively(mAnim, BiConsumer<Animator, Animator.AnimatorListener>)` 形态，对齐原厂 `:184-203`。成本小（10-15 行），消除 R7 潜藏风险——一旦补 R1/C1 涉及的"手势跟手→动画接管"路径，必须有递归 dispatch。（v2 现状：60bd048/086844e 已补根层派发与根层跟踪，嵌套子集 DFS 仍未实现，R7 保持 ⚠️未修复。）
 
 4. **补 `PropertySetter.add(Animator)` 默认 `setDuration(0) + start`**（原厂 `:14-20`）：原厂 no-op setter 调 `add(anim)` 仍能跑动画（瞬时）；lib 默认 `setFloat` 也走 `add`，但 `add` 接口不在 `PropertySetter` 中——属 API 面一致性。**低优先级**，仅当 PendingAnimation 同时回移 C5 的 setViewAlpha 时才有意义。
 
@@ -205,7 +205,7 @@
 | lib ProgressMapper DEFAULT | `com/android/launcher3/anim/AnimatorPlaybackController.java:114-122`（lambda$static$0） |
 | lib addAnimationHoldersRecur + 抛异常 | `com/android/launcher3/anim/AnimatorPlaybackController.java:161-182`（`:168-169`） |
 | lib OnAnimationEndDispatcher 收尾 | `com/android/launcher3/anim/AnimatorPlaybackController.java:63-96` |
-| lib `isDispatchStartPending` 起点：start() 置 false vs lib 置 true | `com/android/launcher3/anim/AnimatorPlaybackController.java:379, 248` ↔ `com/asyncanimator/launcher/playback/AnimatorPlaybackController.kt:110` |
+| lib `isDispatchStartPending` 起点：start() 置 false vs lib 置 true | `com/android/launcher3/anim/AnimatorPlaybackController.java:379, 248` ↔ `com/asyncanimator/playback/AnimatorPlaybackController.kt:110` |
 | lib PropertySetter NO_ANIM | `com/android/launcher3/anim/PropertySetter.java:11-12` |
 | lib Interpolators LINEAR | `com/android/launcher3/anim/Interpolators.java:35` |
 | lib `startWithVelocity` 80 行未移植 | `com/android/launcher3/anim/AnimatorPlaybackController.java:382-461` |
@@ -231,3 +231,21 @@
 - **60bd048** — AnimationHandler.doAnimationFrame 每轮重读 size（添加时回调当帧可见）、APC dispatchToListeners 包含根 AnimatorSet
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+> 本条为**独立逐条复核**（对照 HEAD 086844e 代码逐条验证，不采信上文 commit 交叉索引标记）。复核范围 = §① 类对应表 11 行 + §②-A 22 + §②-B 15 + §②-C 12 + §③ R1–R12 12 + §④ 建议 12 = **84 条**；全部条目逐条对照 `playback/`（8 个 .kt，e62dbff 合并 pending+playback）当前代码。
+>
+> - **复核条目总数**：84
+> - **结论不变**：77
+> - **修正**：7
+> - **修正明细**：
+>   1. R2：旧“⚠️未修复（start() 置 true，语义反转死字段）”→新“**✅已修复（086844e）**：`start()` 置 false（`playback/AnimatorPlaybackController.kt:112`）、`reverse()` `:119`、根 animator 三触点 `:56-71` 均同步 false；仅 `dispatchOnStart()` 置 true（`:179`）——与原厂一致”。
+>   2. R8：旧“⚠️未修复（cancel 跟踪挂 `anims[0]` 第一个子动画）”→新“**✅已修复（086844e）**：cancel/end/start 跟踪 listener 改挂根 animator（`anim.addListener`，`:56-71`），cancel → `targetCancelled=true` 阻断 `setPlayFraction`（`:99-104`）；并消除空子动画列表越界”。
+>   3. §④4.1-1：旧“待修正 start() 赋值”→新“**✅已修复（086844e）**”（同 R2）。
+>   4. §④4.1-2：旧“待把 cancel listener 挂到 AnimatorSet 本体”→新“**✅已修复（086844e）**”（同 R8）。
+>   5. §②-A-A4 / §③-R4：机制旧“`addWithoutDuration` + 显式 `setDuration`（路径不同）”→新“当前走 `add(it)`（`playback/PendingAnimation.kt:90-93`，`add()` 内覆写时长 `:43-47`）与原厂同路径；空子动画兜底 `:95-97`”。结论保持“无差异/等价”（较旧描述更贴近原厂）。
+>   6. §③-R7：证据旧“dispatchToListeners 只拍平 `anims` 一层（:161-165）”→新“遍历‘根 + 直接子动画’平铺列表（:166-175，60bd048/086844e 已补根层派发与根层跟踪），嵌套 AnimatorSet 子层仍不递归”。结论（⚠️未修复，无触发面）不变。
+>   7. §③-R1：行号刷新（`playback/AnimatorListeners.kt:39`/`:33-49`）；结论（已对齐，threshold 0.5）不变。
+>
+> 另：① 表路径与行数（`launcher/pending|playback`→`playback/`，各文件行数按 HEAD）、R3/R5/R6 的行号引用已顺带刷新（未计入修正数）。其余条目（②-A 其余、②-B 全部、②-C 全部、R3/R5/R6/R9–R12、§④ 其余）经复核与当前代码一致。

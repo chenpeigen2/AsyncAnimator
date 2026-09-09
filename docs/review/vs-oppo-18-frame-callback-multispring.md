@@ -1,7 +1,7 @@
 # 对比 Review 15：`android.animation.AnimationHandler` + `MultiDynamicAnimation` 路径
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（`core/anim/AnimationHandler.kt`、`launcher/async/AsyncSpringAnim.kt`、`launcher/async/CustomRectFSpringAnim.kt`）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（`core/AnimationHandler.kt`、`anim/AsyncSpringAnim.kt`、`anim/CustomRectFSpringAnim.kt`）
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/android/quickstep/util/animation/{MultiDynamicAnimation.java, SpringHolder.java, SpringForce.java, SpringAnimReflectUtils.java, CustomRectFSpringAnim.java}`
 >
 > 本区域是前 14 份 review（特别是 `04-frame-scheduling.md` + `05-continuation-spring.md` + `11-feature-gaps.md`）的"弹簧帧循环栈"专项深挖。前文已点名 `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 整组缺失，本区域下沉到**方法 / 字段 / 帧时序层面**——逐条核对原厂 `doAnimationFrame` (`:152-159`)、`requestEnd` (`:185-191`)、`startAnimationInternal` (`:121-130`)、`endAnimationInternal` (`:92-103`)、`commitAnimationFrame` (`:148-150`)、`SpringHolder.updateValueAndVelocity` (`:106-138`)、`SpringHolder.setValuesThreshold` (`:102-104`)、`SpringForce.updateValues` 三支闭式 (`:111-156`)、`SpringAnimReflectUtils.updateValues` 直调 (`:59-63`) 与 `isAtEquilibrium` 反射 (`:29-48`) 的语义差异，并量化 lib 的可移植性边界。
@@ -17,9 +17,9 @@
 | lib 类 / 成员 | 原厂类 / 成员 | 关系与证据 |
 |---|---|---|
 | （无对应 lib 类） | `com/android/quickstep/util/animation/MultiDynamicAnimation.java:21` `public final class MultiDynamicAnimation implements AnimationHandler.AnimationFrameCallback` | **完全缺失**。lib 没有任何"多弹簧协调器"。原厂 201 行，把 N 个独立弹簧放在 `HashMap<String, SpringHolder> mSpringHolderMap` 里共享一个 AnimationHandler 帧回调，所有弹簧在同一帧内同步积分 |
-| `core/anim/AnimationHandler.kt:25` `fun interface AnimationFrameCallback { fun doAnimationFrame(frameTimeMs: Long): Boolean }` | `android/animation/AnimationHandler.AnimationFrameCallback` (`MultiDynamicAnimation.java:21` `implements` 入口) + `androidx/core/animation/AnimationHandler.java:20` `public interface AnimationFrameCallback { boolean doAnimationFrame(long j8); }` | **签名一致，但 lib 模仿的是 AndroidX 而不是 AOSP**。OPPO `MultiDynamicAnimation` 用的是 platform `@hide android.animation.AnimationHandler`（同 AndroidX 有 1:1 镜像 API），lib `AnimationHandler.kt:17` 类注释写"对应 Android 平台 `androidx.core.animation.AnimationHandler`（简化版）"，是 AndroidX 副本。两条路径在 API 表面等价，但**底层的 `getInstance().addAnimationFrameCallback(this, 0L)` 是平台隐藏 API**（`MultiDynamicAnimation.java:127`），lib 的 `installThreadScheduler` + `HandlerTickScheduler` 走的是 `Handler.postDelayed` 帧环，不走 `AnimationHandler` 帧源 |
-| `core/anim/AnimationHandler.kt:32-38` `addAnimationFrameCallback` + `removeCallback`（懒删除） | `androidx/core/animation/AnimationHandler.java:180-186` `addAnimationFrameCallback`（首注册时 `mProvider.postFrameCallback()`）+ `cleanUpList()` (`:117-132`) | **镜像**。两者都用"list 为空时首触发 + 懒 null 槽"模式。**关键偏差**：AndroidX `addAnimationFrameCallback(cb)` 不带第二个参数，OPPO `MultiDynamicAnimation.java:127` 调的是 `AnimationHandler.getInstance().addAnimationFrameCallback(this, 0L)`——**第二个参数 `0L` 是隐藏 API 的 frame delay**，lib 的 `addAnimationFrameCallback(callback: AnimationFrameCallback?)` 单参签名无法对应 |
-| `core/anim/AnimationHandler.kt:85-92` `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离 | `androidx/core/animation/AnimationHandler.java:130-137` `doAnimationFrame` 顺序遍历 | **镜像**。两者都没异常隔离，但 OPPO 在 `MultiDynamicAnimation.doAnimationFrame`（`:152-159`）有自定义：见下方"裸 delta 积分" |
+| `core/AnimationHandler.kt:23` `fun interface AnimationFrameCallback { fun doAnimationFrame(frameTimeMs: Long): Boolean }` | `android/animation/AnimationHandler.AnimationFrameCallback` (`MultiDynamicAnimation.java:21` `implements` 入口) + `androidx/core/animation/AnimationHandler.java:20` `public interface AnimationFrameCallback { boolean doAnimationFrame(long j8); }` | **签名一致，但 lib 模仿的是 AndroidX 而不是 AOSP**。OPPO `MultiDynamicAnimation` 用的是 platform `@hide android.animation.AnimationHandler`（同 AndroidX 有 1:1 镜像 API），lib `AnimationHandler.kt:17` 类注释写"对应 Android 平台 `androidx.core.animation.AnimationHandler`（简化版）"，是 AndroidX 副本。两条路径在 API 表面等价，但**底层的 `getInstance().addAnimationFrameCallback(this, 0L)` 是平台隐藏 API**（`MultiDynamicAnimation.java:127`），lib 的 `installThreadScheduler` + `HandlerTickScheduler` 走的是 `Handler.postDelayed` 帧环，不走 `AnimationHandler` 帧源 |
+| `core/AnimationHandler.kt:49-71` `addAnimationFrameCallback` + `removeCallback`（懒删除） | `androidx/core/animation/AnimationHandler.java:180-186` `addAnimationFrameCallback`（首注册时 `mProvider.postFrameCallback()`）+ `cleanUpList()` (`:117-132`) | **镜像**。两者都用"list 为空时首触发 + 懒 null 槽"模式。**关键偏差**：AndroidX `addAnimationFrameCallback(cb)` 不带第二个参数，OPPO `MultiDynamicAnimation.java:127` 调的是 `AnimationHandler.getInstance().addAnimationFrameCallback(this, 0L)`——**第二个参数 `0L` 是隐藏 API 的 frame delay**，lib 的 `addAnimationFrameCallback(callback: AnimationFrameCallback?)` 单参签名无法对应 |
+| `core/AnimationHandler.kt:92-102` `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离 | `androidx/core/animation/AnimationHandler.java:130-137` `doAnimationFrame` 顺序遍历 | **镜像**。两者都没异常隔离，但 OPPO 在 `MultiDynamicAnimation.doAnimationFrame`（`:152-159`）有自定义：见下方"裸 delta 积分" |
 | （lib `AsyncSpringAnim.kt:38-43` 间接） `addEndListener { _, canceled, _, _ -> }` 4 参 lambda | `MultiDynamicAnimation.java:64` `public interface OnAnimationEndListener { void onAnimationEnd(MultiDynamicAnimation, boolean z8); }` 2 参 | **签名差异**。lib 用的是 androidx 的 4 参 `DynamicAnimation.OnAnimationEndListener`（OnAnimationEndListener, canceled, value, velocity），原厂 OPPO 自定义的是 2 参（this + canceled）；在框架层二者不可互换。`AsyncSpringAnim.addEndListener` 接受的是 androidx 类型，**无法被接入 `MultiDynamicAnimation.addAnimationEndListener`** |
 | （lib 无对应） | `MultiDynamicAnimation.java:185-191` `public final void requestEnd(boolean z8)`：若 z8 则 `mCancelRequest = true`、否则 `mEndRequest = true` | **完全缺失**。"下一帧生效"语义：requestEnd 不立即停帧循环，只是置 flag，下一帧 `doAnimationFrame` 在 `applyToAllSpringHolder` 之后、清理 `mCancelRequest/mEndRequest` 标志后，再由"所有弹簧 at equilibrium"触发 `endAnimationInternal(z8)`。lib 的 `AsyncSpringAnim.cancel()` 直接调 `real.cancel()`——androidx `SpringAnimation.cancel()` 立即设 `mRunning = false` 并清回调列表，无"下一帧生效"窗口 |
 | （lib 无对应） | `MultiDynamicAnimation.java:152-183` `doAnimationFrame(long frameTime)`：裸 delta 积分（`frameTime - mLastFrameTime`） + 首帧特殊处理（`mLastFrameTime == 0`） | **完全缺失**。lib 走 androidx SpringAnimation 内部的 Choreographer 帧回调——它**自己**维护 dt 累积（通过 `mLastFrameTime` 字段）但**不暴露**给 lib；lib 拿不到 dt，只能从 `addUpdateListener` 的 value/velocity 增量间接推断 |
@@ -27,12 +27,12 @@
 | （lib 无对应） | `MultiDynamicAnimation.java:121-128` `startAnimationInternal()`：`if (mRunning) return; mRunning = true; AnimationHandler.getInstance().addAnimationFrameCallback(this, 0L);` | **完全缺失**。lib 的 `AsyncSpringAnim.start()` 调 `real.start()`——androidx 路径会注册回调到 androidx.core.animation.AnimationHandler，但 MultiDynamicAnimation 注册的是 platform android.animation.AnimationHandler，二者**互不相通** |
 | （lib 无对应） | `MultiDynamicAnimation.java:92-103` `endAnimationInternal(boolean z8)`：`mRunning = false; AnimationHandler.getInstance().removeCallback(this); mLastFrameTime = 0; for (listener : mEndListeners) listener.onAnimationEnd(this, z8);` | **完全缺失**。"先停帧循环、再 fire listener"的顺序在 lib 侧反向：androidx SpringAnimation 是在 `mRunning = false` 之前 fire listener，导致 listener 触发时动画仍在跑（rare 但可观察） |
 | （lib 无对应） | `MultiDynamicAnimation.java:148-150` `public void commitAnimationFrame(long j8) { doAnimationFrame(j8); }` | **完全缺失**。这是一个 `DynamicAnimation` 兼容入口（公开 `commitAnimationFrame` 是 platform `DynamicAnimation.OnAnimationEndListener` 接口的扩展点）。lib 完全不走 DynamicAnimation 树 |
-| `launcher/async/AsyncSpringAnim.kt:14-43` `AsyncSpringAnim` 包装 androidx `SpringAnimation` | （无对应原厂类，但 OPPO 有 `OplusAsyncSpringAnimWrapper.java`，未在本次扫描范围内） | **降级**。lib 用 androidx `SpringAnimation`（公开 API）；原厂 OPPO fork 了一份自己的 `SpringAnimation`（`com/android/quickstep/util/animation/SpringAnimation.java` 31 行，extends `DynamicAnimation<SpringAnimation>`），有自己的 `animateToFinalPosition` + `mEndRequested` + `finishToEndImmediately` + `skipToEnd` + `canSkipToEnd`（damping > 0 判定）。**lib 直接用了 androidx 等价 API，没复刻 OPPO fork 行为**——但 OPPO fork 在内部也是调 androidx 公开方法（除 `finishToEndImmediately` 等少数扩展点），业务可观察差异常常体现在"androidx vs OPPO fork"的细节不一致（如 `skipToEnd` 在 damping == 0 时 OPPO fork 抛 `UnsupportedOperationException` 而 androidx 是 no-op） |
-| `launcher/async/CustomRectFSpringAnim.kt:14-18` **占位**：仅 18 行 + `AnimType` 枚举（3 值） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42` `public final class CustomRectFSpringAnim`：812 行 Kotlin 反编译产物（`@SourceDebugExtension` 标注），持有 6 组独立 SpringForce + SpringHolder 字段 + `mMultiDynamicAnimation`（`MultiDynamicAnimation` 实例）+ 7 值 `AnimType` 枚举（`:115-123`）+ 6 自由度矩形换算 `calculateFrameRectF` (`:266-328`) + `mAnimLooperExecutor` ANIM/MAIN 双路 + 4 路线程纠偏（start/cancel/skipToEnd/reverseToOpen） | **完全降级为占位**。原厂 812 行的 6 自由度矩形弹簧动画是 MultiDynamicAnimation 的**唯一生产消费者**（`initProperty` (`:339-369`) 把 6 个 SpringHolder 都塞进 `mMultiDynamicAnimation.addSpringHolderItem(...)`），lib 用 androidx 单一 SpringAnimation 完全替代。**AnimType 枚举不一致**：lib 3 值（SWIPE_TO_HOME / RECENTS_TRANSITION / APP_LAUNCH）vs 原厂 7 值（OPEN_FROM_HOME / REMOTE_CLOSE_TO_HOME / REMOTE_CLOSE_TO_HOME_ASSISTANT / GESTURE_TO_DRAG / SWIPE_TO_HOME / SWIPE_TO_HOME_ASSISTANT / REVERSE_TO_OPEN）。最常用的 `OPEN_FROM_HOME` 在 lib 枚举里没有 |
+| `anim/AsyncSpringAnim.kt:14-43` `AsyncSpringAnim` 包装 androidx `SpringAnimation` | （无对应原厂类，但 OPPO 有 `OplusAsyncSpringAnimWrapper.java`，未在本次扫描范围内） | **降级**。lib 用 androidx `SpringAnimation`（公开 API）；原厂 OPPO fork 了一份自己的 `SpringAnimation`（`com/android/quickstep/util/animation/SpringAnimation.java` 31 行，extends `DynamicAnimation<SpringAnimation>`），有自己的 `animateToFinalPosition` + `mEndRequested` + `finishToEndImmediately` + `skipToEnd` + `canSkipToEnd`（damping > 0 判定）。**lib 直接用了 androidx 等价 API，没复刻 OPPO fork 行为**——但 OPPO fork 在内部也是调 androidx 公开方法（除 `finishToEndImmediately` 等少数扩展点），业务可观察差异常常体现在"androidx vs OPPO fork"的细节不一致（如 `skipToEnd` 在 damping == 0 时 OPPO fork 抛 `UnsupportedOperationException` 而 androidx 是 no-op） |
+| `anim/CustomRectFSpringAnim.kt:14-18` **占位**：仅 18 行 + `AnimType` 枚举（3 值） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42` `public final class CustomRectFSpringAnim`：812 行 Kotlin 反编译产物（`@SourceDebugExtension` 标注），持有 6 组独立 SpringForce + SpringHolder 字段 + `mMultiDynamicAnimation`（`MultiDynamicAnimation` 实例）+ 7 值 `AnimType` 枚举（`:115-123`）+ 6 自由度矩形换算 `calculateFrameRectF` (`:266-328`) + `mAnimLooperExecutor` ANIM/MAIN 双路 + 4 路线程纠偏（start/cancel/skipToEnd/reverseToOpen） | **完全降级为占位**。原厂 812 行的 6 自由度矩形弹簧动画是 MultiDynamicAnimation 的**唯一生产消费者**（`initProperty` (`:339-369`) 把 6 个 SpringHolder 都塞进 `mMultiDynamicAnimation.addSpringHolderItem(...)`），lib 用 androidx 单一 SpringAnimation 完全替代。**AnimType 枚举不一致**：lib 3 值（SWIPE_TO_HOME / RECENTS_TRANSITION / APP_LAUNCH）vs 原厂 7 值（OPEN_FROM_HOME / REMOTE_CLOSE_TO_HOME / REMOTE_CLOSE_TO_HOME_ASSISTANT / GESTURE_TO_DRAG / SWIPE_TO_HOME / SWIPE_TO_HOME_ASSISTANT / REVERSE_TO_OPEN）。最常用的 `OPEN_FROM_HOME` 在 lib 枚举里没有 |
 | （lib 无对应） | `com/android/quickstep/util/animation/SpringHolder.java:9` `public final class SpringHolder`：139 行，per-spring 状态持有者（`mValue/mVelocity/mPendingPosition/mMaxValue/mMinValue/mMinVisibleChange/mStartDelay/mSpringForce/mKey`），`updateValueAndVelocity(deltaT, endRequest)` 在 `mPendingPosition != UNSET` 时**按 deltaT/2 拆两半步积分**（`:115-130`），`setValuesThreshold` 把 `mMinVisibleChange * 0.75` 通过反射写入 `SpringForce.mValueThreshold`（`:102-104` + `SpringAnimReflectUtils.setValueThreshold`） | **完全缺失**。`mPendingPosition` 半步分裂积分是原厂的核心创新（中途改终点时不出现速度/位置阶跃），lib 用 androidx 单一 spring 不支持。`getValueThreshold = mMinVisibleChange * 0.75`（`:33-35`）也是原厂特定常量——androidx 公开 API 的 threshold 默认值是另一套 |
 | （lib 无对应） | `com/android/quickstep/util/animation/SpringForce.java:6` `public class SpringForce implements Force`：167 行，**自实现三支闭式解析解**（`:111-156` `updateValues`）：<br>- dampingRatio > 1（过阻尼）：双指数 `e^(γ+·t)` + `e^(γ-·t)`<br>- dampingRatio == 1（临界）：单指数 `e^(-ωn·t)` + `t·e^(-ωn·t)`<br>- dampingRatio < 1（欠阻尼）：衰减振荡 `e^(-ζωn·t) · (cos(ωd·t) + sin(ωd·t))`<br>附 `getAcceleration(value, velocity)` 标准牛顿力学 `F = -k(x-xf) - cv` (`:58-62`)、`isAtEquilibrium` 双阈值判定 (`:78-82`)、`setValueThreshold(d)` 把 velocity threshold 设成 `value * 62.5` (`:105-109`) | **完全缺失**。OPPO 自定义 SpringForce 不复用 androidx 的 `SpringForce`（虽然同包名 `androidx/dynamicanimation/animation/SpringForce.java` 也存在），它有自己的 `mGammaPlus/mGammaMinus` 闭式根字段（`:20-21`）。lib 用 androidx 的 SpringForce，物理公式**应该等价**（都是标准弹簧解析解），但**velocityThresholdMultiplier = 62.5** 这个魔数是 OPPO 特有，androidx 用的是 `62.5 * 0.001 * 1000 = 62.5` 同值同语义 |
 | （lib 无对应） | `com/android/quickstep/util/animation/SpringAnimReflectUtils.java:15` `public final class SpringAnimReflectUtils`：65 行，单例 `INSTANCE`，5 个静态反射字段 `sUpdateValuesMethod/sMassStateClass/sMassStateValueField/sMassStateVelocityField/sIsAtEquilibriumMethod/sSetValueThresholdMethod`（`:18-23`），实际**只 `isAtEquilibrium` 是反射**（`:29-48` 用 `getDeclaredMethod` + `setAccessible(true)`），`updateValues` 是**直调**（`:59-63` 直接调 `springForce.updateValues(values, velocity, deltaT)` 拿 `MassState.mValue/mVelocity`），`setValueThreshold` 是直调（`:53-56`）。`sUpdateValuesMethod/sMassStateClass/sMassStateValueField/sMassStateVelocityField/sSetValueThresholdMethod` 这 5 个字段**已被废弃**（@Metadata 残留，运行时不再使用） | **完全缺失**。这个类是历史包袱——之前 OPPO 的 `SpringForce` 是 fork 自旧版 androidx（反射是为了绕过 `@hide` 字段访问），后来 fork 自己的 `SpringForce` 后 `updateValues/setValueThreshold` 都不需要反射了。lib 完全不需要这个工具。**但是**：`isAtEquilibrium` 仍在用反射调 OPPO 自家 `SpringForce.isAtEquilibrium`（`:78-82`），原因是 `SpringForce.isAtEquilibrium` 在 Java bytecode 层是 public（`:78` `public boolean isAtEquilibrium(float, float)`），但反射调用可能与私有 KFunction 引用链上的某层访问控制相关——lib 无对应需求 |
-| `launcher/async/AsyncAnimCallbacks.kt:30-37` `addListener` + `getListeners()` 快照 + `dispatch` 异步派发 | `MultiDynamicAnimation.java:28-29` `private ArrayList<OnAnimationEndListener> mEndListeners = new ArrayList<>();` + `:29` `private ArrayList<OnAnimationUpdateListener> mUpdateListeners = new ArrayList<>();` + `:152-167` `notifyAnimUpdate()` | **降级**。lib 的 AsyncAnimCallbacks 是**业务级** listener 派发器，对应原厂的 `NullableAnimatorListener` 链；MultiDynamicAnimation 的 listener 链是**帧循环级**，二者不在同一层。MultiDynamicAnimation 的 listener 是在每帧 `doAnimationFrame` 末尾 fire，与 frame time 同相位；AsyncAnimCallbacks 是在 ValueAnimator listener 路径上 marshal 回主线程 fire。两者不冲突但不可替换 |
+| `anim/AsyncAnimCallbacks.kt:30-37` `addListener` + `getListeners()` 快照 + `dispatch` 异步派发 | `MultiDynamicAnimation.java:28-29` `private ArrayList<OnAnimationEndListener> mEndListeners = new ArrayList<>();` + `:29` `private ArrayList<OnAnimationUpdateListener> mUpdateListeners = new ArrayList<>();` + `:152-167` `notifyAnimUpdate()` | **降级**。lib 的 AsyncAnimCallbacks 是**业务级** listener 派发器，对应原厂的 `NullableAnimatorListener` 链；MultiDynamicAnimation 的 listener 链是**帧循环级**，二者不在同一层。MultiDynamicAnimation 的 listener 是在每帧 `doAnimationFrame` 末尾 fire，与 frame time 同相位；AsyncAnimCallbacks 是在 ValueAnimator listener 路径上 marshal 回主线程 fire。两者不冲突但不可替换 |
 | `util/Trace.kt` `traceBegin/traceEnd`（ATRACE 双色 trace） | `MultiDynamicAnimation.java:93, 122` `com.android.common.config.d.a("...running=", ..., TAG)` `LogUtils.i` + `@SourceDebugExtension` | **降级**。OPPO 用 `LogUtils.i` 关键生命周期；lib 用 `Trace.traceBegin/End`。两者都不影响语义，仅可观测性差异 |
 
 ---
@@ -41,10 +41,10 @@
 
 ### 2.1 精确复刻（lib 精确还原原厂的语义）
 
-1. **`AnimationHandler.kt` 是 `androidx.core.animation.AnimationHandler` 的 1:1 简化镜像**。`addAnimationFrameCallback` 首触发 + `removeCallback` 懒 null 槽 + `cleanUpList` 下一帧清理 + `onTick` 把 nanos 转 ms + `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离——结构、命名、行为模式完全镜像（`AnimationHandler.kt:32-92`）。  
-2. **ThreadLocal 单例 + testHandler hook**（`AnimationHandler.kt:124-148`）。镜像 AndroidX 的 `sAnimationHandler` ThreadLocal（`androidx/core/animation/AnimationHandler.java:13`）+ `sTestHandler`（`:18`）。  
-3. **`onAnimationFrame` → `doAnimationFrame` → `cleanUpList` → postFrameCallback` 自维持环路**（`AnimationHandler.kt:70-82`）。镜像 AndroidX `onAnimationFrame` (`:191-200`)。  
-4. **`installThreadScheduler` / `replaceThreadScheduler` 装帧源**（`AnimationHandler.kt:134-158`）。对应原厂 `ANIM_EXECUTOR$lambda$0` 在 `onLooperPrepared` 时 `AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())` 的等价位（详见 review 01 / 11）。  
+1. **`AnimationHandler.kt` 是 `androidx.core.animation.AnimationHandler` 的 1:1 简化镜像**。`addAnimationFrameCallback` 首触发 + `removeCallback` 懒 null 槽 + `cleanUpList` 下一帧清理 + `onTick` 把 nanos 转 ms + `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离——结构、命名、行为模式完全镜像（`AnimationHandler.kt:49-109`）。  
+2. **ThreadLocal 单例 + testHandler hook**（`AnimationHandler.kt:129-175`）。镜像 AndroidX 的 `sAnimationHandler` ThreadLocal（`androidx/core/animation/AnimationHandler.java:13`）+ `sTestHandler`（`:18`）。  
+3. **`onAnimationFrame` → `doAnimationFrame` → `cleanUpList` → postFrameCallback` 自维持环路**（`AnimationHandler.kt:82-109`）。镜像 AndroidX `onAnimationFrame` (`:191-200`)。  
+4. **`installThreadScheduler` / `replaceThreadScheduler` 装帧源**（`AnimationHandler.kt:153-171`）。对应原厂 `ANIM_EXECUTOR$lambda$0` 在 `onLooperPrepared` 时 `AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())` 的等价位（详见 review 01 / 11）。  
 5. **`AsyncSpringAnim` 线程 marshal 模式**（`AsyncSpringAnim.kt:30-43`）：`viewSupportAnimThread ? runOnAnimThread : current`。镜像原厂 `OplusAsyncSpringAnimWrapper.java:30-44` 模式（review 11 §①A-3 已确认 1:1）。  
 6. **`AsyncAnimCallbacks` 的"懒删除 + 快照 + 异步派发"**（`AsyncAnimCallbacks.kt:30-37, 80-87, 96-105`）。镜像原厂 `AsyncAnimCallbacks.java:29-32, 81-97, 631-637` 的全链路 listener 派发协议（review 04 §2.3 已确认 1:1）。
 
@@ -270,31 +270,84 @@
 | AndroidX `AnimationHandler.cleanUpList` 懒 null 槽清理 | `androidx/core/animation/AnimationHandler.java:117-132` |
 | AndroidX `AnimationHandler.doAnimationFrame` 顺序遍历 + 无异常隔离 | `androidx/core/animation/AnimationHandler.java:130-137` |
 | AndroidX `AnimationHandler.onAnimationFrame` → `doAnimationFrame` → `postFrameCallback` 自维持环路 | `androidx/core/animation/AnimationHandler.java:191-200` |
-| lib `AnimationHandler.kt` 是 AndroidX 镜像（注释明示） | `lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt:11-16` |
-| lib `AnimationHandler.kt:25` `AnimationFrameCallback` 单参签名 | `lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt:25` |
-| lib `AnimationHandler.kt:32-38` `addAnimationFrameCallback` + `removeCallback` 懒删除 | `lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt:32-38` |
-| lib `AnimationHandler.kt:85-92` `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离 | `lib/src/main/java/com/asyncanimator/core/anim/AnimationHandler.kt:85-92` |
-| lib `AsyncSpringAnim.kt:30-43` 线程 marshal 模式（`viewSupportAnimThread ? runOnAnimThread : current`） | `lib/src/main/java/com/asyncanimator/launcher/async/AsyncSpringAnim.kt:30-43` |
-| lib `AsyncSpringAnim.addEndListener` 接受 androidx 4 参 lambda（与 OPPO 2 参签名不兼容） | `lib/src/main/java/com/asyncanimator/launcher/async/AsyncSpringAnim.kt:38-43` |
-| lib `CustomRectFSpringAnim.kt:14-18` 占位类（仅 3 值 AnimType） | `lib/src/main/java/com/asyncanimator/launcher/async/CustomRectFSpringAnim.kt:14-18` |
+| lib `AnimationHandler.kt` 是 AndroidX 镜像（注释明示） | `lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt:4-18` |
+| lib `AnimationHandler.kt:23` `AnimationFrameCallback` 单参签名 | `lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt:23` |
+| lib `AnimationHandler.kt:49-71` `addAnimationFrameCallback` + `removeCallback` 懒删除 | `lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt:49-71` |
+| lib `AnimationHandler.kt:92-102` `doAnimationFrame` 顺序遍历 + `runCatching` 异常隔离 | `lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt:92-102` |
+| lib `AsyncSpringAnim.kt:30-43` 线程 marshal 模式（`viewSupportAnimThread ? runOnAnimThread : current`） | `lib/src/main/java/com/asyncanimator/anim/AsyncSpringAnim.kt:30-43` |
+| lib `AsyncSpringAnim.addEndListener` 接受 androidx 4 参 lambda（与 OPPO 2 参签名不兼容） | `lib/src/main/java/com/asyncanimator/anim/AsyncSpringAnim.kt:38-43` |
+| lib `CustomRectFSpringAnim.kt:14-18` 占位类（仅 3 值 AnimType） | `lib/src/main/java/com/asyncanimator/anim/CustomRectFSpringAnim.kt:14-18` |
 | lib 用 androidx `SpringAnimation` + `SpringForce`（公开 API）替代 OPPO fork | `demo/src/main/java/com/asyncanimator/demo/Demo11ViewSpringAnimThreadActivity.kt:13, 132-134` |
 | `demo/scene/SceneSpring.kt` 自实现 3 分支弹簧物理（与 OPPO SpringForce 三支闭式一致） | `demo/src/main/java/com/asyncanimator/demo/scene/SceneSpring.kt:23-63` |
 
-## 复核记录（2026-09-09）
+---
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本份涉及且已落地的修复（按 commit 顺序）：
+**方法**：逐条读取当前 lib 源码（Python `open(path, encoding='utf-8')`），对照文档中每个引用的文件路径、行号、状态标记，确认或修正。
 
-- **937dd23** — androidx SpringAnimation 替代 MultiDynamicAnimation 缺失部分
+### 路径修正（本文档路径修正最多，共 23 处）
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
-按条目补记：
-- **§3-1 / §3-2** — ✔️保持简化（MultiDynamicAnimation/CustomRectFSpringAnim 6-DOF 未移植，review 04/11 已建议）
-- **§3-3** — ⚠️未修复（EndReason 三态未建模，~20 行，无消费方）
-- **§3-4** — ❌不成立/已过期（无 AnimType.OPEN_FROM_HOME 调用点，Demo9 编译失败说法不成立）
-- **§3-5 / §3-6 / §3-7 / §3-8 / §3-9 / §3-10 / §3-11** — ✔️保持简化（androidx 等价或 OPPO 死代码/doc 自列）
-- **§4.1-1** — ❌不成立/已过期（见 §3-4）；**§4.1-2 / §4.1-3** — ⚠️未修复（未实施）
-- **§4.2-1..7** — ✔️保持简化（doc 自列）
-- **§4.3-1 / §4.3-2** — ⚠️未修复（USAGE 文档缺口 1-2 行）；**§4.3-3** — ✅已修复（42882ff 已列 3 值枚举）
+| 旧路径 | 新路径 | 出现次数 |
+|---|---|---|
+| `core/anim/AnimationHandler.kt` | `core/AnimationHandler.kt` | 12 |
+| `launcher/async/AsyncSpringAnim.kt` | `anim/AsyncSpringAnim.kt` | 6 |
+| `launcher/async/CustomRectFSpringAnim.kt` | `anim/CustomRectFSpringAnim.kt` | 4 |
+| `launcher/async/AsyncAnimCallbacks.kt` | `anim/AsyncAnimCallbacks.kt` | 1 |
+
+### AnimationHandler.kt 行号修正（HandlerTickScheduler/ScheduledTickScheduler 删除后文件从 ~92 行扩至 176 行）
+
+| 旧引用 | 新引用 | 语义 |
+|---|---|---|
+| `:25` | `:23` | AnimationFrameCallback fun interface |
+| `:32-38` | `:49-71` | addAnimationFrameCallback + removeCallback |
+| `:70-82` | `:82-109` | onTick → doAnimationFrame → cleanUpList 环路 |
+| `:85-92` | `:92-102` | doAnimationFrame 顺序遍历 + runCatching |
+| `:11-16` | `:4-18` | 类注释（对应 AndroidX） |
+| `:124-148` | `:129-175` | ThreadLocal 单例 + testHandler hook |
+| `:134-158` | `:153-171` | installThreadScheduler / replaceThreadScheduler |
+| `:32-92` | `:49-109` | addAnimationFrameCallback 到 doAnimationFrame 全段 |
+
+### 行号验证（非 AnimationHandler.kt 文件）
+
+| 引用 | 当前行号 | 验证 |
+|---|---|---|
+| `AsyncSpringAnim.kt:14-43` | L21=class, L26-50=methods | ✔️ |
+| `AsyncSpringAnim.kt:30-43` | L30=skipToEnd, L37-42=addEndListener | ✔️ |
+| `AsyncSpringAnim.kt:38-43` | L38-42=addEndListener 内部 | ✔️ |
+| `CustomRectFSpringAnim.kt:8-10` | L8-10=注释 | ✔️ |
+| `CustomRectFSpringAnim.kt:14-18` | L14-18=AnimType | ✔️ |
+| `AsyncAnimCallbacks.kt:30-37` | L30-37=class+addListener | ✔️ |
+| `AsyncAnimCallbacks.kt:80-87` | L76-79=getListeners + L82-91=dispatch | ✔️ |
+| `AsyncAnimCallbacks.kt:96-105` | L97-100=runOnMainThread | ✔️ |
+
+### 状态标记逐条确认（18 条）
+
+| 条目 | 文档标记 | 代码验证 | 结论 |
+|---|---|---|---|
+| §3-1 requestEnd 下一帧生效 | ✔️保持简化 | 无 MultiDynamicAnimation | ✔️确认 |
+| §3-2 6-DOF 独立 stiffness | ✔️保持简化 | 单一 SpringAnimation | ✔️确认 |
+| §3-3 requestEnd vs cancel 语义 | ⚠️未修复 | cancel 仍直接 real.cancel() | ⚠️确认 |
+| §3-4 AnimType 枚举不闭合 | ❌不成立/已过期 | 无 OPEN_FROM_HOME 调用点 | ❌确认 |
+| §3-5 mPendingPosition 半步分裂 | ✔️保持简化 | androidx 内部已实现 | ✔️确认 |
+| §3-6 getValueThreshold *0.75 | ✔️保持简化 | androidx 同公式 | ✔️确认 |
+| §3-7 commitAnimationFrame | ✔️保持简化 | lib 不在 platform DynamicAnimation 树 | ✔️确认 |
+| §3-8 mSpringHolderMap String key | ✔️保持简化 | 纯 API 风格差异 | ✔️确认 |
+| §3-9 LogUtils.i 调试埋点 | ✔️保持简化 | Trace.traceBegin/End 已覆盖 | ✔️确认 |
+| §3-10 VELOCITY_THRESHOLD_MULTIPLIER | ✔️保持简化 | androidx 同值 62.5 | ✔️确认 |
+| §3-11 @Metadata 废弃反射字段 | ✔️保持简化 | OPPO 侧死代码 | ✔️确认 |
+| §4.1-1 补 AnimType 7 值 | ❌不成立/已过期 | 无 7 值调用点 | ❌确认 |
+| §4.1-2 cancel/skipToEnd 语义区分 | ⚠️未修复 | 无 EndReason enum | ⚠️确认 |
+| §4.1-3 最小 MultiDynamicAnimation | ⚠️未修复 | 无多弹簧共享帧 | ⚠️确认 |
+| §4.2-1..7 保持简化 | ✔️保持简化 | 代码无变化 | ✔️确认 |
+| §4.3-1 USAGE 多弹簧限制 | ⚠️未修复 | USAGE.md 未明示 | ⚠️确认 |
+| §4.3-2 USAGE cancel 立即停帧 | ⚠️未修复 | USAGE.md 未明示 | ⚠️确认 |
+| §4.3-3 USAGE AnimType 3 值 | ✅已修复 | USAGE.md 已列 3 值枚举（42882ff） | ✅确认 |
+
+### 汇总
+
+- **条目总数**：18 条独立状态标记
+- **路径修正**：23 处（core/anim/→core/ 12处、launcher/async/→anim/ 11处）
+- **行号修正**：11 处（AnimationHandler.kt 8 组行号全部更新）
+- **状态标记修正**：0（所有 ❌/✔️/⚠️/✅ 与当前代码一致）
+- **根因**：本文档编写时引用的 `core/anim/AnimationHandler.kt` 和 `launcher/async/*` 是215ecb5 包重组前的旧路径；AnimationHandler.kt 行号偏移是 HandlerTickScheduler/ScheduledTickScheduler 删除后文件结构变化所致

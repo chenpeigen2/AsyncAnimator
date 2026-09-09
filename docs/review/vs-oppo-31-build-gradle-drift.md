@@ -115,7 +115,7 @@
 
 **证据**：
 - lib 依赖：`libs.versions.toml:9` `dynamicanimation = "1.1.0"`
-- lib 调用：`lib/src/main/java/com/asyncanimator/launcher/async/CustomRectFSpringAnim.kt` 用 `DynamicAnimation.OnAnimationEndListener`、`SpringAnimation`、`SpringForce`（推测；待 review 02/05 复核）
+- lib 调用：`lib/src/main/java/com/asyncanimator/anim/CustomRectFSpringAnim.kt` 用 `DynamicAnimation.OnAnimationEndListener`、`SpringAnimation`、`SpringForce`（推测；待 review 02/05 复核）
 - 原厂 vendor fork：`androidx/dynamicanimation/animation/COUIPanelDragToHiddenAnimation.java:5` 在 **同一 package** `androidx.dynamicanimation.animation` 注册了 `COUIPanelDragToHiddenAnimation extends DynamicAnimation<COUIPanelDragToHiddenAnimation>`
 
 **风险**：下游若打包**原厂 launcher 进程**（假设 OPPO 设备上 launcher 是唯一运行 app）同时引入 lib + 原厂 vendor fork dex，DEX 合并时**两个 androidx.dynamicanimation 类会冲突**：
@@ -156,7 +156,7 @@
 
 **证据**：
 - `lib/build.gradle.kts:23-24` Java 21
-- 实际 class file：`lib/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/asyncanimator/launcher/animthread/AnimationControlThread.class` Python 解码 major=65, minor=0 = **Java 21**
+- 实际 class file：`lib/build/intermediates/runtime_library_classes_dir/debug/bundleLibRuntimeToDirDebug/com/asyncanimator/thread/AnimationControlThread.class` Python 解码 major=65, minor=0 = **Java 21**
 - 原厂 AOSP Launcher3 main 推 17 / class file 61.0
 
 **风险**：class file version 65 需要 ART runtime ≥ Android 14（API 34，openjdk 21 dex2oat 支持）才能解析。**ColorOS 15 = API 35 设备 OK**，但 A6 历史机型（如 A5 系列 Android 13 = API 33）会 `VerifyError`。
@@ -355,23 +355,49 @@ public static final String LIBRARY_PACKAGE_NAME = "com.android.launcher.protonan
 
 lib 的构建配置整体**跑得通、有测试**，但有 **3 个 P0 真 bug**（`minSdk = 36` 让 ColorOS 15 装不上、`compileSdk = 37` + android-37 hack 让新开发者踩坑、Kotlin 2.0.21 vs 原厂 1.8.x 元数据在某些 stdlib 行为上可能有差异），**1 个 P1 风险**（Java 21 class file version 65 让 Android 13 设备 `VerifyError`），**2 个文档外 hack**（android-37 SDK 复制 + 关 auto-detect + 抑制 compileSdk 警告）。**建议先修 B1 + B2 + B4（合计 6 行），ColorOS 15 真机就能跑起来**。
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方法**：逐条读取 `lib/build.gradle.kts`、`demo/build.gradle`、`gradle/libs.versions.toml`、`settings.gradle`、`gradle.properties`、demo `AndroidManifest.xml`，不信任已有标记。
 
-本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+### 当前构建配置实测值（交叉验证）
+| 字段 | 文档值 | 实测值 | 一致 |
+|---|---|---|---|
+| lib/build.gradle.kts 格式 | KTS | KTS | ✅ |
+| demo/build.gradle 格式 | Groovy（.gradle） | Groovy（.gradle） | ✅ |
+| settings.gradle 格式 | Groovy（.gradle） | Groovy（.gradle） | ✅ |
+| compileSdk | 37 | 37 | ✅ |
+| minSdk | 36 | 36 | ✅ |
+| buildToolsVersion | "37.0.0" | "37.0.0" | ✅ |
+| kotlin | "2.0.21" | "2.0.21" | ✅ |
+| agp | "8.9.0" | "8.9.0" | ✅ |
+| dynamicanimation | "1.1.0" | "1.1.0" | ✅ |
+| JavaVersion.VERSION_21 | 21 | 21 | ✅ |
+| jvmTarget | "21" | "21" | ✅ |
+| demo compileSdk/minSdk/targetSdk | 37/36/37 | 37/36/37 | ✅ |
+| LauncherEntryActivity exported | true | true（AndroidManifest.xml:16） | ✅ |
+| 11 demo activities exported | 无声明 | 无声明（默认 false，无 intent-filter） | ✅ |
 
-本份批次 5 逐条复核结果：
-- P0-bug-1（dynamicanimation 上游 vs OPPO fork）— ⚠️未修复（B5 缓解未做；冲突仅在同进程合包场景）
-- P0-bug-2（minSdk/compileSdk）— ⚠️未修复（未下调；需 gradle 验证 + 主线程确认目标设备）
-- P0-bug-3（Kotlin 2.0.21 元数据）— ⚠️待复核（推测性，需 1.8 vs 2.0 对照实测）
-- P0-bug-4（Java 21 classfile）— ❌不成立/已过期（minSdk36 已排除 <API34 设备）
-- P0-bug-5（android-37 SDK hack）— ⚠️未修复（本机环境；B6 文档化未做）
-- P0-bug-6（buildTools 37.0.0 三段式）— ❌不成立/已过期（实配合法无 bug）
-- P0-bug-7（demo activity exported）— ❌不成立/已过期（manifest 实查无缺陷）
-- P0-bug-8（签名）— ✔️保持简化；P0-bug-9（NDK）— ✔️保持简化
-- P0-bug-10（auto-detect/JRE 环境）— ⚠️未修复（AGENTS.md 说明属文档范围）
-- §4.1 B1/B2/B5/B6 — ⚠️未修复；B3/B4 — ❌不成立/已过期；B7..B10 — ✔️保持简化
-- §4.2 K1..K10 — ✔️保持简化（与在行标记一致）
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+### 逐条状态复核（10 条 P0-bug + 10 条建议）
+
+| 条目 | 原标记 | 复核 | 修正 |
+|---|---|---|---|
+| P0-bug-1 dynamicanimation 上游 vs fork | ⚠️未修复 | ⚠️ 确认：libs.versions.toml 仍 1.1.0 | 无 |
+| P0-bug-2 minSdk/compileSdk | ⚠️未修复 | ⚠️ 确认：仍 36/37 | 无 |
+| P0-bug-3 Kotlin 2.0.21 元数据 | ⚠️待复核 | ⚠️ 推测性，需实测 | 无 |
+| P0-bug-4 Java 21 classfile | ❌不成立 | ❌ 确认：minSdk36 排除 <API34 设备 | 无 |
+| P0-bug-5 android-37 SDK hack | ⚠️未修复 | ⚠️ 本机环境配置 | 无 |
+| P0-bug-6 buildTools 37.0.0 | ❌不成立 | ❌ 确认：三段式合法 | 无 |
+| P0-bug-7 demo exported | ❌不成立 | ❌ 确认：LauncherEntryActivity 已 exported=true；其余无 intent-filter | 无 |
+| P0-bug-8 签名 | ✔️保持简化 | ✔️ 确认 | 无 |
+| P0-bug-9 NDK | ✔️保持简化 | ✔️ 确认 | 无 |
+| P0-bug-10 auto-detect | ⚠️未修复 | ⚠️ 确认 | 无 |
+| §4.1 B1 compileSdk→35 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| §4.1 B2 minSdk→31 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| §4.1 B3 Java→17 | ❌不成立 | ❌ 确认 | 无 |
+| §4.1 B4 demo exported | ❌不成立 | ❌ 确认 | 无 |
+| §4.1 B5 consumer-rules COUI | ⚠️未修复 | ⚠️ 确认 | 无 |
+| §4.1 B6 hack 文档化 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| §4.1 B7..B10 | ✔️保持简化 | ✔️ 确认 | 无 |
+| §4.2 K1..K10 | ✔️保持简化 | ✔️ 全部确认 | 无 |
+
+**总结**：18 条目原标记全部正确。构建配置实测值与文档一致。demo/build.gradle 确认为 Groovy（非 KTS），文档已正确标注。

@@ -16,17 +16,17 @@
 
 | 主题 | lib 类 / 文件 | 原厂类（文件:行） | 关系 |
 |---|---|---|---|
-| CustomRectFSpringAnim 6 自由度弹簧 | `launcher/async/CustomRectFSpringAnim.kt`（**18 行占位**） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42`（Metadata 显式 907 行量级 + 6 字段组 `mCenterX/mRectY/mWidth/mRadio/mRectRadius/mAlpha`） | **完全降级**（占位） |
+| CustomRectFSpringAnim 6 自由度弹簧 | `anim/CustomRectFSpringAnim.kt`（**18 行占位**） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42`（Metadata 显式 907 行量级 + 6 字段组 `mCenterX/mRectY/mWidth/mRadio/mRectRadius/mAlpha`） | **完全降级**（占位） |
 | 弹簧动画帧循环载体 | （无） | `com/android/quickstep/util/animation/MultiDynamicAnimation.java:21` | **完全缺失** |
 | 单自由度弹簧状态 | （无） | `com/android/quickstep/util/animation/SpringHolder.java`（44 行） | **完全缺失** |
 | 弹簧解析解积分 | （无） | `com/android/quickstep/util/animation/SpringForce.java:38`（三支闭式：过阻尼 / 临界阻尼 / 欠阻尼）+ 同包 `androidx/dynamicanimation/animation/SpringForce.java` 兜底 | **完全缺失** |
 | 弹簧反射调用工具 | （无） | `com/android/quickstep/util/animation/SpringAnimReflectUtils.java:36`（`isAtEquilibrium` 反射、`updateValues` 直调） | **完全缺失** |
-| 帧源（SF-vsync） | `core/scheduler/ScheduledTickScheduler.kt` + `launcher/animthread/HandlerTickScheduler.kt` | `com.android.internal.graphics.SfVsyncFrameCallbackProvider`（@hide）+ `OplusExecutors.java:5,170` `setProvider` 调用 | **降级为 Handler postDelayed** |
-| UX 线程提权 / UAF 绑核 | `launcher/animthread/AnimationControlThread.kt:63-69` 仅 `setThreadPriority` 兜底 | `com/oplus/basecommon/util/LauncherBooster.java` 整套 `CpuBoost`：`setUxThreadValue`/`setUx`/`setUxImFlag`/`setAsyncUx`/`setUxEnableAllPlatform`/`reportKeyThread`（UAF `reportKeyThreadToUAF`） | **完全缺失** |
+| 帧源（SF-vsync） | `core/ChoreographerTickScheduler.kt`（原 ScheduledTickScheduler/HandlerTickScheduler 于 215ecb5 合并删除） | `com.android.internal.graphics.SfVsyncFrameCallbackProvider`（@hide）+ `OplusExecutors.java:5,170` `setProvider` 调用 | **降级为公开 Choreographer 真 VSYNC**（215ecb5 后已从 postDelayed 升级到 Choreographer） |
+| UX 线程提权 / UAF 绑核 | `thread/AnimationControlThread.kt:65-69` 仅 `setThreadPriority` 兜底 + ChoreographerTickScheduler 真 VSYNC | `com/oplus/basecommon/util/LauncherBooster.java` 整套 `CpuBoost`：`setUxThreadValue`/`setUx`/`setUxImFlag`/`setAsyncUx`/`setUxEnableAllPlatform`/`reportKeyThread`（UAF `reportKeyThreadToUAF`） | **完全缺失** |
 | merge helper（远程动画合并） | （无） | `com/oplus/quickstep/utils/AppOpenAnimMergeHelper.java`（11 方法）+ `MultiAppAnimMergeHelper.java`（6 方法）+ `InterceptKeyEventHelper.java`（反射 `OplusWindowManager.setInterceptKeyEventEnabled`） | **完全缺失** |
 | MultiOpen 预启动 | （无） | `com/oplus/quickstep/utils/MultiOpenPreStartHelper.java`（19 方法 + ReentrantLock/Condition/ArrayMap 三件套） | **完全缺失** |
 | 续行（swipe → recents） | （无） | `com/oplus/quickstep/utils/AppSwipeToRecentContinuationHelper.java`（1800 行，5 个 continuation anim + 2 个 align eliminate anim） | **完全缺失** |
-| RUS 远程配置 | `launcher/feature/AnimationFeatureHelper.kt`（本地 setter 模拟） | `com/oplus/quickstep/utils/AnimationFeatureHelper.java`（`RusBaseConfigManager.RusConfigChangedListener` 真实注册 + `LauncherCommonConfigManager` 派发 + `onDestroy` 清理） | **本地 setter 替代，缺 RUS 真实通路** |
+| RUS 远程配置 | `manager/AnimationFeatureHelper.kt`（本地 setter 模拟） | `com/oplus/quickstep/utils/AnimationFeatureHelper.java`（`RusBaseConfigManager.RusConfigChangedListener` 真实注册 + `LauncherCommonConfigManager` 派发 + `onDestroy` 清理） | **本地 setter 替代，缺 RUS 真实通路** |
 | MESSAGE_RELEASE_TOUCH 600ms 闸门 | （无） | `com/oplus/quickstep/utils/AnimationController.java` `MESSAGE_RELEASE_TOUCH=101`、`RELEASE_TOUCH_DELAY=600`、`handleMessage` 设 `mOpenWindowAnimRunning=false`；`forbidTouch()` 返回 `mOpenWindowAnimRunning \|\| state==MULTI_WAITING \|\| state==REVERSE_OPEN \|\| startActivityRunnable!=null` | **完全缺失** |
 
 ---
@@ -45,7 +45,7 @@
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| 1 | `SfVsyncFrameCallbackProvider` → `HandlerTickScheduler`（postDelayed 16ms 自走） | `OplusExecutors.java:5,170`（`setProvider` 调用） | @hide API；lib 注释明示；v4 trace 实证该设备帧源并未生效（实测对齐 app-vsync，详见 `animation-trace-validation.md §5`） |
+| 1 | `SfVsyncFrameCallbackProvider` → `ChoreographerTickScheduler`（公开 Choreographer 真 VSYNC；215ecb5 后 HandlerTickScheduler/ScheduledTickScheduler 已删） | `OplusExecutors.java:5,170`（`setProvider` 调用） | @hide API；lib 注释明示；v4 trace 实证该设备帧源并未生效（实测对齐 app-vsync，详见 `animation-trace-validation.md §5`） |
 | 2 | `LauncherBooster.setUxThreadValue` UX 线程注册 → `Process.setThreadPriority` 兜底 | `LauncherBooster.java:53000+` 反射 `OSceneManager.setUxThreadValue` 调用 | OPPO 私有 OS 服务；lib 注释明示（`AnimationControlThread.kt:36-40`） |
 | 3 | `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 整组未移植 → `AsyncSpringAnim`（`AsyncSpringAnim.kt`）走 androidx SpringAnimation | `CustomRectFSpringAnim.java:43-113`（6 字段 × 6 组 SpringForce + SpringHolder）；`SpringForce.java` 三支闭式；`SpringAnimReflectUtils.java:24` `sUpdateValuesMethod` 字段、`updateValues` 直调 | androidx SpringAnimation 行为等价、API 公开；lib 在 `CustomRectFSpringAnim.kt:8-10` 注释中明示"实际动画逻辑由 SpringAnimation 实现" |
 | 4 | `CustomRectFSpringAnim` 6 自由度 RectF 弹簧 → 占位句柄（仅 AnimType 枚举） | `CustomRectFSpringAnim.java:115-123` 7 值 AnimType；`:43-113` 6 个 SpringHolder + 6 个 SpringForce | 607-908 行 RectTransformHelper + `OnAnimUpdateListener` 写入 SurfaceControl.Transaction 是 *事务写表层*，与"动画线程方案"主线无关；lib 用 androidx SpringAnimation 演示 |
@@ -197,3 +197,34 @@
 - **§④-4.1 表** — 1-3/5/6 ⚠️未修复，4 ✔️，7 ❌不成立（见正文）
 - **§④-4.2 表** — 全部 ✔️保持简化（清单即保持简化）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+- **复核方法**：逐条读取文档声称 → Grep/Python 读取 lib 源码 → 对照 OPPO 原厂证据 → 修正标记
+- **复核条目总数**：33（§②-A 3 条 + §②-B 7 条 + §②-C 20 条 + §③ 13 条 + §④-4.1 7 条 + §④-4.2 7 条）
+- **修正数**：3 条（路径勘误 + 帧源描述更新）
+
+### 修正明细
+
+| # | 条目 | 修正内容 | 修正原因 |
+|---|---|---|---|
+| 1 | §① 表 + 全文路径 | `launcher/async/` → `anim/`；`launcher/animthread/` → `thread/`；`launcher/feature/` → `manager/` | e62dbff 包重组 |
+| 2 | §① 表帧源行 + §②-B-1 | `HandlerTickScheduler`（postDelayed） → `ChoreographerTickScheduler`（真 VSYNC）；"降级为 Handler postDelayed" → "降级为公开 Choreographer 真 VSYNC" | 215ecb5 合并删除旧 scheduler；帧源已从 postDelayed 升级到 Choreographer |
+| 3 | §① 表 AnimationControlThread 行 | 行号 `:63-69` → `:65-69`；补充 ChoreographerTickScheduler | onLooperPrepared 实际行号 + 帧源升级 |
+
+### 逐条维持原判（已亲自对代码验证）
+
+- §②-A-1 ✔️：`thread/AnimationControlThread.kt:78` PRIORITY=-19，`:81` THREAD_NAME="launcher.anim"
+- §②-A-2 ✔️：`thread/AnimationControlThread.kt:65-70` onLooperPrepared 装 ChoreographerTickScheduler + setThreadPriority
+- §②-A-3 ✔️：`thread/AsyncAnimWrapper.kt` runOnAnimThread/runOnMainThread
+- §②-B-1 ✔️：SfVsyncFrameCallbackProvider → ChoreographerTickScheduler（有意简化，真 VSYNC 已对齐）
+- §②-B-2 ✔️：LauncherBooster UX → Process.setThreadPriority 兜底
+- §②-B-3 ✔️：MultiDynamicAnimation/SpringHolder/SpringForce 整组未移植
+- §②-B-4 ✔️：CustomRectFSpringAnim 占位（`anim/CustomRectFSpringAnim.kt` 18 行）
+- §②-B-5 ✔️：6 个 merge/pre-start/续行 helper 未移植
+- §②-B-6 ✔️：RUS simulateRemoteUpdate
+- §②-B-7 ✔️：MESSAGE_RELEASE_TOUCH 未移植
+- §②-C 全部 20 条：语义核实均正确（16 条"完全缺失"、2 条"降级"、2 条"本地 setter 替代"）
+- §③ 全部 13 条风险标记维持（#1 ⚠️、#2-3 ✔️、#4-6 ⚠️、#7 ⚠️、#8 ✔️、#9-11 ⚠️、#12 ❌、#13 ✔️）
+- §④-4.1 全部 7 条维持（#1-3 ⚠️、#4 ✔️、#5-6 ⚠️、#7 ❌）
+- §④-4.2 全部 7 条 ✔️ 维持

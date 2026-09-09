@@ -164,8 +164,8 @@
   ```kotlin
   override fun getNextFinishSeqId(recentsController: Any?): Long {
       val p = nextFinishSeqId
-      // 原厂按引用比较 controller，这里 === 一样
-      if (p != null && p.first === recentsController) return p.second
+      // 原厂按引用比较 controller，这里用 == (结构相等)保持一致
+      if (p != null && p.first == recentsController) return p.second
       return 0L
   }
   ```
@@ -326,12 +326,12 @@ review 03 §3-e 已标，本报告给完整证据：
 
 | 项 | 标题 | 状态 | 证据 |
 |---|---|---|---|
-| 3-a | `addSeqId` 缺 `supportInterruption()` 闸门 | ⚠️未修复（成本 2 行 / 当前不可观察） | `lib/.../seq/AnimationSeqHelper.kt:55-58` 仍无 feature gate；`OplusAnimManager.supportInterruption()` 恒 true（`manager/OplusAnimManager.kt:27`），实际零影响；OPPO `:59-62` 逻辑保留 |
-| 3-b | `canFinishRecent` / `canInterceptGesture` 缺 feature 闸门 | ⚠️未修复（成本 4 行 + flag 注入） | `AnimationSeqHelper.kt:60-63` 仍只比时间窗；OPPO `:70,75` 的 `AppFeatureUtils.isSupportStartingSurface()` + `supportInterruption()` 双闸门未移植（lib 无 `AppFeatureUtils`） |
-| 3-c | `getNextFinishSeqId` 用 `===` vs OPPO `Intrinsics.areEqual` | ✅已修复（60bd048） | `AnimationSeqHelper.kt:91-94` 已改为 `==`；OPPO `AnimationSeqHelper.java:105` 用 `Intrinsics.areEqual` 等价结构相等 |
-| 3-d | `resetInterceptState()` no-op 残留 | ✅已修复（60bd048） | `AnimationSeqHelper.kt:81-83` override 调 `AnimSeqTimeStamp.resetLastStartAppTime()`，与 OPPO `:112-114` 等价 |
-| 3-e | `updateNextFinishSeqIdIfNeed` 无条件 `++seqId` 与覆写 pair | ✅已修复（60bd048） | `AnimationSeqHelper.kt:85-90` 改为「pair 为空或 controller 不同才 ++」；OPPO `AnimationSeqHelper.java:124-128` 同结构 |
-| 3-f | `MAX_GO_NORMAL_DELAY_TIME = 200L` 缺失 | ⚠️未修复（成本 1 行 / 纯遗留常量） | `AnimationSeqHelper.kt:6-7` 仅声明 `MAX_DELAY_TIME`/`MAX_INTERCEPT_GESTURE_DELAY_TIME`，OPPO `:20` 的 `MAX_GO_NORMAL_DELAY_TIME` 未补（类内 0 引用，零影响） |
+| 3-a | `addSeqId` 缺 `supportInterruption()` 闸门 | ⚠️未修复（成本 2 行 / 当前不可观察） | `AnimationSeqHelper.kt:55-59` 仍无 feature gate；`OplusAnimManager.supportInterruption()` 恒 true（`manager/OplusAnimManager.kt:27`），实际零影响；OPPO `:59-62` 逻辑保留 |
+| 3-b | `canFinishRecent` / `canInterceptGesture` 缺 feature 闸门 | ⚠️未修复（成本 4 行 + flag 注入） | `AnimationSeqHelper.kt:61-65` 仍只比时间窗；OPPO `:70,75` 的 `AppFeatureUtils.isSupportStartingSurface()` + `supportInterruption()` 双闸门未移植（lib 无 `AppFeatureUtils`） |
+| 3-c | `getNextFinishSeqId` 用 `===` vs OPPO `Intrinsics.areEqual` | ✅已修复（60bd048） | `AnimationSeqHelper.kt:98-103` 已改为 `==`；OPPO `AnimationSeqHelper.java:105` 用 `Intrinsics.areEqual` 等价结构相等 |
+| 3-d | `resetInterceptState()` no-op 残留 | ✅已修复（60bd048） | `AnimationSeqHelper.kt:86-88` override 调 `AnimSeqTimeStamp.resetLastStartAppTime()`，与 OPPO `:112-114` 等价 |
+| 3-e | `updateNextFinishSeqIdIfNeed` 无条件 `++seqId` 与覆写 pair | ✅已修复（60bd048） | `AnimationSeqHelper.kt:90-96` 改为「pair 为空或 controller 不同才 ++」；OPPO `AnimationSeqHelper.java:124-128` 同结构 |
+| 3-f | `MAX_GO_NORMAL_DELAY_TIME = 200L` 缺失 | ⚠️未修复（成本 1 行 / 纯遗留常量） | `AnimationSeqHelper.kt:8-9` 仅声明 `MAX_DELAY_TIME`/`MAX_INTERCEPT_GESTURE_DELAY_TIME`，OPPO `:20` 的 `MAX_GO_NORMAL_DELAY_TIME` 未补（类内 0 引用，零影响） |
 
 ### §4.1 值得补进 lib 的（逐项判定）
 
@@ -348,3 +348,54 @@ review 03 §3-e 已标，本报告给完整证据：
 ### §4.2 建议保持简化（全部确认合理）
 
 6 条全部标 `✔️保持简化`；理由与原文档一致
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+**方法**：逐条读取当前代码（`seq/AnimationSeqHelper.kt` 104 行、`seq/DefaultAnimationSeqHelper.kt` 22 行、`seq/AnimSeqTimeStamp.kt` 79 行、`manager/OplusAnimManager.kt` 65 行）+ OPPO 只读对比树 Grep 交叉验证，不信任已有标记。
+
+**条目总数**：§3 行为差异 6 条 + §4.1 回移建议 7 条 + §4.2 保持简化 6 条 = **19 条**
+
+**修正数**：**5 处**
+
+### §3 逐条判定
+
+| 项 | 标题 | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|---|
+| 3-a | addSeqId 缺 supportInterruption() 闸门 | ⚠️未修复 | ⚠️未修复 | 无变化。代码 `:55-59` 无 feature gate，`OplusAnimManager.supportInterruption()` 恒 true（`:37`）。 |
+| 3-b | canFinishRecent/canInterceptGesture 缺 feature 闸门 | ⚠️未修复 | ⚠️未修复 | 无变化。代码 `:61-65` 仍只比时间窗。 |
+| 3-c | getNextFinishSeqId 用 === vs == | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正1**：正文 §3-c 代码片段（原显示 `===`）已改为 `==`，注释已改为"用 == (结构相等)保持一致"。代码 `:98-103` 确认使用 `==`。行号从原 `:91-94` 更新为 `:98-103`。 |
+| 3-d | resetInterceptState() no-op 残留 | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正2**：§5 行号表从"缺失 override（基类 :15）"更新为 `:86-88`。代码确认 override 存在且调用 `AnimSeqTimeStamp.resetLastStartAppTime()`。 |
+| 3-e | updateNextFinishSeqIdIfNeed 无条件 ++seqId | ✅已修复（60bd048） | ✅已修复（60bd048） | 无变化。代码 `:90-96` 确认条件更新：`if (p == null \|\| p.first != recentsController)`。行号从原 `:109-112` 更新为 `:90-96`。 |
+| 3-f | MAX_GO_NORMAL_DELAY_TIME = 200L 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。代码 `:8-9` 仅声明 MAX_DELAY_TIME/MAX_INTERCEPT_GESTURE_DELAY_TIME。 |
+
+### §4.1 逐条判定
+
+| # | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|
+| 1 | ✅已修复（60bd048） | ✅已修复（60bd048） | 无变化。 |
+| 2 | ⚠️半修 | ⚠️半修 | 无变化。条件更新已修（60bd048），supportInterruption 闸门恒 true 零影响。 |
+| 3 | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正3**：行号从 `:91-94` 更新为 `:98-103`。 |
+| 4 | ⚠️未修复 | ⚠️未修复 | 无变化。feature flag 不存在。 |
+| 5 | ⚠️未修复 | ⚠️未修复 | 无变化。恒 true，零影响。 |
+| 6 | ⚠️待复核 | ⚠️待复核 | **修正4**：已独立验证 `AnimationSeqHelperTest.kt`（104 行），确认无 `testRepeatedUpdateSameControllerReturnsSameSeqId` 测试。现有 `testUpdateNextFinishSeqIdIfNeed`（`:64-72`）只验证不同 controller 返回 0L，未覆盖同 controller 重复调用。 |
+| 7 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+
+### §4.2 全部确认
+
+6 条全部 ✔️保持简化，与原文一致。
+
+### 行号总修正
+
+**修正5**：§5 行号速查表全面刷新（lib 行号因包重组 + 代码新增全部更新）：
+- 常量 KEY/MAX/MSG: `:14-16` → `:8-13`
+- 字段: `:53-63` → `:29-36`
+- updateSeqId: `:79` → `:53`
+- addSeqId: `:82-86` → `:55-59`
+- canFinishRecent: `:88-89` → `:61-62`
+- canInterceptGesture: `:91-92` → `:64-65`
+- clearFinishRecentsRunnable: `:104-107` → `:81-84`
+- delayFinishRecents: `:95-103` → `:67-79`
+- getNextFinishSeqId: `:111-115` → `:98-103`
+- resetInterceptState: 缺失 → `:86-88`
+- updateNextFinishSeqIdIfNeed: `:109-112` → `:90-96`
+

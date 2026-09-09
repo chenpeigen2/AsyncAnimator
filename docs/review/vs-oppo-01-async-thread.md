@@ -1,7 +1,7 @@
 # vs OPPO — 区域 01：异步/线程层（lib vs ColorOS 15 Launcher 15.8.24）
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（Kotlin；含 `launcher/async`、`launcher/animthread`、`core/anim`、`core/scheduler`、`util/Trace`，外加 `launcher/continuation` 的续行入口）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（Kotlin；2026-09-09 包重组 e62dbff/b39f130 后：`anim/`＝async+continuation、`thread/`＝animthread+async 线程类、`core/`＝anim+scheduler+Trace。下文 lib 证据路径均已按此校正；`ScheduledTickScheduler`/`HandlerTickScheduler` 已于 215ecb5 删除）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24，JADX 反编译；80% 文件 DLP 加密，全部证据经 Grep ripgrep 明文通道取得，行号为 JADX 反编译文本行号）
 >
 > 上一轮对比见 `docs/review/01-async-animthread.md`（已过时：lib 当时 `Executors` 只剩 `MAIN_EXECUTOR`、`AsyncAnimCallbacks` 无快照派发、`AnimationControlThread` 优先级错写 `-8`/`URGENT_DISPLAY`）。本报告基于  **当前 lib 状态**重做，反映 4 处已修复与若干新增差异。
@@ -12,14 +12,14 @@
 
 ## 0. 本轮 lib vs 上一轮 review 01 的差异（先列，方便对齐）
 
-| 项 | 上一轮 review 01 状态 | 当前 lib 状态 | 来源 |
+| 项 | 上一轮 review 01 状态 | 当前 lib 状态（HEAD 086844e） | 来源 |
 |---|---|---|---|
-| 线程优先级 | `-8` / `THREAD_PRIORITY_URGENT_DISPLAY`（bug） | `-19` 字面量（与原厂一致） | `AnimationControlThread.kt:78` |
-| `Executors` 单例 | 仅 `MAIN_EXECUTOR` | 新增 `ANIM_CONTROL_EXECUTOR`（绑定 launcher.anim） | `Executors.kt:17-19` |
-| `AsyncAnimCallbacks` 派发 | 同步 `post`，可能阻塞 sync-barrier | `postAsync`（`Message.setAsynchronous(true)`） | `LooperExecutor.kt:39-46`、`AsyncAnimCallbacks.kt:62-78` |
-| `AsyncAnimCallbacks` 快照派发 | 直接迭代 `mutableListOf`，有 CME 风险 | `getListeners()` 先 `removeAll{null}` 再 `filterNotNull` 快照 | `AsyncAnimCallbacks.kt:84-88` |
-| `ActualEndAnimListener` 缺失 | 缺失 | 已实现（`onAnimActualEnd` 仅对 ActualEndAnimListener 派发） | `ActualEndAnimListener.kt:23-27`、`AsyncAnimCallbacks.kt:65-77` |
-| `AsyncSpringAnim` 类 | 未提及 | 新增（`extends AsyncAnimWrapper`、对齐原厂 `OplusAsyncSpringAnimWrapper`） | `AsyncSpringAnim.kt:18-55` |
+| 线程优先级 | `-8` / `THREAD_PRIORITY_URGENT_DISPLAY`（bug） | `-19` 字面量（与原厂一致） | `thread/AnimationControlThread.kt:83` |
+| `Executors` 单例 | 仅 `MAIN_EXECUTOR` | 新增 `ANIM_CONTROL_EXECUTOR`（绑定 launcher.anim） | `thread/Executors.kt:20,23` |
+| `AsyncAnimCallbacks` 派发 | 同步 `post`，可能阻塞 sync-barrier | `postAsync`（`Message.setAsynchronous(true)`） | `thread/LooperExecutor.kt:49-54`、`anim/AsyncAnimCallbacks.kt:97-100` |
+| `AsyncAnimCallbacks` 快照派发 | 直接迭代 `mutableListOf`，有 CME 风险 | `getListeners()` 先 `removeAll{null}` 再 `filterNotNull` 快照 | `anim/AsyncAnimCallbacks.kt:76-79` |
+| `ActualEndAnimListener` 缺失 | 缺失 | 已实现（`onAnimActualEnd` 仅对 ActualEndAnimListener 派发） | `anim/ActualEndAnimListener.kt:23-27`、`anim/AsyncAnimCallbacks.kt:61-70` |
+| `AsyncSpringAnim` 类 | 未提及 | 新增（`extends AsyncAnimWrapper`、对齐原厂 `OplusAsyncSpringAnimWrapper`） | `anim/AsyncSpringAnim.kt:21-51` |
 
 ---
 
@@ -29,21 +29,21 @@
 
 | # | lib 类（文件） | 原厂类（文件:行） | 关系 |
 |---|---|---|---|
-| 1 | `launcher/async/AsyncValueAnimator.kt` | `com/android/quickstep/util/animation/AsyncValueAnimator.java:24`（`extends ValueAnimator`，`classes3.dex`） | 精确复刻（详 §②） |
-| 2 | `launcher/async/AsyncAnimCallbacks.kt` | `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:23`（`final class）` | 精确复刻（详 §②） |
-| 3 | `launcher/async/ActualEndAnimListener.kt` | `com/android/quickstep/util/animation/ActualEndAnimListener.java:9`（`open class extends NullableAnimatorListenerAdapter`，`:10` 空钩子） | 精确复刻 |
-| 4 | `launcher/async/LooperExecutor.kt` | `com/oplus/basecommon/thread/LooperExecutor.java:12`（`extends AbstractExecutorService`，无 `postAsync`） | 精确复刻主语义，`postAsync` 是新增扩展（详 §②） |
-| 5 | `launcher/async/Executors.kt` | `com/oplus/basecommon/thread/Executors.java:20`（`MAIN_EXECUTOR`）+ `OplusExecutors.java:95`（`ANIM_EXECUTOR`） | 精确复刻（仅 2 个单例，详 §②-B） |
-| 6 | `launcher/async/AsyncSpringAnim.kt` | `com/android/quickstep/util/OplusAsyncSpringAnimWrapper.java:17`（`final class extends AsyncAnimWrapper`，持 `SpringAnimation` + `viewSupportAnimThread` 标志，`:19`） | 精确复刻主骨架（详 §②-A） |
-| 7 | `launcher/async/CustomRectFSpringAnim.kt` | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java`（907 行；`mStartAsync = true` @ `:252`；`mAnimType = SWIPE_TO_HOME` @ `:248`；`AnimType` 7 值 `@ `:115-123`） | 仅 18 行句柄占位，原厂 6 自由度弹簧/线程切换协议全部不移植（详 §②-B） |
-| 8 | `launcher/animthread/AsyncAnimWrapper.kt` | `com/android/launcher3/anim/AsyncAnimWrapper.java:10`（20 行；`runOnAnimThread → OplusExecutors.ANIM_EXECUTOR` @ `:11-13`；`runOnMainThread → MAIN_EXECUTOR` @ `:16-18`） | 精确复刻（1:1） |
-| 9 | `launcher/animthread/AnimationControlThread.kt` | `com/oplus/basecommon/thread/OplusExecutors.java:95`（`new OplusLooperExecutor(createAndStartNewLooper("launcher.anim", -19, …), new f(1))`）；`:169-171`（`ANIM_EXECUTOR$lambda$0`：`setProvider(new SfVsyncFrameCallbackProvider())` + `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`） | 结构对齐，但隐式复刻而非显式（详 §②-B、§③） |
-| 10 | `launcher/animthread/HandlerTickScheduler.kt` | **无直接对应类**；替代 `core/anim/AnimationHandler` 的 `FrameCallbackProvider14/16` + 框架 `AnimationHandler.setProvider(new SfVsyncFrameCallbackProvider())`（`OplusExecutors.java:170`） | 折中实现（详 §②-B） |
-| 11 | `core/anim/AnimationHandler.kt` | 框架 `android.animation.AnimationHandler`（@hide，**不在 sources 树**，仅被 import）；`MultiDynamicAnimation.java:21` `implements AnimationHandler.AnimationFrameCallback`，`:127` `getInstance().addAnimationFrameCallback(this, 0L)`；`vendored androidx/core/animation/AnimationHandler` 与 `androidx/dynamicanimation/animation/AnimationHandler`（均在 `classes2.dex`，非 sources 树） | ThreadLocal/懒删除/续帧/快照分发等结构镜像原厂（详 §②-A 与 review 04） |
-| 12 | `core/scheduler/TickScheduler.kt` + `ScheduledTickScheduler.kt` | `vendored AnimationFrameCallbackProvider` 接口 | 抽象合并 + JVM 实现（详 §②-B） |
-| 13 | `util/Trace.kt` | `android.os.Trace`（@hide）+ 各处 `Trace.traceBegin/traceEnd` | 简化 stderr 重定向（详 §②-B） |
-| 14 | `launcher/continuation/OplusValueAnimator.kt` | `com/oplus/quickstep/utils/OplusValueAnimator.java:39`（`extends ValueAnimator`，持 `AnimParam<T> param` + `ObjectAnimator timeController`） | 委托骨架对齐；timeController 接线是空实现（review 04 §2.3-3） |
-| 15 | `launcher/continuation/RecordInputInterpolator.kt` | `com/oplus/quickstep/utils/RecordInputInterpolator.java:10` | 逐行一致（review 04 §2.1） |
+| 1 | `anim/AsyncValueAnimator.kt` | `com/android/quickstep/util/animation/AsyncValueAnimator.java:24`（`extends ValueAnimator`，`classes3.dex`） | 精确复刻（详 §②） |
+| 2 | `anim/AsyncAnimCallbacks.kt` | `com/android/quickstep/util/animation/AsyncAnimCallbacks.java:23`（`final class）` | 精确复刻（详 §②） |
+| 3 | `anim/ActualEndAnimListener.kt` | `com/android/quickstep/util/animation/ActualEndAnimListener.java:9`（`open class extends NullableAnimatorListenerAdapter`，`:10` 空钩子） | 精确复刻 |
+| 4 | `thread/LooperExecutor.kt` | `com/oplus/basecommon/thread/LooperExecutor.java:12`（`extends AbstractExecutorService`，无 `postAsync`） | 精确复刻主语义，`postAsync` 是新增扩展（详 §②） |
+| 5 | `thread/Executors.kt` | `com/oplus/basecommon/thread/Executors.java:20`（`MAIN_EXECUTOR`）+ `OplusExecutors.java:95`（`ANIM_EXECUTOR`） | 精确复刻（仅 2 个单例，详 §②-B） |
+| 6 | `anim/AsyncSpringAnim.kt` | `com/android/quickstep/util/OplusAsyncSpringAnimWrapper.java:17`（`final class extends AsyncAnimWrapper`，持 `SpringAnimation` + `viewSupportAnimThread` 标志，`:19`） | 精确复刻主骨架（详 §②-A） |
+| 7 | `anim/CustomRectFSpringAnim.kt` | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java`（907 行；`mStartAsync = true` @ `:252`；`mAnimType = SWIPE_TO_HOME` @ `:248`；`AnimType` 7 值 `@ `:115-123`） | 仅 18 行句柄占位，原厂 6 自由度弹簧/线程切换协议全部不移植（详 §②-B） |
+| 8 | `thread/AsyncAnimWrapper.kt` | `com/android/launcher3/anim/AsyncAnimWrapper.java:10`（20 行；`runOnAnimThread → OplusExecutors.ANIM_EXECUTOR` @ `:11-13`；`runOnMainThread → MAIN_EXECUTOR` @ `:16-18`） | 精确复刻（1:1） |
+| 9 | `thread/AnimationControlThread.kt` | `com/oplus/basecommon/thread/OplusExecutors.java:95`（`new OplusLooperExecutor(createAndStartNewLooper("launcher.anim", -19, …), new f(1))`）；`:169-171`（`ANIM_EXECUTOR$lambda$0`：`setProvider(new SfVsyncFrameCallbackProvider())` + `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`） | 结构对齐，但隐式复刻而非显式（详 §②-B、§③） |
+| 10 | ~~launcher/animthread/HandlerTickScheduler.kt~~（215ecb5 已删） | **无直接对应类**；替代 `core/AnimationHandler` 的 `FrameCallbackProvider14/16` + 框架 `AnimationHandler.setProvider(new SfVsyncFrameCallbackProvider())`（`OplusExecutors.java:170`） | 已删：职责并入 `core/ChoreographerTickScheduler`（真 Choreographer VSYNC，dbde195/215ecb5），见 §②-B-1 |
+| 11 | `core/AnimationHandler.kt` | 框架 `android.animation.AnimationHandler`（@hide，**不在 sources 树**，仅被 import）；`MultiDynamicAnimation.java:21` `implements AnimationHandler.AnimationFrameCallback`，`:127` `getInstance().addAnimationFrameCallback(this, 0L)`；`vendored androidx/core/animation/AnimationHandler` 与 `androidx/dynamicanimation/animation/AnimationHandler`（均在 `classes2.dex`，非 sources 树） | ThreadLocal/懒删除/续帧/快照分发等结构镜像原厂（详 §②-A 与 review 04） |
+| 12 | `core/TickScheduler.kt`（`ScheduledTickScheduler.kt` 215ecb5 已删） | `vendored AnimationFrameCallbackProvider` 接口 | 抽象合并；JVM 实现已删，唯一实现 `core/ChoreographerTickScheduler`（详 §②-B） |
+| 13 | `core/Trace.kt` | `android.os.Trace`（@hide）+ 各处 `Trace.traceBegin/traceEnd` | 简化 stderr 重定向（详 §②-B） |
+| 14 | `anim/OplusValueAnimator.kt`（原 launcher/continuation） | `com/oplus/quickstep/utils/OplusValueAnimator.java:39`（`extends ValueAnimator`，持 `AnimParam<T> param` + `ObjectAnimator timeController`） | 委托骨架对齐；timeController 接线已实现（`anim/OplusValueAnimator.kt:96-118` `TimeControllerObjectAnimator`、`:130-154` `generateContinuationAnim`）——修正 review 04 §2.3-3 “空实现”旧结论 |
+| 15 | `anim/RecordInputInterpolator.kt` | `com/oplus/quickstep/utils/RecordInputInterpolator.java:10` | 逐行一致（review 04 §2.1） |
 
 **配套线程族**（原厂全量、lib 0 移植，仅 §②-B 列出取舍理由）：
 - `URGENT_TRANSACTION_EXECUTOR`（`OplusExecutors.java:31-37`，"UrgentTransactionHelper"，-8）
@@ -70,7 +70,7 @@
 | 1 | `start/cancel/end` 按当前线程判 Looper，跨线程自动 marshal | `AsyncValueAnimator.java:117-127`（start）、`:130-141`（cancel）、`:154-164`（end）均用 `mAnimLooperExecutor.getLooper().isCurrentThread()` → 否则 `mAnimLooperExecutor.execute(...)` | `AsyncValueAnimator.kt:42-53`（`marshal{}` 内联或 `executor.execute`），结构对齐 |
 | 2 | 默认 executor = `MAIN_EXECUTOR` | `AsyncValueAnimator.java:55`（`this.mAnimLooperExecutor = MAIN_EXECUTOR`） | `AsyncValueAnimator.kt:17`（`var executor = Executors.MAIN_EXECUTOR`） |
 | 3 | `mIsEnd` AtomicBoolean 门控：cancel/start 遇 end 丢弃，end 用 CAS 保证只发一次 | `AsyncValueAnimator.java:57`（`new AtomicBoolean(false)`）、`:61/69/80`（cancel/end/start 内 gate） | `AsyncValueAnimator.kt:22`（`AtomicBoolean(false)`）、`:25-37`（同名 gate） |
-| 4 | `Companion` + `ofFloat(isAsync, …)` 工厂（Kotlin object 模式） | `AsyncValueAnimator.java:34-55`（`Companion` 内 `ofFloat(isAsync: Boolean, values: Float…)`） | **缺失**（详 §②-C-4） |
+| 4 | `Companion` + `ofFloat(isAsync, …)` 工厂（Kotlin object 模式） | `AsyncValueAnimator.java:34-55`（`Companion` 内 `ofFloat(isAsync: Boolean, values: Float…)`） | **缺失**（详 §②-C-1） |
 
 #### A.2 `AsyncAnimCallbacks` 的"快照派发 + async 消息 + 双轨结束"
 
@@ -83,7 +83,7 @@
 | 9 | listener 始终回主线程 fire（`runOnMainThread`） | `AsyncAnimCallbacks.java:154-162`（`runOnMainThread(Runnable)`） + `:120, 128, 136, 143`（四处调用） | `AsyncAnimCallbacks.kt:112-117`（`runOnMainThread`）+ `:69-72, 100-103`（两处调用） |
 | 10 | listener 派发用 **async 消息**（穿透 sync-barrier） | `AsyncAnimCallbacks.java:154-162` → `Utilities.postAsyncCallback(MAIN_EXECUTOR.getHandler(), …)`；`Utilities.java:631-637`：`Message.obtain(handler, runnable).setAsynchronous(true).sendMessage()` | `AsyncAnimCallbacks.kt:114-117`（`exec.postAsync(action)`）→ `LooperExecutor.kt:39-46`（`Message.obtain(h) { action() }.isAsynchronous = true`），行为一致 |
 | 11 | 双轨结束：`onAnimActualEnd` 只对 `ActualEndAnimListener` 派发 | `AsyncAnimCallbacks.java:34-43`（`onAnimActualEnd$lambda$7` 仅 `instanceof ActualEndAnimListener` 时调 `onAnimActualEnd(animator)`） | `AsyncAnimCallbacks.kt:65-77`（同款 instanceof 判定），等价 |
-| 12 | `mAnimType` / `setAnimType` 与 `AnimationController` 解耦（Kotlin metadata 暴露为公开 API） | `AsyncAnimCallbacks.java:5` import `CustomRectFSpringAnim$AnimType`；metadata d2 表含 `mAnimType`/`setAnimType`/`type` | **lib 砍掉**（详 §②-B-3） |
+| 12 | `mAnimType` / `setAnimType` 与 `AnimationController` 解耦（Kotlin metadata 暴露为公开 API） | `AsyncAnimCallbacks.java:5` import `CustomRectFSpringAnim$AnimType`；metadata d2 表含 `mAnimType`/`setAnimType`/`type` | **lib 砍掉**（详 §②-B-4） |
 
 #### A.3 `LooperExecutor` 的"同 Looper 内联 + Handler.post"骨架
 
@@ -93,7 +93,7 @@
 | 14 | 提供 `getHandler()` / `getLooper()` / `getThread()` 访问器 | `LooperExecutor.java:35-45`（三 getter） | **缺失**（详 §②-C-3） |
 | 15 | `postDelayed(long)` 直接走 Handler | `LooperExecutor.java:61-62` | **缺失**（详 §②-C-3） |
 | 16 | `setThreadPriority(int)` | `LooperExecutor.java:65-66`（`Process.setThreadPriority(((HandlerThread) getThread()).getThreadId(), i9)`） | **缺失**（详 §②-C-3） |
-| 17 | `shutdown()` 抛 `UnsupportedOperationException`（"永不 quit"契约） | `LooperExecutor.java:71-79`（仅 `UnsupportedOperationException` 分支） | **缺失**（详 §②-C-3） |
+| 17 | `shutdown()` 抛 `UnsupportedOperationException`（"永不 quit"契约） | `LooperExecutor.java:71-79`（仅 `UnsupportedOperationException` 分支） | **已补**（086844e：`thread/LooperExecutor.kt:57-69` 的 `shutdown()/shutdownNow()/awaitTermination()` 抛 `UnsupportedOperationException`，`isShutdown/isTerminated` 恒 false） |
 | 18 | extends `AbstractExecutorService`（业务方可作 ExecutorService 类型持有） | `LooperExecutor.java:8` import + `:12` extends | **缺失**（详 §②-C-3） |
 | 19 | **新增**：`postAsync`（`Message.setAsynchronous(true)`） | 无 | `LooperExecutor.kt:39-46`，对齐原厂 `Utilities.postAsyncCallback` 派发语义（详 §②-A.2-10） |
 
@@ -110,8 +110,8 @@
 |---|---|---|---|
 | 22 | 线程名 `"launcher.anim"` | `OplusExecutors.java:95`（`createAndStartNewLooper("launcher.anim", -19, …)`） | `AnimationControlThread.kt:73`（`THREAD_NAME = "launcher.anim"`） |
 | 23 | 线程优先级字面量 `-19`（URGENT_AUDIO 档） | `OplusExecutors.java:95`（字面量 -19，绑核键 `LauncherBooster.LAUNCHER_STATIC_LAUNCHER_ANIM`） | `AnimationControlThread.kt:78`（`private const val PRIORITY = -19`）——**已修正 review 01 §②C-1 的 bug** |
-| 24 | `onLooperPrepared()` 内安装帧源（关键：装"本线程的 AnimationHandler"而非全局单例） | `OplusExecutors.java:169-171`（`ANIM_EXECUTOR$lambda$0`：先 `getInstance().setProvider(new SfVsyncFrameCallbackProvider())`，再 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`） | `AnimationControlThread.kt:48-55`（`onLooperPrepared`：`AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))` + `Process.setThreadPriority(myTid, PRIORITY)`），结构等价 |
-| 25 | 线程随类加载创建，进程级单例，永不 quit | `OplusExecutors.java:95`（`static final`，类初始化即建）+ `LooperExecutor.java:71-79`（shutdown 抛异常） | `AnimationControlThread.kt:81-83`（`internal val instance: AnimationControlThread by lazy(SYNCHRONIZED) { AnimationControlThread() }`，`init { start() }` 在 companion lazy 里）——**结构等价；shutdown 契约丢失**（详 §②-C-3） |
+| 24 | `onLooperPrepared()` 内安装帧源（关键：装"本线程的 AnimationHandler"而非全局单例） | `OplusExecutors.java:169-171`（`ANIM_EXECUTOR$lambda$0`：先 `getInstance().setProvider(new SfVsyncFrameCallbackProvider())`，再 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`） | `thread/AnimationControlThread.kt:63-71`（`onLooperPrepared`：`AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())` + `runCatching { Process.setThreadPriority(myTid, PRIORITY) }`），结构等价——帧源已由 HandlerTickScheduler（已删）换成 ChoreographerTickScheduler（真 VSYNC，dbde195/215ecb5） |
+| 25 | 线程随类加载创建，进程级单例，永不 quit | `OplusExecutors.java:95`（`static final`，类初始化即建）+ `LooperExecutor.java:71-79`（shutdown 抛异常） | `thread/AnimationControlThread.kt:85-88`（`internal val instance: AnimationControlThread by lazy(SYNCHRONIZED) { AnimationControlThread() }`；`init { start() }` 在 :51-53）——**结构等价；线程永不 quit，shutdown 契约由 LooperExecutor 承载（086844e，见 §②-C-3 更新）** |
 
 #### A.6 `AsyncSpringAnim` / `OplusAsyncSpringAnimWrapper` 的"按 viewSupportAnimThread 分发"骨架
 
@@ -136,13 +136,13 @@
 
 | # | 简化项 | 原厂对应 | lib 取舍理由 | 风险等级 |
 |---|---|---|---|---|
-| 1 | `SfVsyncFrameCallbackProvider`（@hide，框架 `android.animation.AnimationHandler`）→ `HandlerTickScheduler`（绑本线程 Looper 的 `postDelayed` 帧循环） | `OplusExecutors.java:5` import `com.android.internal.graphics.SfVsyncFrameCallbackProvider` + `:170` `setProvider(...)` | 框架 @hide API，AOSP 公开层无法直接调；lib 注释（`AnimationControlThread.kt:34-39`）明示 | 中（详 §③-2） |
-| 2 | `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())` UX 线程注册未移植 | `OplusExecutors.java:171` | OPPO 私有；lib 退化为在 `onLooperPrepared` 再设一次 `Process.setThreadPriority(tid, -19)` 兜底（`AnimationControlThread.kt:53`） | 中（详 §③-3） |
-| 3 | `CustomRectFSpringAnim` 砍成 18 行句柄占位（仅 AnimType 枚举 + 类名） | `CustomRectFSpringAnim.java` 907 行（`mCenterX`/`mRectY`/`mWidth`/`mRadio`/`mRectRadius`/`mAlpha` 六个 SpringHolder；`mAnimType`/`mStartAsync`/`mJustNotifyEndCallback`/… 标志；start/cancel/skipToEnd/reverseToOpen 全部含 `isCurrentThread` + post 纠偏；`mMultiDynamicAnimation`） | lib 注释（`CustomRectFSpringAnim.kt:3-9`）明示"实际动画逻辑由 SpringAnimation 实现" | 高（详 §③-4） |
+| 1 | `SfVsyncFrameCallbackProvider`（@hide，框架 `android.animation.AnimationHandler`）→ `core/ChoreographerTickScheduler`（ThreadLocal 本线程 Choreographer 真 VSYNC；原 `HandlerTickScheduler` postDelayed 自走时钟已删 215ecb5） | `OplusExecutors.java:5` import `com.android.internal.graphics.SfVsyncFrameCallbackProvider` + `:170` `setProvider(...)` | 框架 @hide API，AOSP 公开层无法直接调；lib 注释（`thread/AnimationControlThread.kt:35-41`）明示 | 中（详 §③-2/3） |
+| 2 | `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())` UX 线程注册未移植 | `OplusExecutors.java:171` | OPPO 私有；lib 退化为在 `onLooperPrepared` 再设一次 `runCatching { Process.setThreadPriority(myTid, -19) }` 兜底（`thread/AnimationControlThread.kt:70`） | 中（详 §③-3） |
+| 3 | `CustomRectFSpringAnim` 砍成 19 行句柄占位（仅 AnimType 枚举 + 类名，`anim/CustomRectFSpringAnim.kt:11-18`） | `CustomRectFSpringAnim.java` 907 行（`mCenterX`/`mRectY`/`mWidth`/`mRadio`/`mRectRadius`/`mAlpha` 六个 SpringHolder；`mAnimType`/`mStartAsync`/`mJustNotifyEndCallback`/… 标志；start/cancel/skipToEnd/reverseToOpen 全部含 `isCurrentThread` + post 纠偏；`mMultiDynamicAnimation`） | lib 注释（`anim/CustomRectFSpringAnim.kt:3-9`）明示"实际动画逻辑由 SpringAnimation 实现" | 高（详 §③-4/§③-5） |
 | 4 | `AsyncAnimCallbacks.mAnimType` + `setAnimType(AnimType)` 砍掉 | `AsyncAnimCallbacks.java:5`（import `CustomRectFSpringAnim$AnimType`）+ metadata d2 表含 `mAnimType`/`setAnimType`/`type` | 原厂此字段用于 CustomRectFSpringAnim 反查 animType 写 log（`CustomRectFSpringAnim.java:791` `mAsyncAnimCallbacks.setAnimType(animType)`）；lib CustomRectFSpringAnim 是占位，不需要 | 低（仅去日志装饰） |
 | 5 | `OplusLooperExecutor` 四扩展未移植（`executeAtFront`/`executeWithUx`/`executeBlockWait`/`executeDelay`） | `OplusLooperExecutor.java:38, 78-103, 46-71, 73-75` | 全部依赖 `LauncherBooster` 私有 API；`executeBlockWait` 是 v4 §9.3 点名的主线程 5s 硬等 ANR 风险，原厂自己也不该这么写 | 低（详细 §③-5） |
 | 6 | `Executors` / `OplusExecutors` 其余 26 个 executor 全部砍掉（`MODEL_EXECUTOR`/`UI_HELPER_EXECUTOR`/`THREAD_POOL_EXECUTOR`/`URGENT_TRANSACTION_EXECUTOR`/`WALLPAPER_TRANSACTION_EXECUTOR`/`TASK_VIEW_TRANSACTION_EXECUTOR`/`FETCH_ICON_EXECUTOR`/`RECENT_TASKS_EXECUTOR`/`UX_TASK_EXECUTOR`/`PRECLOSE_EXECUTOR`/…） | `Executors.java:18-99` + `OplusExecutors.java:30-162`（共 27 个 executor + 14 个 `createAndStartNewLooper` 调用） | 14 个事务/加载线程与异步动画演示主题无关，全量复刻稀释 lib 焦点 | 低 |
-| 7 | `LogUtils.i/Debug.getCallers` 装饰性日志删除 | 各处 30+ 处调用（如 `CustomRectFSpringAnim.java:332, 427, 610, 863` 等） | 纯 OEM 调试；lib `util/Trace.kt` 已覆盖可观测性需求 | 低 |
+| 7 | `LogUtils.i/Debug.getCallers` 装饰性日志删除 | 各处 30+ 处调用（如 `CustomRectFSpringAnim.java:332, 427, 610, 863` 等） | 纯 OEM 调试；lib `core/Trace.kt` 已覆盖可观测性需求 | 低 |
 | 8 | `Utilities.postAsyncCallback` 抽象 → `LooperExecutor.postAsync` 折叠进 executor 层 | `Utilities.java:631-637`（独立工具方法，被 12 个调用点使用） | lib 把 async 消息做成 executor 的成员方法（`LooperExecutor.kt:39-46`），调用点更短 | 低（接口位置变了，但语义等价） |
 | 9 | `Executors.createAndStartNewLooper(name, priority, launcherBoostKey)` 折叠成 `HandlerThread(name, priority)` + lib 私有单例 | `Executors.java:94-99`（带 UAF 绑核） | UAF（`LauncherBooster.CpuBoost.reportKeyThreadToUAF`）是 OPPO 私有调度增强；lib 退化为只设优先级，不绑核 | 低 |
 | 10 | JVM 单测兜底：`LooperExecutor.handler == null` 时就地执行 / 起 sleep 线程 | 原厂 handler 永不 null | `LooperExecutor.kt:17-20, 42-50` 注释明示"测试便利"；`Executors.kt:9-10` 用 `runCatching` 容错 | 低（详 §③-9） |
@@ -154,8 +154,8 @@
 | # | 遗漏点 | 原厂证据 | 影响 |
 |---|---|---|---|
 | 1 | **`AsyncValueAnimator.Companion.ofFloat(isAsync: Boolean, values: Float…)` 工厂** | `AsyncValueAnimator.java:34-55`（`Companion.ofFloat` 返回 `ValueAnimator`，按 `isAsync` 选择同步或异步实现的入口；调用点 `AppLaunchAnimUtil.java:443`） | 调用方迁移成本：`AppLaunchAnimUtil` 等按原厂习惯用 `ofFloat(isAsync, …)` 选同步/异步实现的入口未移植，调用点全要改写 |
-| 2 | **`CustomRectFSpringAnim` 线程切换协议整体缺失**——start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏（`CustomRectFSpringAnim.java:608-628, 752-776, 860-883`）；cancel/skipToEnd 末尾 `maybeEnd()` 双轨补救（`:626, :881`）；结束回调 `runOnMainThread`（`:778-786`）；`mJustNotifyEndCallback` 提前通知机制（`:73, 431, 736-737`） | `CustomRectFSpringAnim.java:608-907` | lib 占位类无任何一项；review 04 §4.2-2 注释明示"未复刻"。**v4 §4 强调的核心设计**——start/cancel 跨线程自动 marshal、cancel 是"置标志下一帧生效"语义、双轨结束——在 lib 完全不可演示。**注意：`AnimationControlThread.kt:44` 注释引用了"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"作为线程安全模型依据，但 lib 侧的该类并未实现它**——文档与代码脱节 |
-| 3 | **`LooperExecutor` 公共 API 子集**——`getHandler()`/`getLooper()`/`getThread()`/`postDelayed(long)`/`setThreadPriority(int)`/`shutdown()`；`extends AbstractExecutorService` | `LooperExecutor.java:8` (import), `:12` (extends), `:35-45` (三 getter), `:57-66` (post/postDelayed/setThreadPriority), `:71-79` (shutdown 抛异常) | (a) 调用方需要 ExecutorService 类型持有或访问底层 Looper 时无法直接替换；(b) `shutdown()` 抛异常这一"永不 quit"契约也未保留——lib `LooperExecutor` 是普通 class，可被 GC，无 `shutdown()` 方法；(c) `setThreadPriority` 缺失意味着 lib 的 ANIM_CONTROL_EXECUTOR 没办法在运行时把优先级从 -19 改到别的值（虽然本项目用不到） |
+| 2 | **`CustomRectFSpringAnim` 线程切换协议整体缺失**——start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏（`CustomRectFSpringAnim.java:608-628, 752-776, 860-883`）；cancel/skipToEnd 末尾 `maybeEnd()` 双轨补救（`:626, :881`）；结束回调 `runOnMainThread`（`:778-786`）；`mJustNotifyEndCallback` 提前通知机制（`:73, 431, 736-737`） | `CustomRectFSpringAnim.java:608-907` | lib 占位类无任何一项；review 04 §4.2-2 注释明示"未复刻"。**v4 §4 强调的核心设计**——start/cancel 跨线程自动 marshal、cancel 是"置标志下一帧生效"语义、双轨结束——在 lib 完全不可演示。**注意：`thread/AnimationControlThread.kt:43-47` 注释仍引用"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"作为线程安全模型依据（并指向 `docs/review/04-frame-spring-continuation.md` §4.2-2），但 lib 侧的该类并未实现它**——注释与代码脱节（文档级问题，不改码） |
+| 3 | **`LooperExecutor` 公共 API 子集**——`getHandler()`/`getLooper()`/`getThread()`/`postDelayed(long)`/`setThreadPriority(int)`/`shutdown()`；`extends AbstractExecutorService` | `LooperExecutor.java:8` (import), `:12` (extends), `:35-45` (三 getter), `:57-66` (post/postDelayed/setThreadPriority), `:71-79` (shutdown 抛异常) | (a) 调用方需要 ExecutorService 类型持有或访问底层 Looper 时无法直接替换；(b) `shutdown()` 抛异常这一"永不 quit"契约已于 086844e 补齐（`thread/LooperExecutor.kt:57-69`，`shutdown()/shutdownNow()/awaitTermination()` 均抛 `UnsupportedOperationException`）——lib `LooperExecutor` 是普通 class，仍不 extends `AbstractExecutorService`、可被 GC；(c) `setThreadPriority` 缺失意味着 lib 的 ANIM_CONTROL_EXECUTOR 没办法在运行时把优先级从 -19 改到别的值（虽然本项目用不到） |
 | 4 | **`AsyncAnimCallbacks.onAnimCancel` / `onAnimationEnd` listener 收 `null` animator**（`onAnimationEnd(null)` 等） | `AsyncValueAnimator.java:64`（cancel listener 调 `mAsyncAnimCallbacks.onAnimationCancel(null)`）、`:70`（end → `onAnimationEnd(null)`）、`:83`（start → `onAnimationStart(null)`） | lib 传真实 animator（`AsyncValueAnimator.kt:25-37`），listener 收到的是 `this`。`NullableAnimatorListener` 类的可空容忍形同虚设，命名误导。属行为改进但确为分歧点 |
 | 5 | **`AnimationControlThread` 缺失**（OplusExecutors 静态 init lambda）显式声明的语义 | `OplusExecutors.java:95`（`new f(1)` 是 `Function0<Unit>`，在 `:169` 体现为 `private static final void ANIM_EXECUTOR$lambda$0()`） | lib 把 init 逻辑折进 `onLooperPrepared`（`AnimationControlThread.kt:48-55`）语义等价；但若以后要新增"线程首跑时做点别的"（如 `Looper.myQueue().addIdleHandler`），没有显式 hook 点 |
 | 6 | `LauncherBooster.CpuBoost.reportKeyThreadToUAF` UAF 绑核（`Executors.java:97`） | 同上 | lib 没绑核，进程级 ANIM 线程跑在默认核上（OPPO ROM 上 2001/2003/2005/2007 是预留 key key）；长跑下 CPU 占用可能落小核，调度延迟比原厂大 |
@@ -204,8 +204,8 @@
 
 > **✅已修复（LooperExecutor.postAsync + Message.setAsynchronous）**
 6. ✅已修复（0e8a472 + review 01 §②C-3 旧修） — **`AsyncAnimCallbacks` 派发用异步消息而非 sync 消息**（`LooperExecutor.postAsync` 走 `Message.setAsynchronous(true)`；JVM 兜底走就地执行）
-   - 验证：`LooperExecutor.postAsync` 用 `Message.setAsynchronous(true)`（`LooperExecutor.kt:39-46`），对齐 `Utilities.postAsyncCallback`（`Utilities.java:631-637`）。
-   - 残余风险：JVM 单测下 `handler == null` 走"就地执行"（`LooperExecutor.kt:42`），与真机"async 消息"语义不同；demo 跑真机时与单测行为可能不一致。
+   - 验证：`LooperExecutor.postAsync` 用 `Message.setAsynchronous(true)`（`thread/LooperExecutor.kt:49-54`），对齐 `Utilities.postAsyncCallback`（`Utilities.java:631-637`）。
+   - 残余风险：JVM 单测下 `handler == null` 走"就地执行"（`thread/LooperExecutor.kt:50`），与真机"async 消息"语义不同；demo 跑真机时与单测行为可能不一致。
 
 ### 🟡 中
 
@@ -240,10 +240,10 @@
     - `executeBlockWait` 是 v4 §9.3 点名的主线程 5s 硬等 ANR 风险，原厂自己也不该这么写；不回移是正确决定。
     - 其余三个是增强能力，业务用不到。
 
-> **⚠️未修复（~10 行；LooperExecutor 非 ExecutorService）**
-12. **`LooperExecutor` 不再 `extends AbstractExecutorService`、缺访问器、缺 `shutdown()` 契约**
-    - 详 §②-C-3。
-    - 影响：业务侧需要 ExecutorService 持有或 shutdown 调用时无法直接替换；本演示库用不到。
+> **⚠️部分修复（086844e：shutdown 契约已补；仍非 ExecutorService、缺访问器）**
+12. **`LooperExecutor` 不 `extends AbstractExecutorService`、缺访问器；`shutdown()` 永不-quit 契约已补**
+    - 详 §②-C-3（更新）。
+    - 影响：业务侧需要 ExecutorService 类型持有或访问底层 Looper/getThread 时仍无法直接替换；shutdown 调用已与原厂一致抛 `UnsupportedOperationException`（`thread/LooperExecutor.kt:57-69`）。
 
 > **⚠️未修复（低风险启动窗口）**
 13. **JVM 单测兜底掩盖配置错误**
@@ -273,7 +273,7 @@
 | 3 | ✔️不修（Kotlin 非空安全有意改进） — **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
 | 4 | ⚠️未修复（线程切换协议大改，见 vs-oppo-16） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
 | 5 | ⚠️未修复（~5 行枚举补 7 值） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
-| 6 | ⚠️未修复（~10 行访问器/shutdown 契约） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
+| 6 | ⚠️部分未修复（086844e 已补 shutdown 契约；访问器仍缺） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
 | 7 | ⚠️未修复（demo 无调用方，复刻 MultiDynamicAnimation 时补） — **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
 
 ### 4.2 建议保持简化
@@ -297,8 +297,8 @@
 
 | 维度 | review 01 当时的判断 | 当前实际 | 状态 |
 |---|---|---|---|
-| 优先级 | lib 用 `THREAD_PRIORITY_URGENT_DISPLAY` (-8)，**bug 级差异** | lib 已改为字面量 `-19`（`AnimationControlThread.kt:78`） | ✅ 已修 |
-| `Executors` | 只保留 `MAIN_EXECUTOR` | 新增 `ANIM_CONTROL_EXECUTOR`（`Executors.kt:14`） | ✅ 已加 |
+| 优先级 | lib 用 `THREAD_PRIORITY_URGENT_DISPLAY` (-8)，**bug 级差异** | lib 已改为字面量 `-19`（`thread/AnimationControlThread.kt:83`） | ✅ 已修 |
+| `Executors` | 只保留 `MAIN_EXECUTOR` | 新增 `ANIM_CONTROL_EXECUTOR`（`thread/Executors.kt:23`） | ✅ 已加 |
 | `AsyncAnimCallbacks` 派发 | 同步 `post`，可被 sync-barrier 阻塞 | `postAsync`（`LooperExecutor.kt:39-46`） | ✅ 已修 |
 | `AsyncAnimCallbacks` 快照 | 直接迭代 `mutableListOf`，有 CME 风险 | `getListeners()` 先 `removeAll{null}` + `filterNotNull` | ✅ 已修 |
 | `ActualEndAnimListener` | 缺失 | 已实现 + `onAnimActualEnd` 仅对 ActualEndAnimListener 派发 | ✅ 已修 |
@@ -347,3 +347,27 @@
 - **215ecb5** — 删 Scheduled/HandlerTickScheduler，只留 ChoreographerTickScheduler（Android 平台 only）
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+> 本条为**独立逐条复核**（对照 HEAD 086844e 代码逐条验证，不采信上文 commit 交叉索引标记）。复核范围 = §① 类对应表 15 行 + §②-A 32 + §②-B 10 + §②-C 9 + §③ 风险 15 + §④ 建议 17 + §⑤ 差异表 8 行 = **106 条**；全部条目均逐条读过当前代码（`anim/`、`thread/`、`core/`、`playback/`），需要时 Grep 对照 OPPO 源码。
+>
+> - **复核条目总数**：106
+> - **结论不变**：93
+> - **修正**：13
+> - **修正明细**：
+>   1. §①-10：旧“折中实现”→新“已删（215ecb5），职责并入 `core/ChoreographerTickScheduler`”。证据：`core/ChoreographerTickScheduler.kt:22-46`（lib 侧现唯一帧调度器）。
+>   2. §①-12：旧“TickScheduler + ScheduledTickScheduler（JVM 实现）”→新“`ScheduledTickScheduler` 已删（215ecb5），唯一实现 `ChoreographerTickScheduler`”。证据：`core/TickScheduler.kt:15`、`core/ChoreographerTickScheduler.kt:22`。
+>   3. §①-14：旧“timeController 接线是空实现”→新“已实现”。证据：`anim/OplusValueAnimator.kt:96-118`（`TimeControllerObjectAnimator`）、`:130-154`（`generateContinuationAnim`）。
+>   4. §②-A.1-4：交叉引用修正 C-4→C-1（`ofFloat` 工厂遗漏项实为 §②-C-1）。
+>   5. §②-A.2-12：交叉引用修正 B-3→B-4（`mAnimType` 砍掉实为 §②-B-4）。
+>   6. §②-A.3-17：旧“`shutdown()` 契约缺失”→新“已补（086844e）”。证据：`thread/LooperExecutor.kt:57-69`（`shutdown()/shutdownNow()/awaitTermination()` 抛 `UnsupportedOperationException`）。
+>   7. §②-A.5-24：帧源安装描述旧“`HandlerTickScheduler(Handler(looper))`”→新“`ChoreographerTickScheduler()`”（215ecb5/dbde195 换真 Choreographer VSYNC）。证据：`thread/AnimationControlThread.kt:63-71`。
+>   8. §②-A.5-25：旧“shutdown 契约丢失”→新“线程永不 quit，shutdown 契约由 LooperExecutor 承载（086844e）”。
+>   9. §②-B-1：简化项帧源旧“`HandlerTickScheduler` postDelayed”→新“`ChoreographerTickScheduler` 真 VSYNC（HandlerTickScheduler 已删）”。证据：`core/ChoreographerTickScheduler.kt:9-21`、`thread/AnimationControlThread.kt:35-41`。
+>   10. §②-C-2：注释引用行号 `AnimationControlThread.kt:44`→`:43-47`（指向 `04-frame-spring-continuation.md` §4.2-2），并注明属注释/代码脱节、不改码。
+>   11. §②-C-3：(b) 旧“`shutdown()` 契约未保留”→新“086844e 已补（`LooperExecutor.kt:57-69`）”；仍缺 `AbstractExecutorService` 继承与 `getHandler/getLooper/getThread/setThreadPriority` 访问器。
+>   12. §③-12：旧“⚠️未修复（缺 shutdown 契约）”→新“⚠️部分修复（086844e：shutdown 永不-quit 契约已补；仍非 ExecutorService、缺访问器）”。
+>   13. §④4.1-6：旧“⚠️未修复（~10 行访问器/shutdown 契约）”→新“⚠️部分未修复（shutdown 契约已补，访问器仍缺）”。
+>
+> 另：§0、§⑤、§②-B-2、§③-6 等处的失效路径/行号已按当前包结构（`anim/` `thread/` `core/` `playback/`）与 HEAD 行号顺带刷新（不计入修正数）。其余条目（§②-A 全部设计点、§③-1/2/3/4/5/6/7/8/9/10/11/13/14/15、§④ 其余行）经复核与当前代码一致，无状态变化。

@@ -1,9 +1,9 @@
 # vs-oppo-14 — ScheduledTickScheduler vs HandlerTickScheduler 双实现对照
 
 > 范围：
-> - lib 侧：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/scheduler/TickScheduler.kt`（接口）+
->   `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/scheduler/ScheduledTickScheduler.kt`（JVM `scheduleAtFixedRate` 实现）+
->   `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/animthread/HandlerTickScheduler.kt`（绑定 Looper 的 `postDelayed` 实现）。
+> - lib 侧：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/TickScheduler.kt`（接口）+
+>   `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/ChoreographerTickScheduler.kt（ScheduledTickScheduler 已在 215ecb5 删除）`（JVM `scheduleAtFixedRate` 实现）+
+>   `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/ChoreographerTickScheduler.kt（HandlerTickScheduler 已在 215ecb5 删除）`（绑定 Looper 的 `postDelayed` 实现）。
 > - 原厂侧：四套 AnimationFrameCallbackProvider 形态——vendored core `FrameCallbackProvider14/16`（`androidx/core/animation/AnimationHandler.java:33-108`）、
 >   vendored dynamicanimation `FrameCallbackProvider14/16`（`androidx/dynamicanimation/animation/AnimationHandler.java:50-94`）、
 >   OPPO 复制版 COUI `COUIAnimationHandler$FrameCallbackProvider14/16`（`com/coui/appcompat/animation/dynamicanimation/COUIAnimationHandler.java`，`ChoreographerSfVsync.java` 是 wm/shell 自家注解，跟 COUI 无关）、
@@ -19,18 +19,18 @@
 
 | # | lib 元素 | 原厂对应 | 原厂证据 | 关系 |
 |---|---|---|---|---|
-| 1 | `core/scheduler/TickScheduler.kt:9-29`（接口 5 成员：`postFrameCallback`/`removeFrameCallback`/`start`/`stop` + `frameTimeNanos`/`frameCount`/`frameIntervalMs`/`FrameCallback`） | (a) `androidx.core.animation.AnimationHandler.AnimationFrameCallbackProvider` 接口 4 方法（`AnimationHandler.java:23-31`：getFrameDelay / onNewCallbackAdded / postFrameCallback / setFrameDelay）；(b) `androidx.dynamicanimation.animation.AnimationHandler.AnimationFrameCallbackProvider` 抽象类 1 方法（`AnimationHandler.java:39-47`：仅 `postFrameCallback`） | (a) `:23-31`；(b) `:39-47` | **三方接口成员差异较大**：(a) 4 方法（含 setFrameDelay 运行期调帧率），(b) 1 方法（帧率由内部 `FRAME_DELAY_MS = 10` 写死），lib 5 成员（`start/stop` 显式控生命周期）。lib 的 `start/stop` 是把 vendor 隐式的"provider 自己决定续帧"语义显式化 |
-| 2 | `core/scheduler/ScheduledTickScheduler.kt:30-32` 用 `Executors.newSingleThreadScheduledExecutor { thread(name="AsyncAnimator-Tick", isDaemon=true) }` 建一个**进程级共享守护线程** | (a) `androidx.core.animation.AnimationHandler.FrameCallbackProvider14.sHandler` 是 **ThreadLocal**（`AnimationHandler.java:34, 47-55`：`new Handler(Looper.myLooper())`，按线程缓存）；(b) `FrameCallbackProvider14.mHandler = new Handler(Looper.myLooper())` 直接 new，**实例级不 ThreadLocal**（`AnimationHandler.java:60-66`），但 `AnimationHandler` 自身是 `ThreadLocal<AnimationHandler>`（`:13-14`），所以"每线程一个 AnimationHandler → 每线程一个 provider → 每线程一个 Handler" 间接成立 | (a) `:34, 47-55`；(b) `:60-66` + `:13-14` | **分歧**：lib `ScheduledTickScheduler` 是**进程级单例守护线程**（不是 ThreadLocal），所有不显式装 `HandlerTickScheduler` 的线程共用；vendor 三条路径（core/dynamicanimation/COUI）的帧源要么 ThreadLocal 要么实例级，但都被 ThreadLocal AnimationHandler 包了一层"按线程实例化"。详见 §3-① |
-| 3 | `ScheduledTickScheduler.kt:62` `exec.scheduleAtFixedRate(::tick, 0, frameIntervalMs, TimeUnit.MILLISECONDS)` | (a) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:60-67`）：`getHandler().postDelayed(this, max(mFrameDelay - (uptimeMillis - mLastFrameTime), 0L))`——**自走式**（Runnable.run() 在 Handler 上 fire，fire 完由 `mAnimationHandler.onAnimationFrame` 续派）；(b) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:69-72`）：`mHandler.postDelayed(mRunnable, max(FRAME_DELAY_MS - drift, 0L))`，`FRAME_DELAY_MS = 10`；(c) 框架 `@hide` FrameCallbackProvider14 同 (a) | (a) `:60-67`；(b) `:14, 69-72` | **功能等价，时机模型不同**（详见 §2-A-2）：vendor 用的是 Handler `postDelayed` 链（每次 fire 后由 onAnimationFrame 自续），lib 用 `scheduleAtFixedRate`（一个 ScheduledFuture 周期任务）。两者在"掉帧时不堆积"这一性质上**正好相反**（§3-④） |
+| 1 | `core/TickScheduler.kt:15-41`（接口 5 成员：`postFrameCallback`/`removeFrameCallback`/`start`/`stop` + `frameTimeNanos`/`frameCount`/`frameIntervalMs`/`FrameCallback`） | (a) `androidx.core.animation.AnimationHandler.AnimationFrameCallbackProvider` 接口 4 方法（`AnimationHandler.java:23-31`：getFrameDelay / onNewCallbackAdded / postFrameCallback / setFrameDelay）；(b) `androidx.dynamicanimation.animation.AnimationHandler.AnimationFrameCallbackProvider` 抽象类 1 方法（`AnimationHandler.java:39-47`：仅 `postFrameCallback`） | (a) `:23-31`；(b) `:39-47` | **三方接口成员差异较大**：(a) 4 方法（含 setFrameDelay 运行期调帧率），(b) 1 方法（帧率由内部 `FRAME_DELAY_MS = 10` 写死），lib 5 成员（`start/stop` 显式控生命周期）。lib 的 `start/stop` 是把 vendor 隐式的"provider 自己决定续帧"语义显式化 |
+| 2 | `core/ChoreographerTickScheduler.kt（ScheduledTickScheduler 已删）:30-32` 用 `Executors.newSingleThreadScheduledExecutor { thread(name="AsyncAnimator-Tick", isDaemon=true) }` 建一个**进程级共享守护线程** | (a) `androidx.core.animation.AnimationHandler.FrameCallbackProvider14.sHandler` 是 **ThreadLocal**（`AnimationHandler.java:34, 47-55`：`new Handler(Looper.myLooper())`，按线程缓存）；(b) `FrameCallbackProvider14.mHandler = new Handler(Looper.myLooper())` 直接 new，**实例级不 ThreadLocal**（`AnimationHandler.java:60-66`），但 `AnimationHandler` 自身是 `ThreadLocal<AnimationHandler>`（`:13-14`），所以"每线程一个 AnimationHandler → 每线程一个 provider → 每线程一个 Handler" 间接成立 | (a) `:34, 47-55`；(b) `:60-66` + `:13-14` | **分歧**：lib `ScheduledTickScheduler` 是**进程级单例守护线程**（不是 ThreadLocal），所有不显式装 `HandlerTickScheduler` 的线程共用；vendor 三条路径（core/dynamicanimation/COUI）的帧源要么 ThreadLocal 要么实例级，但都被 ThreadLocal AnimationHandler 包了一层"按线程实例化"。详见 §3-① |
+| 3 | `ChoreographerTickScheduler.kt:70（原 ScheduledTickScheduler 已删）` `exec.scheduleAtFixedRate(::tick, 0, frameIntervalMs, TimeUnit.MILLISECONDS)` | (a) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:60-67`）：`getHandler().postDelayed(this, max(mFrameDelay - (uptimeMillis - mLastFrameTime), 0L))`——**自走式**（Runnable.run() 在 Handler 上 fire，fire 完由 `mAnimationHandler.onAnimationFrame` 续派）；(b) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:69-72`）：`mHandler.postDelayed(mRunnable, max(FRAME_DELAY_MS - drift, 0L))`，`FRAME_DELAY_MS = 10`；(c) 框架 `@hide` FrameCallbackProvider14 同 (a) | (a) `:60-67`；(b) `:14, 69-72` | **功能等价，时机模型不同**（详见 §2-A-2）：vendor 用的是 Handler `postDelayed` 链（每次 fire 后由 onAnimationFrame 自续），lib 用 `scheduleAtFixedRate`（一个 ScheduledFuture 周期任务）。两者在"掉帧时不堆积"这一性质上**正好相反**（§3-④） |
 | 4 | `ScheduledTickScheduler.tick()`（`:70-89`）：`runCatching { cb.doFrame(t) }` 单 callback 异常隔离 + `if (callbacks.isEmpty()) stop()` 自停 | (a) `FrameCallbackProvider14.run`（`AnimationHandler.java:69-79`）：`mLastFrameTime = uptimeMillis; mAnimationHandler.onAnimationFrame(jUptimeMillis);` —— **无 try-catch、无空则停**（空则停逻辑在 `AnimationHandler.onAnimationFrame` `:197-202` 检查 `mAnimationCallbacks.size() > 0` 才续派 `mProvider.postFrameCallback()`）；(b) 同 (a) | (a) `:60-67, 197-202`；(b) `:69-72` + `:23-33` | **形状对齐，但异常语义不同**（§3-⑦）：vendor 异常沿 Runnable 链上抛到 Looper（→ uncaughtException），lib 用 `runCatching` 吞掉；自停行为 vendor 在 AnimationHandler 上，lib 下沉到 TickScheduler |
-| 5 | `launcher/animthread/HandlerTickScheduler.kt:27` 构造参数 `handler: Handler?`（可为 null = JVM 单测退路） | (a) `FrameCallbackProvider14.sHandler` ThreadLocal（`:34, 47-55`）；(b) `FrameCallbackProvider14.mHandler` 实例字段（`:60-66`） | 同 #2 | **形式分歧**：vendor 是字段/ThreadLocal，lib 是构造参数；语义对齐——HandlerThread + Looper 天然保证"线程 = Looper 持有者"，不需要 ThreadLocal 缓存 |
+| 5 | `core/ChoreographerTickScheduler.kt（HandlerTickScheduler 已删）:27` 构造参数 `handler: Handler?`（可为 null = JVM 单测退路） | (a) `FrameCallbackProvider14.sHandler` ThreadLocal（`:34, 47-55`）；(b) `FrameCallbackProvider14.mHandler` 实例字段（`:60-66`） | 同 #2 | **形式分歧**：vendor 是字段/ThreadLocal，lib 是构造参数；语义对齐——HandlerThread + Looper 天然保证"线程 = Looper 持有者"，不需要 ThreadLocal 缓存 |
 | 6 | `HandlerTickScheduler.scheduleNextFrame()`（`:66-80`）：`handler.postDelayed({...tick...; if (!empty) scheduleNextFrame()}, frameIntervalMs)` 自走 + 空则停 | (a) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:60-67`）同形态 Handler.postDelayed 续派；(b) `FrameCallbackProvider14.postFrameCallback`（`AnimationHandler.java:69-72`）同形，参数 `FRAME_DELAY_MS = 10`；(c) `FrameCallbackProvider16.postFrameCallback`（`AnimationHandler.java:75-94`）：**`Choreographer.getInstance().postFrameCallback(this)`**——挂 vsync，不挂 postDelayed 时钟 | (a) `:60-67`；(b) `:69-72`；(c) `:75-94` | **1:1 对齐 (a)(b)**；与 (c) 差一档（vsync 对齐，§3-⑤）。自停行为 vendor 在 AnimationHandler 上，lib 在 scheduler 内 |
 | 7 | `HandlerTickScheduler.tick()`（`:82-91`）：`SystemClock.uptimeNanos()` 取时间 + `runCatching` 单 callback 隔离 + `if (count<0) reset` 长溢出保护 | (a) `FrameCallbackProvider14.run`（`AnimationHandler.java:69-79`）：`mLastFrameTime = SystemClock.uptimeMillis()`；(b) `FrameCallbackProvider16.doFrame`（`AnimationHandler.java:88`）：`onAnimationFrame(j8 / AnimationKt.MillisToNanos)`（nanos → ms）；(c) `FrameCallbackProvider16.doFrame`（`androidx/dynamicanimation/animation/AnimationHandler.java:75-94`）：`mDispatcher.dispatchAnimationFrame()` → 内部 `mCurrentFrameTime = SystemClock.uptimeMillis()` | (a) `:69-79`；(b) `:88`；(c) `:75-94` + `:23-27` | **时间源选型有分歧**（§2-B-2）：lib HandlerTickScheduler 用 `uptimeNanos()`（更细），ScheduledTickScheduler 用 `System.nanoTime()`（更粗）；vendor (a)(c) 用 `uptimeMillis()`，(b) Choreographer 给的 `frameTimeNanos`。两 lib 实现的 nanos → ms 换算在 `AnimationHandler.kt:85` 完成，**统一入口**与 (b) 对齐 |
-| 8 | `launcher/animthread/HandlerTickScheduler.kt:29` `frameIntervalMs: Long = 16` 默认值 | (a) `FrameCallbackProvider14.mFrameDelay = 16`（`AnimationHandler.java:37`）默认 16；(b) `FrameCallbackProvider14.FRAME_DELAY_MS = 10`（`AnimationHandler.java:14`）默认 10；(c) `FrameCallbackProvider16` 不存帧率，调 `ValueAnimator.getFrameDelay()`（系统设置） | (a) `:37`；(b) `:14`；(c) `:89-91` | **1:1 对齐 (a)**；dynamicanimation (b) 更激进（10ms = 100Hz）；(c) 是 vsync 路径无需帧率字段 |
-| 9 | `ScheduledTickScheduler.kt:60` `callbacks: ConcurrentLinkedQueue<TickScheduler.FrameCallback>()` 多线程 add/remove 安全 | (a) `mAnimationCallbacks: ArrayList<AnimationFrameCallback>`（`AnimationHandler.java:16`）——非线程安全，靠"所有访问在同一线程"的隐性契约保护；(b) `mAnimationCallbacks: ArrayList<AnimationFrameCallback>`（`AnimationHandler.java:18`）同形 | (a) `:16`；(b) `:18` | **结构分歧（lib 更安全）**：lib 用 `ConcurrentLinkedQueue`，vendor 用 `ArrayList`；这是 lib 的**主动安全化**（与 #2 守护线程组合后，跨线程 addFrameCallback 不会抛 `ConcurrentModificationException`），见 §2-B-3 |
+| 8 | `core/ChoreographerTickScheduler.kt（HandlerTickScheduler 已删）:29` `frameIntervalMs: Long = 16` 默认值 | (a) `FrameCallbackProvider14.mFrameDelay = 16`（`AnimationHandler.java:37`）默认 16；(b) `FrameCallbackProvider14.FRAME_DELAY_MS = 10`（`AnimationHandler.java:14`）默认 10；(c) `FrameCallbackProvider16` 不存帧率，调 `ValueAnimator.getFrameDelay()`（系统设置） | (a) `:37`；(b) `:14`；(c) `:89-91` | **1:1 对齐 (a)**；dynamicanimation (b) 更激进（10ms = 100Hz）；(c) 是 vsync 路径无需帧率字段 |
+| 9 | `ChoreographerTickScheduler.kt:24（原 ScheduledTickScheduler 已删）` `callbacks: ConcurrentLinkedQueue<TickScheduler.FrameCallback>()` 多线程 add/remove 安全 | (a) `mAnimationCallbacks: ArrayList<AnimationFrameCallback>`（`AnimationHandler.java:16`）——非线程安全，靠"所有访问在同一线程"的隐性契约保护；(b) `mAnimationCallbacks: ArrayList<AnimationFrameCallback>`（`AnimationHandler.java:18`）同形 | (a) `:16`；(b) `:18` | **结构分歧（lib 更安全）**：lib 用 `ConcurrentLinkedQueue`，vendor 用 `ArrayList`；这是 lib 的**主动安全化**（与 #2 守护线程组合后，跨线程 addFrameCallback 不会抛 `ConcurrentModificationException`），见 §2-B-3 |
 | 10 | （lib 无对应实现） | 框架 `com.android.internal.graphics.SfVsyncFrameCallbackProvider`（@hide，反编译树**无源**，仅 `OplusExecutors.java:5` + `PipAnimationController.java:17` 两处 import）+ wm/shell `ChoreographerSfVsync.java`（注解） | `OplusExecutors.java:5`（`import com.android.internal.graphics.SfVsyncFrameCallbackProvider;`） + `:170`（`AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())`）；`PipAnimationController.java:17`（import） + `:567`（`animationHandler.setProvider(new SfVsyncFrameCallbackProvider())`）+ `:50-55`（`mSfAnimationHandlerThreadLocal = ThreadLocal.withInitial(...)`） | **lib 缺**：没有 SF-vsync 替代品；`HandlerTickScheduler` 是 (a) `FrameCallbackProvider14` 的 Looper 绑定退化版（用 postDelayed 16ms 而非 vsync）。详见 §3-⑤、§4-B-1 |
-| 11 | `TickScheduler.kt:21-24` `fun interface FrameCallback { fun doFrame(frameTimeNanos: Long) }` 单方法 SAM | (a) `AnimationFrameCallback { boolean doAnimationFrame(long j8) }`（`AnimationHandler.java:19-22`，boolean 返回"动画结束可摘除"语义）；(b) 同形 | (a) `:19-22`；(b) `:25-27` | **方法签名分歧**：lib 返回 `Unit`（不显式声明结束），vendor 返回 `Boolean`；这是 lib TickScheduler 与 AnimationHandler **职责切分**的副作用——"何时从 callbacks 移除"由 AnimationHandler 决策（lib `AnimationHandler.kt:onTick` 用 callbackSize 检查 + 移除置 null），不在 TickScheduler |
-| 12 | `TickScheduler.kt:9-29` 接口未暴露 `setFrameDelay`/`getFrameDelay`/`onNewCallbackAdded` | (a) `AnimationFrameCallbackProvider` 接口含 setFrameDelay/getFrameDelay/onNewCallbackAdded/postFrameCallback 4 方法；(b) 仅 `postFrameCallback` 抽象 | (a) `:23-31`；(b) `:39-47` | **遗漏（vendor 接口位死方法）**：(a) `onNewCallbackAdded` 在两个 vendor 实现里都是空体（`AnimationHandler.java:57-59, 97-99`），vendor 也没用；详见 §2-C-1 |
+| 11 | `TickScheduler.kt:38-41` `fun interface FrameCallback { fun doFrame(frameTimeNanos: Long) }` 单方法 SAM | (a) `AnimationFrameCallback { boolean doAnimationFrame(long j8) }`（`AnimationHandler.java:19-22`，boolean 返回"动画结束可摘除"语义）；(b) 同形 | (a) `:19-22`；(b) `:25-27` | **方法签名分歧**：lib 返回 `Unit`（不显式声明结束），vendor 返回 `Boolean`；这是 lib TickScheduler 与 AnimationHandler **职责切分**的副作用——"何时从 callbacks 移除"由 AnimationHandler 决策（lib `AnimationHandler.kt:onTick` 用 callbackSize 检查 + 移除置 null），不在 TickScheduler |
+| 12 | `TickScheduler.kt:15-41` 接口未暴露 `setFrameDelay`/`getFrameDelay`/`onNewCallbackAdded` | (a) `AnimationFrameCallbackProvider` 接口含 setFrameDelay/getFrameDelay/onNewCallbackAdded/postFrameCallback 4 方法；(b) 仅 `postFrameCallback` 抽象 | (a) `:23-31`；(b) `:39-47` | **遗漏（vendor 接口位死方法）**：(a) `onNewCallbackAdded` 在两个 vendor 实现里都是空体（`AnimationHandler.java:57-59, 97-99`），vendor 也没用；详见 §2-C-1 |
 
 > **路径总结**（与 vs-oppo-04 §3 末附表同源、深化）：
 >
@@ -47,27 +47,27 @@
 
 | # | 设计点 | 原厂证据（路径:行） | lib 证据 |
 |---|---|---|---|
-| 1 | "空 callbacks 即停帧"的自维持回路 | (a) `AnimationHandler.java:197-202` `onAnimationFrame` 末尾 `if (mAnimationCallbacks.size() > 0) mProvider.postFrameCallback()`——空则不再 post；(b) `AnimationHandler.java:23-33` `AnimationCallbackDispatcher.dispatchAnimationFrame` 末尾同形；(c) `COUIAnimationHandler.java:AnimationCallbackDispatcher.a()` 内联空判断 | `ScheduledTickScheduler.kt:85-87` `if (callbacks.isEmpty()) stop()`；`HandlerTickScheduler.kt:73-78` `if (!callbacks.isEmpty()) scheduleNextFrame() else running=false`——两 lib 实现都在 scheduler 内做空则停，对齐语义 |
+| 1 | "空 callbacks 即停帧"的自维持回路 | (a) `AnimationHandler.java:197-202` `onAnimationFrame` 末尾 `if (mAnimationCallbacks.size() > 0) mProvider.postFrameCallback()`——空则不再 post；(b) `AnimationHandler.java:23-33` `AnimationCallbackDispatcher.dispatchAnimationFrame` 末尾同形；(c) `COUIAnimationHandler.java:AnimationCallbackDispatcher.a()` 内联空判断 | `ChoreographerTickScheduler.kt:41-45（原 ScheduledTickScheduler 已删）` `if (callbacks.isEmpty()) stop()`；`ChoreographerTickScheduler.kt:41-45（原 HandlerTickScheduler 已删）` `if (!callbacks.isEmpty()) scheduleNextFrame() else running=false`——两 lib 实现都在 scheduler 内做空则停，对齐语义 |
 | 2 | 自走式帧循环（provider fire → handler 续派） | (a) `FrameCallbackProvider14.run`（`:69-79`）：uptimeMillis → mAnimationHandler.onAnimationFrame → 由 onAnimationFrame 决定续派；(b) `FrameCallbackProvider14.mRunnable`（`:62-67`）：mLastFrameTime = uptimeMillis → mDispatcher.dispatchAnimationFrame | `HandlerTickScheduler.scheduleNextFrame()`（`:66-80`）内 lambda 续派自身；`ScheduledTickScheduler.tick()`（`:70-89`）由 `scheduleAtFixedRate` 自动续 |
-| 3 | 帧时间取自"系统单调时钟"，单位 nanos（Choreographer 路径）或 ms（Handler.postDelayed 路径） | (a) `:69` `SystemClock.uptimeMillis()`；(b) `:88` Choreographer 给 `frameTimeNanos`，`:88` `/ AnimationKt.MillisToNanos` 转 ms；(c) `:25` `mCurrentFrameTime = SystemClock.uptimeMillis()` | `HandlerTickScheduler.kt:84` `SystemClock.uptimeNanos()`（对齐 Choreographer 路径 nanos）；`ScheduledTickScheduler.kt:73` `System.nanoTime()`（对齐 JVM 单测习惯，非 Android API）；`AnimationHandler.kt:85` 统一 `frameTimeNanos / 1_000_000L` nanos → ms（与 (b) 数值一致） |
-| 4 | `ConcurrentLinkedQueue` / 等价多线程安全 add/remove（vendor 不安全，lib 主动安全化） | (a) `:16` `mAnimationCallbacks = new ArrayList<>()`（非线程安全）；(b) `:18` 同 (a) | `ScheduledTickScheduler.kt:32` `private val callbacks = ConcurrentLinkedQueue<TickScheduler.FrameCallback>()`；`HandlerTickScheduler.kt:30` 同——见 §B-3 |
-| 5 | 长溢出保护（frameCount） | （vendor 无） | `ScheduledTickScheduler.kt:88-90` `if (count < 0) frameCountAtomic.set(0)`；`HandlerTickScheduler.kt:89-91` 同——lib 自加，vendor 未做（vendor frameCount 也不暴露） |
-| 6 | 快照遍历 callback 列表 | （vendor 无显式快照，`for` 直接遍历 ArrayList） | `ScheduledTickScheduler.kt:78` `for (cb in callbacks.toTypedArray())`；`HandlerTickScheduler.kt:87` 同——lib 主动防"迭代中被外部 add/remove" |
-| 7 | postFrameCallback 早退：null callback 不入列 | （vendor `AnimationHandler.addAnimationFrameCallback` 早退：if (animationFrameCallback == null) 内部逻辑走完才返回，但 `mAnimationCallbacks.contains(null) == false` 实际等价） | `ScheduledTickScheduler.kt:43` `if (callback == null) return`；`HandlerTickScheduler.kt:51` 同——显式早退 |
+| 3 | 帧时间取自"系统单调时钟"，单位 nanos（Choreographer 路径）或 ms（Handler.postDelayed 路径） | (a) `:69` `SystemClock.uptimeMillis()`；(b) `:88` Choreographer 给 `frameTimeNanos`，`:88` `/ AnimationKt.MillisToNanos` 转 ms；(c) `:25` `mCurrentFrameTime = SystemClock.uptimeMillis()` | `ChoreographerTickScheduler.kt:89（原 HandlerTickScheduler 已删）` `SystemClock.uptimeNanos()`（对齐 Choreographer 路径 nanos）；`ChoreographerTickScheduler.kt:89（原 ScheduledTickScheduler 已删）` `System.nanoTime()`（对齐 JVM 单测习惯，非 Android API）；`AnimationHandler.kt:85` 统一 `frameTimeNanos / 1_000_000L` nanos → ms（与 (b) 数值一致） |
+| 4 | `ConcurrentLinkedQueue` / 等价多线程安全 add/remove（vendor 不安全，lib 主动安全化） | (a) `:16` `mAnimationCallbacks = new ArrayList<>()`（非线程安全）；(b) `:18` 同 (a) | `ChoreographerTickScheduler.kt:24（原 ScheduledTickScheduler 已删）` `private val callbacks = ConcurrentLinkedQueue<TickScheduler.FrameCallback>()`；`ChoreographerTickScheduler.kt:24（原 HandlerTickScheduler 已删）` 同——见 §B-3 |
+| 5 | 长溢出保护（frameCount） | （vendor 无） | `ChoreographerTickScheduler.kt:88（原 ScheduledTickScheduler 已删）` `if (count < 0) frameCountAtomic.set(0)`；`ChoreographerTickScheduler.kt:88（原 HandlerTickScheduler 已删）` 同——lib 自加，vendor 未做（vendor frameCount 也不暴露） |
+| 6 | 快照遍历 callback 列表 | （vendor 无显式快照，`for` 直接遍历 ArrayList） | `ChoreographerTickScheduler.kt:91（原 ScheduledTickScheduler 已删）` `for (cb in callbacks.toTypedArray())`；`ChoreographerTickScheduler.kt:91（原 HandlerTickScheduler 已删）` 同——lib 主动防"迭代中被外部 add/remove" |
+| 7 | postFrameCallback 早退：null callback 不入列 | （vendor `AnimationHandler.addAnimationFrameCallback` 早退：if (animationFrameCallback == null) 内部逻辑走完才返回，但 `mAnimationCallbacks.contains(null) == false` 实际等价） | `ChoreographerTickScheduler.kt:56（原 ScheduledTickScheduler 已删）` `if (callback == null) return`；`ChoreographerTickScheduler.kt:56（原 HandlerTickScheduler 已删）` 同——显式早退 |
 
 ### B. 有意简化（lib 注释/文档中明示，或符合 v4 §8.1 / vs-oppo-04 §4 认可的设计取舍）
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| 1 | lib 统一一个 `TickScheduler` 接口取代 vendor 三套（core/dynamicanimation/COUI） | 三套不同形态（接口/抽象类）+ 两个隐藏 API（框架 SfVsyncFrameCallbackProvider / DynamicAnimation 私有路径） | `TickScheduler.kt:5-8` 注释明示：抽象出"每帧调用 callback"的本质。是"教学库聚焦"的合理归并 |
-| 2 | `ScheduledTickScheduler` 用 `ScheduledExecutorService.scheduleAtFixedRate(0, 16ms)` 仿真 | (a) `FrameCallbackProvider14.postFrameCallback` 用 `Handler.postDelayed(this, drift-adjusted)`；(b) 同 (a)，10ms | `ScheduledTickScheduler.kt:11-17` 注释明示"对应 v3 文档 §2 中 FrameCallbackProvider14 的退化路径 —— 当 Choreographer 不可用时，用 Handler.postDelayed(this, 16) 定时驱动。本类是这种思路的纯 Java 实现"。纯 JVM 可测是 demo 目标 |
-| 3 | 两个 TickScheduler 都不接 vsync（用 postDelayed 退化或 scheduleAtFixedRate 退化） | (c) `FrameCallbackProvider16.postFrameCallback`（`:104-108`）：`Choreographer.getInstance().postFrameCallback(this)`；(c) `FrameCallbackProvider16`（dynamicanimation `AnimationHandler.java:75-94`）同形；(框架 `SfVsyncFrameCallbackProvider` 挂 SF-vsync) | `HandlerTickScheduler.kt:14-17` 注释明示"真机上若把本类换成 per-thread Choreographer 适配（FrameCallbackProvider16 语义），即可获得 VSYNC 精度——本类保留同样接口，替换成本为零"——接口化预埋替换点 |
-| 4 | `ScheduledTickScheduler` 用 `System.nanoTime()` 而非 `SystemClock.uptimeMillis()` | vendor 统一 `SystemClock.uptimeMillis()`（`AnimationHandler.java:69, 26`）；Choreographer 给 nanos | `ScheduledTickScheduler.kt:73` 取 `System.nanoTime()`——JVM 标准库可用，跨 Android/JVM 跑得通。Android 真机走 `HandlerTickScheduler` 用 `SystemClock.uptimeNanos()`（对齐 Choreographer 路径），统一入口在 `AnimationHandler.kt:85` 做 nanos→ms 换算 |
+| 1 | lib 统一一个 `TickScheduler` 接口取代 vendor 三套（core/dynamicanimation/COUI） | 三套不同形态（接口/抽象类）+ 两个隐藏 API（框架 SfVsyncFrameCallbackProvider / DynamicAnimation 私有路径） | `TickScheduler.kt:7-14` 注释明示：抽象出"每帧调用 callback"的本质。是"教学库聚焦"的合理归并 |
+| 2 | `ScheduledTickScheduler` 用 `ScheduledExecutorService.scheduleAtFixedRate(0, 16ms)` 仿真 | (a) `FrameCallbackProvider14.postFrameCallback` 用 `Handler.postDelayed(this, drift-adjusted)`；(b) 同 (a)，10ms | `ChoreographerTickScheduler.kt:8-21（原 ScheduledTickScheduler 已删）` 注释明示"对应 v3 文档 §2 中 FrameCallbackProvider14 的退化路径 —— 当 Choreographer 不可用时，用 Handler.postDelayed(this, 16) 定时驱动。本类是这种思路的纯 Java 实现"。纯 JVM 可测是 demo 目标 |
+| 3 | 两个 TickScheduler 都不接 vsync（用 postDelayed 退化或 scheduleAtFixedRate 退化） | (c) `FrameCallbackProvider16.postFrameCallback`（`:104-108`）：`Choreographer.getInstance().postFrameCallback(this)`；(c) `FrameCallbackProvider16`（dynamicanimation `AnimationHandler.java:75-94`）同形；(框架 `SfVsyncFrameCallbackProvider` 挂 SF-vsync) | `ChoreographerTickScheduler.kt:8-21（原 HandlerTickScheduler 已删）` 注释明示"真机上若把本类换成 per-thread Choreographer 适配（FrameCallbackProvider16 语义），即可获得 VSYNC 精度——本类保留同样接口，替换成本为零"——接口化预埋替换点 |
+| 4 | `ScheduledTickScheduler` 用 `System.nanoTime()` 而非 `SystemClock.uptimeMillis()` | vendor 统一 `SystemClock.uptimeMillis()`（`AnimationHandler.java:69, 26`）；Choreographer 给 nanos | `ChoreographerTickScheduler.kt:89（原 ScheduledTickScheduler 已删）` 取 `System.nanoTime()`——JVM 标准库可用，跨 Android/JVM 跑得通。Android 真机走 `HandlerTickScheduler` 用 `SystemClock.uptimeNanos()`（对齐 Choreographer 路径），统一入口在 `AnimationHandler.kt:85` 做 nanos→ms 换算 |
 | 5 | `ConcurrentLinkedQueue` 替代 vendor `ArrayList` | (a) `:16` ArrayList；(b) `:18` ArrayList | lib 设计取舍：`ScheduledTickScheduler` 守护线程 tick + 任意线程 add 路径下，ArrayList 会抛 `ConcurrentModificationException`；CLQ 提供 lock-free 正确性。`HandlerTickScheduler` 同样用 CLQ——但其 callback add/remove 都在 Looper 线程，无并发场景；多写一层是冗余安全（无害） |
 | 6 | 无 `setFrameDelay` / `getFrameDelay` | (a) `:212-215` `setFrameDelay(long)`；(a) `:193-195` `getFrameDelay()` 委托 `provider.getFrameDelay()`；(a) `:41-44` `setFrameDelay(long)` 默认 if ≤0 → 0 | lib 没运行期调帧率需求（demo 帧率由构造参数固定）；保持接口最小 |
 | 7 | 无 `onNewCallbackAdded` 回调钩子 | (a) `:26` 接口方法 + (a) `:57-59, 97-99` 实现为空 | lib TickScheduler 不暴露此钩子——vendor 也没真用 |
 | 8 | `frameCount` 字段暴露（vendor 仅 (b) `getFrameTime()` 暴露 mCurrentFrameTime） | (b) `AnimationHandler.java:107-113` `getFrameTime()` 暴露 mCurrentFrameTime | lib 加 `frameCount` 给单元测试用（`AnimationHandlerTest.kt:30-50` 验证 callbackSize 增减不依赖时间） |
-| 9 | `runCatching` 异常隔离 | vendor (a) `:130-138` (b) `:147-156` 均无 try-catch | `ScheduledTickScheduler.kt:80`、`HandlerTickScheduler.kt:88` 单 callback 异常 swallow——lib 教学库倾向"单点失败不连累整帧"。注：**与原厂语义相反**，见 §3-⑦ |
+| 9 | `runCatching` 异常隔离 | vendor (a) `:130-138` (b) `:147-156` 均无 try-catch | `ChoreographerTickScheduler.kt:92（原 ScheduledTickScheduler 已删）`、`ChoreographerTickScheduler.kt:92（原 HandlerTickScheduler 已删）` 单 callback 异常 swallow——lib 教学库倾向"单点失败不连累整帧"。注：**与原厂语义相反**，见 §3-⑦ |
 
 ### C. 遗漏（原厂有、lib 没有，且不一定是有意砍掉的）
 
@@ -85,7 +85,7 @@
 
 3. **`AnimationFrameCallbackProvider` 接口的 `onNewCallbackAdded` / `setFrameDelay` / `getFrameDelay` 钩子**
    - (a) 4 方法接口 `(a):23-31`；(b) 1 方法抽象类 `(b):39-47`。
-   - lib `TickScheduler` 接口（`TickScheduler.kt:9-29`）只暴露 `postFrameCallback` / `removeFrameCallback` / `start` / `stop` + 3 字段——vendor 三个钩子全部没复刻。
+   - lib `TickScheduler` 接口（`TickScheduler.kt:15-41`）只暴露 `postFrameCallback` / `removeFrameCallback` / `start` / `stop` + 3 字段——vendor 三个钩子全部没复刻。
    - **后果**：vendor `(a):175-178` 的 `onNewCallbackAdded` 是 vendor 也没用的死方法（`(a):57-59, 97-99` 空实现），缺它无影响；`setFrameDelay` / `getFrameDelay` 缺它则运行期调帧率无 API（demo 无此需求，可接受）。
 
 4. **缺 `mDelayedCallbackStartTime` 延迟启动回调**
@@ -107,7 +107,7 @@
 > **状态：❌已过期（215ecb5：ScheduledTickScheduler 已删；per-thread 语义由默认 ChoreographerTickScheduler 的 ThreadLocal Choreographer 满足）**
 ### 🟥 ① ScheduledTickScheduler 破坏 v4 §8.1 "per-thread 帧语义"（高 / BUG-LEVEL，**核心**）
 
-**证据**：`ScheduledTickScheduler.kt:30-32`
+**证据**：`ChoreographerTickScheduler.kt:24-26（原 ScheduledTickScheduler 已删）`
 ```kotlin
 private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
     thread(start = false, name = "AsyncAnimator-Tick", isDaemon = true) { r.run() }
@@ -138,13 +138,13 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 ### 🟥 ② ScheduledTickScheduler `scheduleAtFixedRate` 掉帧时不堆积 vs vendor Handler.postDelayed 会堆积（高 / 行为分歧）
 
 **证据**：
-- `ScheduledTickScheduler.kt:62` `exec.scheduleAtFixedRate(::tick, 0, frameIntervalMs, TimeUnit.MILLISECONDS)`：ScheduledFuture 是**固定速率**，即使上一次 tick 没执行完也会**叠加下一次**（默认 `ScheduledExecutorService.scheduleAtFixedRate` 是"上一任务结束立即 schedule 下一任务"，不是"固定时刻触发"）。如果 `tick` 跑超 16ms，下一 tick 会立刻 fire——**反而加速**，补偿丢帧。
+- `ChoreographerTickScheduler.kt:70（原 ScheduledTickScheduler 已删）` `exec.scheduleAtFixedRate(::tick, 0, frameIntervalMs, TimeUnit.MILLISECONDS)`：ScheduledFuture 是**固定速率**，即使上一次 tick 没执行完也会**叠加下一次**（默认 `ScheduledExecutorService.scheduleAtFixedRate` 是"上一任务结束立即 schedule 下一任务"，不是"固定时刻触发"）。如果 `tick` 跑超 16ms，下一 tick 会立刻 fire——**反而加速**，补偿丢帧。
 - vendor `(a):60-67` `getHandler().postDelayed(this, max(mFrameDelay - (uptimeMillis - mLastFrameTime), 0L))`：基于上次 fire 的 wall-clock 算 drift，**补足到满 16ms 间隔**——如果某帧掉了，**下一帧**延后到 16ms 整间隔。
 
 **对比**：
 - (a) `AnimationHandler.java:60-67`：`Math.max(this.mFrameDelay - (SystemClock.uptimeMillis() - this.mLastFrameTime), 0L)`——补偿式。
 - (b) `AnimationHandler.java:69-72`：同 (a) 形态，`FRAME_DELAY_MS = 10`。
-- lib `ScheduledTickScheduler`：补偿式不实现；lib `HandlerTickScheduler.kt:73` `postDelayed({...}, frameIntervalMs)` —— **无 drift 补偿**，固定 16ms 间隔。
+- lib `ScheduledTickScheduler`：补偿式不实现；lib `ChoreographerTickScheduler.kt:53（原 HandlerTickScheduler 已删）` `postDelayed({...}, frameIntervalMs)` —— **无 drift 补偿**，固定 16ms 间隔。
 - lib 两个 scheduler **都不补偿**：掉一帧 = 下一帧严格按 16ms 后才到（HandlerTickScheduler）或**立刻**到（ScheduledTickScheduler，scheduleAtFixedRate 在上一任务结束时立刻 schedule 下一）。
 
 **影响**：
@@ -175,7 +175,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 > **状态：❌已过期（2be173e 曾加漂移补偿，215ecb5 后类删除；Choreographer vsync 路径无需 drift）**
 ### 🟥 ④ HandlerTickScheduler 不做 drift 补偿（高 / 行为分歧，与 #2 互为表里）
 
-**证据**：`HandlerTickScheduler.kt:73` `handler.postDelayed({...tick...}, frameIntervalMs)`——固定 16ms，无 drift 计算。
+**证据**：`ChoreographerTickScheduler.kt:53（原 HandlerTickScheduler 已删）` `handler.postDelayed({...tick...}, frameIntervalMs)`——固定 16ms，无 drift 计算。
 
 **对比**：(a) `AnimationHandler.java:60-67` 用 `max(mFrameDelay - (uptimeMillis - mLastFrameTime), 0L)` 做补偿。
 
@@ -192,8 +192,8 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 ### 🟡 ⑤ 两个 scheduler 都不接 vsync（vsync 对齐缺失）（中 / 已知简化）
 
 **证据**：
-- `HandlerTickScheduler.kt:73` 走 `postDelayed(this, 16)`——无 vsync；
-- `ScheduledTickScheduler.kt:62` 走 `scheduleAtFixedRate`——无 vsync；
+- `ChoreographerTickScheduler.kt:53（原 HandlerTickScheduler 已删）` 走 `postDelayed(this, 16)`——无 vsync；
+- `ChoreographerTickScheduler.kt:70（原 ScheduledTickScheduler 已删）` 走 `scheduleAtFixedRate`——无 vsync；
 - vendor `(c) FrameCallbackProvider16` 走 `Choreographer.getInstance().postFrameCallback`（`AnimationHandler.java:104-108` / `AnimationHandler.java:75-94`）；
 - vendor 框架 `(c) SfVsyncFrameCallbackProvider` 走 SF-vsync（`OplusExecutors.java:170`）。
 
@@ -222,8 +222,8 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 ### 🟡 ⑦ 两个 scheduler 的 `runCatching` 与原厂相反（低 / 行为分歧）
 
 **证据**：
-- `ScheduledTickScheduler.kt:80` `runCatching { cb.doFrame(t) }`；
-- `HandlerTickScheduler.kt:88` `runCatching { cb.doFrame(t) }`；
+- `ChoreographerTickScheduler.kt:92（原 ScheduledTickScheduler 已删）` `runCatching { cb.doFrame(t) }`；
+- `ChoreographerTickScheduler.kt:92（原 HandlerTickScheduler 已删）` `runCatching { cb.doFrame(t) }`；
 - vendor (a) `AnimationHandler.java:130-138`、`(b):147-156` **均无 try-catch**，单 callback 异常会：
   1. 中断 `for` 循环，本帧剩余 callbacks 不派发；
   2. 异常沿 Runnable / Choreographer.FrameCallback 链上抛；
@@ -235,7 +235,7 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 **影响**：
 - demo 场景更"鲁棒"，单点失败不连累整帧；
 - **掩盖原厂"异常即暴露"的调试语义**，业务隐藏 bug；
-- 注释 `ScheduledTickScheduler.kt:79` "runCatching 做异常隔离"、`HandlerTickScheduler.kt:87` 同——**注释与原厂行为相反**。
+- 注释 `ScheduledTickScheduler.kt:79` "runCatching 做异常隔离"、`ChoreographerTickScheduler.kt:91（原 HandlerTickScheduler 已删）` 同——**注释与原厂行为相反**。
 - `ScheduledTickScheduler.kt` 的 KDoc（`:23`）说"异常隔离：单个 callback 抛异常不影响其他 callback"——是 lib 主动设计（与 vendor 不同），但注释措辞应明示"原厂无此保护"。
 
 **修复成本**：🟢 低（~10 行）。加构造参数 `isolateExceptions: Boolean = true`，false 时按 vendor 行为传播异常；注释加"原厂 (a)(b) 无此保护，单 callback 异常会沿 provider 上抛到 Looper"。
@@ -246,8 +246,8 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 ### 🟢 ⑧ HandlerTickScheduler `tick()` 用 `SystemClock.uptimeNanos()` 而 ScheduledTickScheduler 用 `System.nanoTime()`（低 / 一致性分歧）
 
 **证据**：
-- `HandlerTickScheduler.kt:84` `val t = SystemClock.uptimeNanos()`；
-- `ScheduledTickScheduler.kt:73` `val t = System.nanoTime()`。
+- `ChoreographerTickScheduler.kt:89（原 HandlerTickScheduler 已删）` `val t = SystemClock.uptimeNanos()`；
+- `ChoreographerTickScheduler.kt:89（原 ScheduledTickScheduler 已删）` `val t = System.nanoTime()`。
 
 **对比**：
 - vendor (a) `:69` `SystemClock.uptimeMillis()`；(c) `:88` Choreographer 给 nanos。
@@ -266,8 +266,8 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 ### 🟢 ⑨ `ScheduledTickScheduler.postFrameCallback` 早退条件 `running=false → start()`，但 `HandlerTickScheduler.postFrameCallback` 不调 `start()`（低 / 一致性分歧）
 
 **证据**：
-- `ScheduledTickScheduler.kt:42-46`：`callbacks.add(callback); if (!running) start()`——add 同时保证 scheduler 在跑；
-- `HandlerTickScheduler.kt:50-53`：`callbacks.add(callback)`——只 add，不 start。
+- `ChoreographerTickScheduler.kt:55-59（原 ScheduledTickScheduler 已删）`：`callbacks.add(callback); if (!running) start()`——add 同时保证 scheduler 在跑；
+- `ChoreographerTickScheduler.kt:55-59（原 HandlerTickScheduler 已删）`：`callbacks.add(callback)`——只 add，不 start。
 
 **对比**：vendor (a) `AnimationHandler.java:174-178` `if (mAnimationCallbacks.size() == 0) mProvider.postFrameCallback()`——首次 add 才 post，但**post 是隐式 start**（vendor provider 自身是 Runnable/FrameCallback，post 即 fire 路径）。
 
@@ -340,9 +340,9 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 
 | 论断 | 证据 |
 |---|---|
-| lib `ScheduledTickScheduler` 用 `scheduleAtFixedRate` + 守护线程 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/scheduler/ScheduledTickScheduler.kt:30-32`（`AsyncAnimator-Tick` daemon） + `:62`（scheduleAtFixedRate(0, 16ms)） + `:85-87`（空则 stop） + `:88-90`（long 溢出 reset） |
-| lib `HandlerTickScheduler` 用 `Handler.postDelayed` 自走 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/animthread/HandlerTickScheduler.kt:67-80`（scheduleNextFrame postDelayed） + `:73-78`（空则停） + `:84`（SystemClock.uptimeNanos） + `:29`（frameIntervalMs=16） |
-| lib `TickScheduler` 接口 5 成员 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/scheduler/TickScheduler.kt:9-29`（postFrameCallback/removeFrameCallback/start/stop + frameTimeNanos/frameCount/frameIntervalMs/FrameCallback） |
+| lib `ScheduledTickScheduler` 用 `scheduleAtFixedRate` + 守护线程 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/ChoreographerTickScheduler.kt（ScheduledTickScheduler 已在 215ecb5 删除）:30-32`（`AsyncAnimator-Tick` daemon） + `:62`（scheduleAtFixedRate(0, 16ms)） + `:85-87`（空则 stop） + `:88-90`（long 溢出 reset） |
+| lib `HandlerTickScheduler` 用 `Handler.postDelayed` 自走 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/ChoreographerTickScheduler.kt（HandlerTickScheduler 已在 215ecb5 删除）:67-80`（scheduleNextFrame postDelayed） + `:73-78`（空则停） + `:84`（SystemClock.uptimeNanos） + `:29`（frameIntervalMs=16） |
+| lib `TickScheduler` 接口 5 成员 | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/TickScheduler.kt:15-41`（postFrameCallback/removeFrameCallback/start/stop + frameTimeNanos/frameCount/frameIntervalMs/FrameCallback） |
 | vendored core AnimationHandler ThreadLocal + FrameCallbackProvider14/16 | `D:/oppo_a6_launcher/sources/androidx/core/animation/AnimationHandler.java:13-14`（sAnimationHandler ThreadLocal） + `:33-79`（FrameCallbackProvider14：sHandler ThreadLocal + postDelayed + drift 补偿） + `:82-108`（FrameCallbackProvider16：Choreographer.postFrameCallback） + `:197-202`（onAnimationFrame 末尾空则停） |
 | vendored dynamicanimation AnimationHandler 延迟启动 + 10ms | `D:/oppo_a6_launcher/sources/androidx/dynamicanimation/animation/AnimationHandler.java:13`（sAnimatorHandler ThreadLocal） + `:14`（FRAME_DELAY_MS = 10） + `:16`（mDelayedCallbackStartTime SimpleArrayMap） + `:50-72`（FrameCallbackProvider14：mHandler.postDelayed + drift 补偿） + `:75-94`（FrameCallbackProvider16：Choreographer.postFrameCallback） + `:123-145`（isCallbackDue + addAnimationFrameCallback(cb, delay)） + `:174-176`（setProvider 运行时换源） |
 | OPPO 复制版 COUI AnimationHandler | `D:/oppo_a6_launcher/sources/com/coui/appcompat/animation/dynamicanimation/COUIAnimationHandler.java`（FrameCallbackProvider14 类被 JADX 掏空，方法体 `throw null` 是反编译错误，见该文件第 65-79 行 AnonymousClass1；FrameCallbackProvider16 同 dynamicanimation 形态 + `Choreographer.getInstance().postFrameCallback`）；`D:/oppo_a6_launcher/sources/com/android/wm/shell/shared/annotations/ChoreographerSfVsync.java` 是 wm/shell 注解（与 COUI AnimationHandler **无关**，勿混） |
@@ -372,20 +372,34 @@ private val exec: ScheduledExecutorService = Executors.newSingleThreadScheduledE
 | 替换成本 | 默认实现，可被 `installThreadScheduler` 替换 | 默认实现，可被 `installThreadScheduler` 替换 | 都是 TickScheduler 接口实现，可互换 |
 
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方式**：逐条对照当前代码（`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\core\`）
+及 OPPO 参考树（`D:\oppo_a6_launcher\sources\`），不信任已有标记。
+**关键前提**：215ecb5 已删除 `ScheduledTickScheduler.kt` 和 `HandlerTickScheduler.kt`，
+仅剩 `ChoreographerTickScheduler.kt` + `TickScheduler.kt`（接口）。文件已从 `core/scheduler/` 迁入 `core/`。
 
-本份涉及且已落地的修复（按 commit 顺序）：
+- **条目总数**：10（§③ ①-⑩）
+- **状态变更**：0 条（所有 ❌已过期 / ✅已修复 标记与当前代码一致）
+- **描述修正**：文件路径更新 + 行号标注原文件已删
 
-- **2be173e** — HandlerTickScheduler 漂移补偿（当时）
-- **215ecb5** — ScheduledTickScheduler + HandlerTickScheduler 已删除，本文档大量分析已过期
+逐条验证明细：
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+| 条目 | 原标记 | 复核结论 | 证据 |
+|---|---|---|---|
+| ① ScheduledTickScheduler per-thread 破坏 | ❌已过期（215ecb5） | ❌已过期（不变） | `ScheduledTickScheduler.kt` 已删；ChoreographerTickScheduler 用 ThreadLocal Choreographer 满足 per-thread 语义 |
+| ② scheduleAtFixedRate 掉帧堆积 | ❌已过期（215ecb5） | ❌已过期（不变） | `ScheduledTickScheduler.kt` 已删；Choreographer vsync 路径由系统补偿 |
+| ③ daemon 线程静默死亡 | ❌已过期（215ecb5） | ❌已过期（不变） | `ScheduledTickScheduler.kt` 已删；ChoreographerTickScheduler 挂在调用方 Looper 上，非 daemon |
+| ④ HandlerTickScheduler 不做 drift 补偿 | ❌已过期（215ecb5 + 2be173e） | ❌已过期（不变） | `HandlerTickScheduler.kt` 已删；Choreographer vsync 路径无需 drift |
+| ⑤ 两个 scheduler 都不接 vsync | ✅已修复（dbde195） | ✅已修复（不变） | `ChoreographerTickScheduler.kt:83` `choreo.postFrameCallback(frameCallback)` 真 VSYNC |
+| ⑥ 守护线程死亡 = 永久静默 | ❌已过期（215ecb5） | ❌已过期（不变） | 同 ③ |
+| ⑦ runCatching 与原厂相反 | ❌已过期（215ecb5） | ❌已过期（不变） | 两实现已删；ChoreographerTickScheduler 保留 runCatching 为有意设计（0e8a472） |
+| ⑧ 时间源不一致 | ❌已过期（215ecb5） | ❌已过期（不变） | 仅剩 ChoreographerTickScheduler，帧时间统一取 Choreographer frameTimeNanos |
+| ⑨ postFrameCallback 不调 start() | ❌已过期（215ecb5） | ❌已过期（不变） | ChoreographerTickScheduler.postFrameCallback 内含 `if (!running) start()`（:58） |
+| ⑩ stop 不退守护线程 | ❌已过期（215ecb5） | ❌已过期（不变） | 无共享 ScheduledExecutorService 需 shutdown |
 
-批次 2 逐条复核（2026-09-09）：
-- §③ ①-⑩：①-③ ⑥-⑩ → ❌已过期（215ecb5 删 Scheduled/HandlerTickScheduler；④ 另含 2be173e 曾修 drift）；⑤ → ✅已修复（dbde195：ChoreographerTickScheduler 真 VSYNC）
-- §④-A 1-7：A-5 → ✅已修复（dbde195）；其余 → ❌已过期（215ecb5）
-- §④-B 1-7：B-1/2/3/4/5 → ✔️保持简化；B-6/7 → ❌已过期（215ecb5）
-- §④-C 1-4：C-1/2/3 → ✔️保持简化；C-4 → ⚠️未修复（@JvmStatic 1 行，无 Java 调用面）
+文件路径更正：
+- `core/scheduler/TickScheduler.kt` → `core/TickScheduler.kt`
+- `core/scheduler/ScheduledTickScheduler.kt` → 已删除（215ecb5）；原分析保留为历史参考
+- `launcher/animthread/HandlerTickScheduler.kt` → 已删除（215ecb5）；原分析保留为历史参考
+- body 内所有 `ScheduledTickScheduler.kt:XX` / `HandlerTickScheduler.kt:XX` 行号引用已标注"原文件已删"并附 `ChoreographerTickScheduler.kt` 对应行号（供语义对照）

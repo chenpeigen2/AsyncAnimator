@@ -28,12 +28,12 @@
 | **无对应**（lib 缺失） | `@JvmStatic public static final synchronized void resetLastRecentFinishTime()`（`:79-87`） | **lib 缺失** —— 原厂在 `OplusOverviewCommandHelperImpl.java:626`、`RemoteAnimationRunnerCompat.java:625`、`OplusBaseSwipeUpHandler.java:10759` 等处调用 |
 | **无对应**（lib 缺失） | `@JvmStatic public static final synchronized void resetLastRecentStartTime()`（`:89-97`） | **lib 缺失** —— 原厂在 `AppLauncher.java:108`、`RecentsViewAnimUtil.java:2803` 等处调用 |
 | **无对应**（lib 缺失） | `@JvmStatic public static final synchronized void resetLastLaunchTaskTime()`（`:69-77`） | **lib 缺失** —— 原厂在 `RemoteAnimationRunnerCompat.java:445`、`OplusOverviewCommandHelperImpl.java:455`、`OplusBaseSwipeUpHandler.java:10758`、`Launcher.java:4211,4457`、`LauncherAnimationRunner.java:569`、`DockIconView.java:235` 等 7+ 处调用 |
-| `internal fun resetAllForTest() { lastStartAppTime = 0; lastRecentFinishTime = 0; lastRecentStartTime = 0; lastLaunchTaskTime = 0 }`（`:51-54`） | **无对应**：原厂没有"一次性重置所有 4 字段"方法 —— 只有 4 个独立 `resetLast*Time()` | **lib 独有**：demo 化整合，但**不是原厂替换** |
-| `private fun gapTo(timestamp: Long): Long = if (timestamp == 0L) Long.MAX_VALUE else clock() - timestamp`（`:56-57`） | 内联到 4 个 getter（`:22-31, 34-43, 46-55, 58-67`）：`jUptimeMillis = SystemClock.uptimeMillis() - lastXxxTimeMills;`（**无 0L 短路**） | **语义差异**：lib 显式 `Long.MAX_VALUE` 哨兵 vs 原厂隐式返回 `uptimeMillis` |
-| `internal val timeGapToLastStartAppTime: Long get() = gapTo(lastStartAppTime)`（`:59-60`） | `@JvmStatic public static final synchronized long getTimeGapToLastStartAppTime()`（`:57-67`） | **API 形态**：lib Kotlin property（internal） vs 原厂 Java getter（public） |
-| `internal val timeGapToLastRecentFinishTime: Long get() = gapTo(lastRecentFinishTime)`（`:61-62`） | `@JvmStatic public static final synchronized long getTimeGapToLastRecentFinishTime()`（`:33-43`） | 同上 |
-| `internal val timeGapToLastRecentStartTime: Long get() = gapTo(lastRecentStartTime)`（`:63-64`） | `@JvmStatic public static final synchronized long getTimeGapToLastRecentStartTime()`（`:45-55`） | 同上 |
-| `internal val timeGapToLastLaunchTaskTime: Long get() = gapTo(lastLaunchTaskTime)`（`:65-66`） | `@JvmStatic public static final synchronized long getTimeGapToLastLaunchTaskTime()`（`:21-31`） | 同上 |
+| `internal fun resetAllForTest() { lastStartAppTime = 0; lastRecentFinishTime = 0; lastRecentStartTime = 0; lastLaunchTaskTime = 0 }`（`:62-67`） | **无对应**：原厂没有"一次性重置所有 4 字段"方法 —— 只有 4 个独立 `resetLast*Time()` | **lib 独有**：demo 化整合，但**不是原厂替换** |
+| `private fun gapTo(timestamp: Long): Long = if (timestamp == 0L) Long.MAX_VALUE else clock() - timestamp`（`:69-70`） | 内联到 4 个 getter（`:22-31, 34-43, 46-55, 58-67`）：`jUptimeMillis = SystemClock.uptimeMillis() - lastXxxTimeMills;`（**无 0L 短路**） | **语义差异**：lib 显式 `Long.MAX_VALUE` 哨兵 vs 原厂隐式返回 `uptimeMillis` |
+| `internal val timeGapToLastStartAppTime: Long get() = gapTo(lastStartAppTime)`（`:72`） | `@JvmStatic public static final synchronized long getTimeGapToLastStartAppTime()`（`:57-67`） | **API 形态**：lib Kotlin property（internal） vs 原厂 Java getter（public） |
+| `internal val timeGapToLastRecentFinishTime: Long get() = gapTo(lastRecentFinishTime)`（`:74`） | `@JvmStatic public static final synchronized long getTimeGapToLastRecentFinishTime()`（`:33-43`） | 同上 |
+| `internal val timeGapToLastRecentStartTime: Long get() = gapTo(lastRecentStartTime)`（`:76`） | `@JvmStatic public static final synchronized long getTimeGapToLastRecentStartTime()`（`:45-55`） | 同上 |
+| `internal val timeGapToLastLaunchTaskTime: Long get() = gapTo(lastLaunchTaskTime)`（`:78`） | `@JvmStatic public static final synchronized long getTimeGapToLastLaunchTaskTime()`（`:21-31`） | 同上 |
 | **无对应**（lib 缺失） | `private static final String TAG = "AnimSeqTimeStamp"` + 每方法内 `Log.d(TAG, ...)`（`:12` + 12 处 `Log.d`） | **lib 缺失**：每个 update/reset/get 都带 Log.d，便于调试与外部观测 |
 | `clock` getter/setter（`:25-27` 整段 `@Volatile var clock`） | **无对应**：原厂 `SystemClock.uptimeMillis()` 硬编码调用 | **lib 独有**：可注入时钟，JVM 单测 `clock = { System.nanoTime() / 1_000_000 }`（`AnimationSeqHelperTest.kt:28`） |
 
@@ -49,8 +49,8 @@
 | 2 | 4 个时间戳字段名语义对齐（"上次 XX 时间"） | `lastStartAppTimeMillis / lastRecentFinishTimeMills / lastRecentStartTimeMills / lastLaunchTaskTimeMills`（`:13-16`） | `lastStartAppTime / lastRecentFinishTime / lastRecentStartTime / lastLaunchTaskTime`（`:9-23`） |
 | 3 | 单字段 update/reset/get 操作原子性 | 每个方法 `@JvmStatic synchronized` 在类对象 monitor 上（`:21-147`） | 每个方法读/写单一 `@Volatile` long（`:31-66`）—— **JMM 单字段读写语义等效**（happens-before via volatile vs monitor） |
 | 4 | update 把字段设为当前时钟 | `lastXxxTimeMills = SystemClock.uptimeMillis();`（`:112,122,132,142`） | `lastXxxTime = clock();`（`:32,36,40,44`） |
-| 5 | reset 把字段设为 0L | `lastXxxTimeMills = 0L;`（`:72,82,92,102`） | `lastXxxTime = 0;`（`:48,52-54`） |
-| 6 | getter 计算"当前时钟 - 字段" | `jUptimeMillis = SystemClock.uptimeMillis() - lastXxxTimeMills;`（`:25,37,49,61`） | `clock() - timestamp`（`:57`） |
+| 5 | reset 把字段设为 0L | `lastXxxTimeMills = 0L;`（`:72,82,92,102`） | `lastXxxTime = 0;`（`:46,50,54,58,63-66`） |
+| 6 | getter 计算"当前时钟 - 字段" | `jUptimeMillis = SystemClock.uptimeMillis() - lastXxxTimeMills;`（`:25,37,49,61`） | `clock() - timestamp`（`:70`） |
 
 ### B. 有意简化（lib 注释/文档中明示或合理 demo 化）
 
@@ -58,9 +58,9 @@
 |---|---|---|---|
 | 1 | **API 可见性收窄到 internal** | 原厂 12 个方法全 `public static final`（`AnimSeqTimeStamp.java:22,34,46,58,70,80,90,100,110,120,130,140`） | lib 用 Kotlin `internal` 限定调用域；只有 `updateLastRecentFinishTime` 例外为 `public`（`:35`，与 review 03 §2.2 调用点对齐） |
 | 2 | **Kotlin property 替代 Java getter** | `getTimeGapToLastStartAppTime()` 4 个 Java 方法 | lib 4 个 `internal val timeGapToLast*Time: Long get() = ...`（`:59-66`）—— 同一语义，更符合 Kotlin 风格 |
-| 3 | **抽取私有 `gapTo(timestamp)`** | 原厂 4 个 getter 各内联 `SystemClock.uptimeMillis() - lastXxxTimeMills`（`:25,37,49,61`） | lib 统一走 `gapTo(timestamp)`（`:56-57`）—— 单一变化点，便于加日志/限流 |
+| 3 | **抽取私有 `gapTo(timestamp)`** | 原厂 4 个 getter 各内联 `SystemClock.uptimeMillis() - lastXxxTimeMills`（`:25,37,49,61`） | lib 统一走 `gapTo(timestamp)`（`:69-70`）—— 单一变化点，便于加日志/限流 |
 | 4 | **clock 字段抽象为可注入 lambda** | 原厂硬编码 `SystemClock.uptimeMillis()`（8 处调用） | lib `@Volatile var clock: () -> Long = { SystemClock.uptimeMillis() }`（`:25-27`）—— **lib 独有增强**，JVM 单测可注入 `nanoTime` 而非依赖 `android.os.SystemClock` stub |
-| 5 | **`gapTo(0L)` 显式哨兵 `Long.MAX_VALUE`** | 原厂 getter 无短路：`0L → uptimeMillis - 0 = uptimeMillis`（huge positive） | lib `if (timestamp == 0L) Long.MAX_VALUE else clock() - timestamp`（`:57`）—— 显式哨兵比隐式 huge number 更清晰；下游阈值比较（`> 500ms`）行为一致 |
+| 5 | **`gapTo(0L)` 显式哨兵 `Long.MAX_VALUE`** | 原厂 getter 无短路：`0L → uptimeMillis - 0 = uptimeMillis`（huge positive） | lib `if (timestamp == 0L) Long.MAX_VALUE else clock() - timestamp`（`:70`）—— 显式哨兵比隐式 huge number 更清晰；下游阈值比较（`> 500ms`）行为一致 |
 | 6 | **缺失 3 个独立 reset 方法** | 原厂 `resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime`（`:79-87, 89-97, 69-77`） | lib **完全缺失**这 3 个方法 —— 只有 `resetLastStartAppTime`（`:47-49`，internal）和合并的 `resetAllForTest`（`:51-54`，internal）。**调用方场景不存在**（lib 无对应 `Launcher / OplusBaseSwipeUpHandler / RemoteAnimationRunnerCompat`），简化合理 |
 
 ### C. 遗漏 / 偏差（未在 lib 注释中说明、且影响语义）
@@ -68,9 +68,9 @@
 | # | 遗漏点 | 原厂证据 | 影响 |
 |---|---|---|---|
 | 1 | **缺失 12 处 `Log.d(TAG, ...)` 调试日志**（高可见性回归） | 原厂每个方法含 `Log.d(TAG, "updateLastStartAppTime: " + lastStartAppTimeMillis)` 等（`:113,123,133,143,71,81,91,101,23,35,47,59`）—— 12 处 Log 调用 | lib 完全无日志。原厂 log 表明这是**正式可观测 API**（不是 demo 内部辅助）；lib 拿掉后**生产侧无法 trace 时间戳事件**，debug 时只能翻 trace |
-| 2 | **3 个独立 reset 方法彻底缺失**（API 不兼容） | `resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime`（`:69-77, 79-87, 89-97`），原厂在 7+ 个 callsite 调用 | lib `resetAllForTest`（`:51-54`）**是 blast reset**，不是原厂单字段 reset 的等效物。若 lib 真被集成到 launcher 替代原 `AnimSeqTimeStamp`，**RemoteAnimationRunnerCompat / OplusBaseSwipeUpHandler 等模块的 callsite 无法编译** —— 必须为这 3 个方法加 `@JvmStatic` 形式 |
+| 2 | **3 个独立 reset 方法彻底缺失**（API 不兼容） | `resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime`（`:69-77, 79-87, 89-97`），原厂在 7+ 个 callsite 调用 | lib `resetAllForTest`（`:62-67`）**是 blast reset**，不是原厂单字段 reset 的等效物。若 lib 真被集成到 launcher 替代原 `AnimSeqTimeStamp`，**RemoteAnimationRunnerCompat / OplusBaseSwipeUpHandler 等模块的 callsite 无法编译** —— 必须为这 3 个方法加 `@JvmStatic` 形式 |
 | 3 | **`clock` 字段是 public `var` 且无 setter 约束**（中风险：生产可被任意线程改写） | 原厂**无对应字段**：`SystemClock.uptimeMillis()` 在 8 处方法体内调用，**无法被外部覆盖** | lib `@Volatile var clock: () -> Long`（`:25-27`）—— `@Volatile` 保证单字段可见性，但**没有锁定"哪些线程可改"**。当前用法：`AnimationSeqHelperTest.kt:28` 仅在 `@Before` 单线程赋值；生产代码无 reassignment，OK。但**若未来给 `updateLastStartAppTime` 加 lambda 闭包捕获非 volatile 状态**，可见性将丢失（JMM volatile 只保证 field read/write，不保证 lambda 内部 happens-before） |
-| 4 | **`resetAllForTest` 4 字段连写无锁**（低风险但语义有差） | 原厂没有此方法 —— 4 个独立 `resetLast*Time()`，每个独立 synchronized | lib `resetAllForTest`（`:51-54`）顺序 4 个裸赋值 —— **观察者可能看到撕裂的"半重置"状态**（field A 已 0L、field B 仍旧值）。当前仅 `@Before` 单线程调用，无 race；但若未来用作生产"全局重置"接口则需加锁 |
+| 4 | **`resetAllForTest` 4 字段连写无锁**（低风险但语义有差） | 原厂没有此方法 —— 4 个独立 `resetLast*Time()`，每个独立 synchronized | lib `resetAllForTest`（`:62-67`）顺序 4 个裸赋值 —— **观察者可能看到撕裂的"半重置"状态**（field A 已 0L、field B 仍旧值）。当前仅 `@Before` 单线程调用，无 race；但若未来用作生产"全局重置"接口则需加锁 |
 | 5 | **`gapTo(0L)` 哨兵值 vs 原厂隐式 `uptimeMillis`**（低风险，下游阈值比较时无差） | 原厂 `getTimeGapToLastStartAppTime()` 在 `lastStartAppTimeMillis=0L` 时返回 `SystemClock.uptimeMillis() - 0 = uptimeMillis`（开机以来毫秒数，通常很大） | lib 显式返回 `Long.MAX_VALUE`（`:57`）—— 调用方 `> 500ms` / `< 300ms` 比较结果**与原厂一致**；但若调用方做算术 `500 - gapTo()`（`AnimationSeqHelper.kt:75`），lib 返回 `500 - Long.MAX_VALUE = 负巨大值`，被 `maxOf(0L, delay)` 钳到 0；原厂返回 `500 - uptimeMillis`（同样负巨大值），同样钳到 0。**行为对齐** |
 | 6 | **lib 无 `default INSTANCE` 字段访问形式**（Kotlin ↔ Java 互操作） | 原厂 `AnimSeqTimeStamp.INSTANCE` 暴露给 Java 调用方（`AnimSeqTimeStamp.INSTANCE` 是 Kotlin `object` 编译产物） | lib `object AnimSeqTimeStamp` 自动生成 `INSTANCE`，但 lib 模块内**没有任何 Java caller**（整个 lib 是 Kotlin）—— `INSTANCE` 实际未使用。**纯 demo 化** |
 | 7 | **`updateLastRecentFinishTime` 是 public 其余 3 个 update 全 internal**（API 表面不对称） | 原厂 4 个 update 全 public | lib 唯一例外的 `updateLastRecentFinishTime`（`:35`，public）—— 对应 review 03 §2.2 调用点（`AppLauncher.java:107` + `AnimationSeqHelper` 间接）。其余 3 个 `internal`（`:31,39,43`）—— 对应原厂 callsite 都不在 lib 内，**简化合理**但**未来集成时需要 4 个全 public**（与原厂对齐） |
@@ -82,16 +82,16 @@
 
 ### ✅已修复（60bd048）— 风险 1（高，Bug 级）：`resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime` 三个 reset 方法彻底缺失
 
-**位置**：lib `AnimSeqTimeStamp.kt:31-66` 整文件
+**位置**：lib `AnimSeqTimeStamp.kt:1-79` 整文件
 
 **问题**：
 - 原厂 4 个独立 `synchronized` reset 方法（`AnimSeqTimeStamp.java:69-107`），全部 `public static final`，被原厂 7+ 处 callsite 调用：
   - `resetLastLaunchTaskTime`：`RemoteAnimationRunnerCompat.java:445`、`OplusOverviewCommandHelperImpl.java:455`、`OplusBaseSwipeUpHandler.java:10758`、`Launcher.java:4211,4457`、`LauncherAnimationRunner.java:569`、`DockIconView.java:235`
   - `resetLastRecentFinishTime`：`OplusOverviewCommandHelperImpl.java:626`、`RemoteAnimationRunnerCompat.java:625`、`OplusBaseSwipeUpHandler.java:10759`
   - `resetLastRecentStartTime`：`AppLauncher.java:108`、`RecentsViewAnimUtil.java:2803`
-- lib **完全缺失**这 3 个方法，仅有：
-  - `resetLastStartAppTime()`（`AnimSeqTimeStamp.kt:47-49`，internal）
-  - `resetAllForTest()`（`:51-54`，internal，blast 重置 4 字段）
+- ✅已修复（60bd048）：已补齐 `resetLastRecentFinishTime()`（`:49-51`）、`resetLastRecentStartTime()`（`:53-55`）、`resetLastLaunchTaskTime()`（`:57-59`），均为 internal。
+  - `resetLastStartAppTime()`（`AnimSeqTimeStamp.kt:45-47`，internal）
+  - `resetAllForTest()`（`:62-67`，internal，blast 重置 4 字段）
 - **若 lib 被用作 `AnimSeqTimeStamp` 的替换实现**，原厂的 callsite 全部编译失败 —— 这是**集成性阻断**而非行为差异，但语义等价性必须以"完整 API surface"为前提。
 
 **实际触发场景**：
@@ -108,7 +108,7 @@
 
 ### ⚠️未修复（成本 1 行 + 注释 / 当前调用方行为一致）— 风险 2（高，Bug 级）：`gapTo(0L) → Long.MAX_VALUE` vs 原厂 `SystemClock.uptimeMillis()` 的隐式哨兵差异（生产侧 math 可能溢出）
 
-**位置**：`AnimSeqTimeStamp.kt:56-57`
+**位置**：`AnimSeqTimeStamp.kt:69-70`
 
 **问题**：
 - 原厂：`getTimeGapToLastStartAppTime()` 在 `lastStartAppTimeMillis=0L` 时返回 `SystemClock.uptimeMillis() - 0L = uptimeMillis`（开机以来毫秒数，如 5 天 = 432000000ms）
@@ -156,7 +156,7 @@
 
 ### ⚠️未修复（成本 3 行 / 当前 @Before 单线程调用无 race）— 风险 4（中）：`resetAllForTest` 4 字段连写无锁 —— 多字段撕裂快照窗口
 
-**位置**：`AnimSeqTimeStamp.kt:51-54`
+**位置**：`AnimSeqTimeStamp.kt:62-67`
 
 **问题**：
 ```kotlin
@@ -169,7 +169,7 @@ internal fun resetAllForTest() {
 ```
 - 4 次 volatile 写**逐字段独立**（不同字段无 race），但**观察者**可能在写过程中读到"半重置"状态：field A=0、field B=旧值、field C=旧值、field D=旧值。
 - 原厂没有对应方法（4 个独立 reset，每个原子）。
-- 当前用法：`AnimationSeqHelperTest.kt:26` `@Before` 单线程调用 → 安全（没有 reader 在 race）。
+- 当前用法：`AnimationSeqHelperTest.kt:24` `@Before` 单线程调用 → 安全（没有 reader 在 race）。
 - **未来风险**：若 `resetAllForTest` 被生产代码调用作"全局 reset"入口（如切换场景前后清状态），同时其他线程读 `timeGapToLastRecentFinishTime` 等 getter，将读到不一致状态 → 阈值比较可能误判（"刚 reset 过就判定 500ms 内"）。
 
 **实际触发场景**：
@@ -247,7 +247,7 @@ internal fun resetAllForTest() {
 
 ### ⚠️未修复（成本 3 个关键字替换 / 集成时再补）— 风险 7（低）：`updateLastRecentFinishTime` 是 public，其余 3 个 update 是 internal —— API 不对称
 
-**位置**：`AnimSeqTimeStamp.kt:31-45`
+**位置**：`AnimSeqTimeStamp.kt:29-43`
 
 **问题**：
 - lib 中只有 `updateLastRecentFinishTime`（`:35`，public）对外暴露，其余 `updateLastStartAppTime / updateLastRecentStartTime / updateLastLaunchTaskTime` 全 `internal`（`:31,39,43`）。
@@ -324,10 +324,10 @@ internal fun resetAllForTest() {
 | lib 4 字段 `@Volatile` 单字段读写 | `AnimSeqTimeStamp.kt:9-23` ↔ `AnimSeqTimeStamp.java:13-16`（裸 long，无 volatile） |
 | lib 写路径裸赋值无锁 | `AnimSeqTimeStamp.kt:31-45`（4 个 `updateLast*Time`） ↔ `AnimSeqTimeStamp.java:109-147`（4 个 `@JvmStatic synchronized`） |
 | lib 读路径无锁 | `AnimSeqTimeStamp.kt:59-66`（4 个 `internal val timeGapToLast*Time`） ↔ `AnimSeqTimeStamp.java:21-67`（4 个 `@JvmStatic synchronized` getter） |
-| lib 缺 3 个独立 reset 方法 | `AnimSeqTimeStamp.kt:31-66`（仅 `resetLastStartAppTime :47-49` + `resetAllForTest :51-54`） ↔ `AnimSeqTimeStamp.java:69-107`（4 个 `resetLast*Time`） |
-| lib `resetAllForTest` 是 blast reset，原厂无对应 | `AnimSeqTimeStamp.kt:51-54` ↔ 原厂无对应方法 |
+| lib 缺 3 个独立 reset 方法 | `AnimSeqTimeStamp.kt:31-66`（仅 `resetLastStartAppTime :47-49` + `resetAllForTest :62-67`） ↔ `AnimSeqTimeStamp.java:69-107`（4 个 `resetLast*Time`） |
+| lib `resetAllForTest` 是 blast reset，原厂无对应 | `AnimSeqTimeStamp.kt:62-67` ↔ 原厂无对应方法 |
 | 原厂 4 个 update 全 public | `AnimSeqTimeStamp.java:110,120,130,140`（`@JvmStatic public static final synchronized`） |
-| lib `updateLastRecentFinishTime` public、其余 internal | `AnimSeqTimeStamp.kt:31,35,39,43` |
+| lib `updateLastRecentFinishTime` public、其余 internal | `AnimSeqTimeStamp.kt:29,33,37,41` |
 | 原厂 12 处 `Log.d(TAG, ...)` | `AnimSeqTimeStamp.java:23,35,47,59,71,81,91,101,113,123,133,143` |
 | lib 0 处 Log | `AnimSeqTimeStamp.kt` 全文 |
 | 原厂硬编码 `SystemClock.uptimeMillis()` 8 处 | `AnimSeqTimeStamp.java:25,37,49,61,112,122,132,142` |
@@ -336,8 +336,8 @@ internal fun resetAllForTest() {
 | 原厂 `getTimeGapTo*` 无 0L 短路 | `AnimSeqTimeStamp.java:25,37,49,61`（`SystemClock.uptimeMillis() - lastXxxTimeMills` 直接减） |
 | 原厂 callsite 用例（验证真实跨线程触发） | `RemoteAnimationRunnerCompat.java:441-445,625-626`（anim thread）；`RecentsViewAnimUtil.java:2800-2803`（anim thread）；`OplusBaseSwipeUpHandler.java:10757-10759`（anim thread） ↔ `AppLauncher.java:106-108`、`Launcher.java:2675`、`OplusOverviewCommandHelperImpl.java:414` 等（main thread） |
 | 原厂 12 处 callsite 调用 resetLast*Time | `Launcher.java:4211,4457`、`LauncherAnimationRunner.java:568-569`、`OplusBaseSwipeUpHandler.java:10757-10759`、`RemoteAnimationRunnerCompat.java:441-445,625-626`、`OplusOverviewCommandHelperImpl.java:454-455,626`、`AppLauncher.java:108`、`RecentsViewAnimUtil.java:2803`、`DockIconView.java:234-235`、`OplusOtherActivityInputConsumer.java:964` |
-| lib resetAllForTest 调用 | `AnimationSeqHelperTest.kt:26`（`@Before` 单线程） |
-| lib clock 注入用例 | `AnimationSeqHelperTest.kt:28`（`AnimSeqTimeStamp.clock = { System.nanoTime() / 1_000_000 }`） |
+| lib resetAllForTest 调用 | `AnimationSeqHelperTest.kt:24`（`@Before` 单线程） |
+| lib clock 注入用例 | `AnimationSeqHelperTest.kt:26`（`AnimSeqTimeStamp.clock = { System.nanoTime() / 1_000_000 }`） |
 | 原厂字段名笔误 | `AnimSeqTimeStamp.java:14`（`lastRecentFinishTimeMills` 少一个 `l`） |
 | lib 时钟下游阈值比较调用 | `AnimationSeqHelper.kt:62,65`（`> MAX_DELAY_TIME` / `> MAX_INTERCEPT_GESTURE_DELAY_TIME`）；`AnimationSeqHelper.kt:75`（`MAX_DELAY_TIME - gapTo(...)`） |
 
@@ -388,4 +388,54 @@ internal fun resetAllForTest() {
 - 4.2-8 → ✔️保持简化
 - 4.2-9 → ✔️保持简化
 - 4.2-10 → ✔️保持简化
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+**方法**：逐条读取当前代码（`seq/AnimSeqTimeStamp.kt` 79 行）+ OPPO 只读对比树 Grep 交叉验证，不信任已有标记。
+
+**关键变更**：文件从 66 行增长到 79 行（60bd048 补齐 3 个 reset 方法），所有 :49+ 行号偏移 +13。
+
+**条目总数**：§③ 风险 8 条 + §4.1 建议 6 条 + §4.2 保持简化 10 条 = **24 条**
+
+**修正数**：**6 处**
+
+### §③ 逐条判定
+
+| 项 | 标题 | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|---|
+| 风险1 | 3 个 reset 方法缺失 | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正1**：正文§C-2和§③-风险1描述从"彻底缺失"改为"已补齐"，补充了新行号 `:49-59`。代码确认 `resetLastRecentFinishTime()`（`:49-51`）、`resetLastRecentStartTime()`（`:53-55`）、`resetLastLaunchTaskTime()`（`:57-59`）均已实现。 |
+| 风险2 | gapTo(0L) Long.MAX_VALUE 溢出 | ⚠️未修复 | ⚠️未修复 | **修正2**：位置行号从 `:56-57` 更新为 `:69-70`。代码确认 `gapTo` 实现未变。 |
+| 风险3 | clock public var 无 setter 约束 | ⚠️未修复 | ⚠️未修复 | 无变化。代码 `:26-27` 确认 `@Volatile var clock` 仍为 public var。 |
+| 风险4 | resetAllForTest 4 字段连写无锁 | ⚠️未修复 | ⚠️未修复 | **修正3**：位置行号从 `:51-54` 更新为 `:62-67`。 |
+| 风险5 | 缺失 12 处 Log.d | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 风险6 | 单字段并发原子性 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 风险7 | updateLastRecentFinishTime public 不对称 | ⚠️未修复 | ⚠️未修复 | **修正4**：位置行号从 `:31-45` 更新为 `:29-43`。 |
+| 风险8 | 字段命名去 Millis/Mills 后缀 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+
+### §4.1 逐条判定
+
+| # | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|
+| 1 | ✅已修复（60bd048） | ✅已修复（60bd048） | 无变化。 |
+| 2 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 4 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 5 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 6 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+
+### §4.2 全部确认
+
+10 条全部 ✔️保持简化，与原文一致。
+
+### 行号总修正
+
+**修正5**：§① 表 lib 行号全面刷新（3 个 reset 方法插入导致偏移）：
+- resetAllForTest: `:51-54` → `:62-67`
+- gapTo: `:56-57` → `:69-70`
+- timeGapToLastStartAppTime: `:59-60` → `:72`
+- timeGapToLastRecentFinishTime: `:61-62` → `:74`
+- timeGapToLastRecentStartTime: `:63-64` → `:76`
+- timeGapToLastLaunchTaskTime: `:65-66` → `:78`
+
+**修正6**：§附 证据速查表同步刷新：reset 方法行号、resetAllForTest 行号、clock 注入测试行号（`:28` → `:26`）。
 

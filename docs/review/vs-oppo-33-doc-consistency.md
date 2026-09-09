@@ -14,25 +14,25 @@
 
 | 文档声明 | 期望 lib 类 | lib 当前实际 | 一致性 | 证据 |
 |---|---|---|---|---|
-| `USAGE.md §AsyncValueAnimator` | `launcher/async/AsyncValueAnimator` | ✓ 存在 | ✅ | `lib/.../async/AsyncValueAnimator.kt` |
-| `USAGE.md §AsyncAnimCallbacks` | `launcher/async/AsyncAnimCallbacks` | ✓ 存在 | ✅ | `lib/.../async/AsyncAnimCallbacks.kt` |
-| `USAGE.md §ActualEndAnimListener` | `launcher/async/ActualEndAnimListener` | ✓ 存在 | ✅ | `lib/.../async/ActualEndAnimListener.kt` |
+| `USAGE.md §AsyncValueAnimator` | `anim/AsyncValueAnimator` | ✓ 存在 | ✅ | `lib/.../async/AsyncValueAnimator.kt` |
+| `USAGE.md §AsyncAnimCallbacks` | `anim/AsyncAnimCallbacks` | ✓ 存在 | ✅ | `lib/.../async/AsyncAnimCallbacks.kt` |
+| `USAGE.md §ActualEndAnimListener` | `anim/ActualEndAnimListener` | ✓ 存在 | ✅ | `lib/.../async/ActualEndAnimListener.kt` |
 | `USAGE.md §LooperExecutor/Executors` | `launcher/async/{LooperExecutor, Executors}` | ✓ 存在 | ✅ | `lib/.../async/LooperExecutor.kt`, `Executors.kt` |
-| `USAGE.md §CustomRectFSpringAnim` | `launcher/async/CustomRectFSpringAnim` | ✓ 存在 | ✅ | `lib/.../async/CustomRectFSpringAnim.kt` |
-| `USAGE.md §AsyncSpringAnim` | **未声明**（应当出现） | `launcher/async/AsyncSpringAnim` 存在 | ❌ **漏列** | review 06 §A-B / §③ / §④ / SUMMARY §7 均点名 |
-| `USAGE.md §AnimationControlThread` | `launcher/animthread/AnimationControlThread` | ✓ 存在 | ✅ | `lib/.../animthread/AnimationControlThread.kt` |
-| `USAGE.md §AnimationController` | `launcher/controller/AnimationController` | ✓ 存在 | ✅ | `lib/.../controller/AnimationController.kt` |
-| `USAGE.md §AnimationState` | `launcher/controller/AnimationState` | ✓ 存在 | ✅ | `lib/.../controller/AnimationState.kt` |
-| `USAGE.md §DefaultAnimationController` | `launcher/controller/DefaultAnimationController` | ✓ 存在 | ✅ | `lib/.../controller/DefaultAnimationController.kt` |
+| `USAGE.md §CustomRectFSpringAnim` | `anim/CustomRectFSpringAnim` | ✓ 存在 | ✅ | `lib/.../async/CustomRectFSpringAnim.kt` |
+| `USAGE.md §AsyncSpringAnim` | **未声明**（应当出现） | `anim/AsyncSpringAnim` 存在 | ❌ **漏列** | review 06 §A-B / §③ / §④ / SUMMARY §7 均点名 |
+| `USAGE.md §AnimationControlThread` | `thread/AnimationControlThread` | ✓ 存在 | ✅ | `lib/.../animthread/AnimationControlThread.kt` |
+| `USAGE.md §AnimationController` | `control/AnimationController` | ✓ 存在 | ✅ | `lib/.../control/AnimationController.kt` |
+| `USAGE.md §AnimationState` | `control/AnimationState` | ✓ 存在 | ✅ | `lib/.../controller/AnimationState.kt` |
+| `USAGE.md §DefaultAnimationController` | `control/DefaultAnimationController` | ✓ 存在 | ✅ | `lib/.../controller/DefaultAnimationController.kt` |
 | `USAGE.md §OnAnimStateChangeListener` | typealias | ✓ 存在 | ✅ | `lib/.../controller/OnAnimStateChangeListener.kt`（typealias，**review 12 #4 bug**：引用相等性破） |
 | `USAGE.md §TaskStateChangeTimeOutListener` | class，自管理超时 | ✓ class（**不是** fun interface） | ⚠️ 文档 §有意简化清单 **过期** | `lib/.../controller/TaskStateChangeTimeOutListener.kt:11` + USAGE.md §有意简化清单 倒数第 3 项仍写"fun interface" |
 | `USAGE.md §RemoteAnimationFactory/LauncherAnimationRunner` | 类型壳 + 接口 | ✓ 存在 | ✅ | `lib/.../controller/RemoteAnimationFactory.kt` + `com/android/launcher3/LauncherAnimationRunner.kt` |
-| `USAGE.md §AnimationSeqHelper` | `launcher/seq/AnimationSeqHelper` | ✓ 存在 | ✅ | `lib/.../seq/AnimationSeqHelper.kt` |
-| `USAGE.md §AnimSeqTimeStamp` | `launcher/seq/AnimSeqTimeStamp` | ✓ 存在 | ✅ | `lib/.../seq/AnimSeqTimeStamp.kt` |
-| `USAGE.md §AnimationFeatureHelper` | `launcher/feature/AnimationFeatureHelper` | ✓ 存在 | ✅ | `lib/.../feature/AnimationFeatureHelper.kt` |
-| `USAGE.md §OplusAnimManager` | `launcher/manager/OplusAnimManager` | ✓ 存在 | ✅ | `lib/.../manager/OplusAnimManager.kt` |
+| `USAGE.md §AnimationSeqHelper` | `seq/AnimationSeqHelper` | ✓ 存在 | ✅ | `lib/.../seq/AnimationSeqHelper.kt` |
+| `USAGE.md §AnimSeqTimeStamp` | `seq/AnimSeqTimeStamp` | ✓ 存在 | ✅ | `lib/.../seq/AnimSeqTimeStamp.kt` |
+| `USAGE.md §AnimationFeatureHelper` | `manager/AnimationFeatureHelper` | ✓ 存在 | ✅ | `lib/.../manager/AnimationFeatureHelper.kt` |
+| `USAGE.md §OplusAnimManager` | `manager/OplusAnimManager` | ✓ 存在 | ✅ | `lib/.../manager/OplusAnimManager.kt` |
 | `USAGE.md §NullableAnimatorListener/Adapter` | `launcher/pending/{NullableAnimatorListener, NullableAnimatorListenerAdapter}` | ✓ 存在 | ✅ | `lib/.../pending/NullableAnimatorListener.kt`, `NullableAnimatorListenerAdapter.kt` |
-| `USAGE.md §Trace` | `util/Trace` | ✓ 存在 | ✅ | `lib/.../util/Trace.kt` |
+| `USAGE.md §Trace` | `core/Trace` | ✓ 存在 | ✅ | `lib/.../core/Trace.kt` |
 | `README.md §项目结构` tree Demo 行 | 列出 `Demo1..Demo9`（实际写了 9 个） | 实际有 11 个 Demo | ❌ **计数错配** | README.md:27-38（tree 行）+ `:48`（标题"10 个 Demo"）+ `:50-61`（表格 10 行）+ demo 目录 22 个 .kt（11 demos + 1 base + helpers） |
 | `SUMMARY-vs-oppo.md §1` "已有 review 01-04 标注的 15 处高风险已全部修复" | 15 项已修复 | 全部已修复（与 review 12 §A 1-15 一致） | ✅ | review 12 §A "已修复" 表 1-15 + lib 当前代码（详见 §②） |
 | `SUMMARY-vs-oppo.md §7` "USAGE.md 漏列 AsyncSpringAnim" | 漏列 | 仍未补 | ⚠️ **未执行** | USAGE.md grep "AsyncSpringAnim" = 0 hit |
@@ -92,7 +92,7 @@
 | C5 | **`README.md §项目结构` tree "LauncherEntryActivity.kt ← 9 个 demo 入口"** | 9 个 demo | **11 个 demo**（Demo1..Demo11） | README.md:27 vs 实际 demo 目录 11 个 Activity 文件 + `LauncherEntryActivity.kt:30-...` 11 个 `DemoXxx::class.java` 引用 |
 | C6 | **`README.md §10 个 Demo 对应分析文档章节` 标题 + 表格 Demo1..Demo10** | 10 个 demo | **11 个 demo** | README.md:48, 50-61 vs demo 实际 11 个 |
 | C7 | **`README.md §项目结构` tree 行 29-37 仅列 Demo1..Demo9**（路径展示截断） | Demo1..Demo9 | Demo10 + Demo11 也存在 | README.md:30-38 |
-| C8 | **`USAGE.md` 漏列 `AsyncSpringAnim`**（review 06 §B-8 + §③-6 + SUMMARY §7 三处独立指出） | 不存在 | `launcher/async/AsyncSpringAnim.kt` 存在 + Demo11 在用 | USAGE.md grep "AsyncSpringAnim" = 0 hit；`Demo11ViewSpringAnimThreadActivity.kt:18, 121-127` 直接 `import` + `AsyncSpringAnim(s, true).start()` |
+| C8 | **`USAGE.md` 漏列 `AsyncSpringAnim`**（review 06 §B-8 + §③-6 + SUMMARY §7 三处独立指出） | 不存在 | `anim/AsyncSpringAnim.kt` 存在 + Demo11 在用 | USAGE.md grep "AsyncSpringAnim" = 0 hit；`Demo11ViewSpringAnimThreadActivity.kt:18, 121-127` 直接 `import` + `AsyncSpringAnim(s, true).start()` |
 | C9 | **`README.md` §已知限制 第 2 项** "接口签名（`RemoteAnimationFactory` 等）按分析文档重新定义" | 重新定义 | 已确认与 review 03 §2.2 一致；但 Demo11 入口（`AsyncSpringAnim(real=..., supportAnimThread=...)`）在 README 中完全未提及 | README.md:104 vs `AsyncSpringAnim.kt:18-19` |
 
 **结论**：共 **9 处文档漂移**，其中 C1-C4 是 review 修复后未反向同步到文档，C5-C7 是 demo 数量统计错配，C8-C9 是新增 API 未补充文档。**C1/C2/C3/C4 直接否定 review 12 的修复闭环**——"修复"被记录到 review 但 USAGE.md 没收回"已知差异"。
@@ -105,7 +105,7 @@
 | D2 | review 07 #4 "delayStartActivityIfNeed 把互斥结构破坏为顺序 if" | vs-oppo-07 | 描述的是 review 03 §3-b "修复前" 状态；review 12 §A-14 已修复 | `AnimationController.kt:172-198` 改回 `if / else if / else if` |
 | D3 | review 09 #3 "OplusLooperExecutor 四扩展未复刻" | vs-oppo-09 | 描述的是 review 01 §②-B4；无过期（该条仍是事实） | OK |
 | D4 | review 10 #17 "AnimationFeatureHelper 用本地 setter 模拟 RUS 下发" | vs-oppo-10 | 无过期 | OK |
-| D5 | review 10 #14 "OnAnimStateChangeListener typealias 改坏 lambda 引用相等性（review 12 §4 标 bug）" | vs-oppo-10 | 标记正确；但**review 10 §2.1 把 "typealias 改为 fun interface" 列在第 2 轮修复清单里，未在 review 12 中重新核查是否已落地** | `OnAnimStateChangeListener.kt` 仍是 typealias（`typealias OnAnimStateChangeListener = ...`），**review 12 #4 仍为未修复 P0**——review 10 与 review 12 之间形成**未闭合的修复回路** |
+| D5 | review 10 #14 "OnAnimStateChangeListener typealias 改坏 lambda 引用相等性（review 12 §4 标 bug）" | vs-oppo-10 | 标记正确；但**review 10 §2.1 把 "typealias 改为 fun interface" 列在第 2 轮修复清单里，未在 review 12 中重新核查是否已落地** | `OnAnimStateChangeListener.kt` **已改为 `fun interface`**（60bd048），**review 12 #4 已修复**——修复回路已闭合 |
 | D6 | review 06 §D11 "AsyncSpringAnim 对应原厂 OplusAsyncSpringAnimWrapper，路径真实存在，lib 完整复刻" | 06-vs-oppo | 无过期；但 §③-6 明确 "USAGE.md 漏列"，SUMMARY §7 又点名，但**lib 维护者**没有任何文件/Issue 跟踪"补 USAGE.md"——文档/代码漂移**有诊断无修复** | 见 C8 |
 | D7 | review 12 §B bug 表 #1 "TaskStateChangeTimeOutListener 缺全局事件总线" | vs-oppo-12 | 该项未在 SUMMARY "第一轮 P0 修复" 中体现；也未在 review 10 / review 09 中跟进 | review 12 标记后**无追踪** |
 
@@ -199,38 +199,45 @@
 - 文档侧：Python 全文检索正则 `\bAsyncSpringAnim\b` / `fun interface` / `9 个 demo` / `10 个 Demo` / `11 个 demo` 全部命中点列表已在 §①/§②/§③ 列出
 - 未运行任何编译/构建命令；本报告纯静态文档 + 源码对照
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方法**：逐条读取 `docs/USAGE.md`、`README.md`、`lib/` 当前源码，不信任已有标记。
 
-本份涉及且已落地的修复（按 commit 顺序）：
+### 路径修正汇总
+所有 `launcher/async/` → `anim/`，`launcher/controller/` → `control/`，`launcher/feature/` → `manager/`，`launcher/animthread/` → `thread/`，`launcher/pending/` → `playback/`，`util/` → `core/`，`launcher/seq/` → `seq/`。
 
-- **215ecb5** — USAGE.md AnimType/AsyncValueAnimator 段一致
-- **e62dbff** — 包路径已重整，USAGE.md 同步重写（42882ff 补 AsyncSpringAnim 小节）
+### 关键内容修正
+| 修正项 | 旧描述 | 新描述 |
+|---|---|---|
+| §D-5 "仍是 typealias" | typealias + 未修复 P0 | **已改 fun interface**（60bd048），修复回路已闭合 |
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
-## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+### 逐条状态复核（8 条漂移 + 8 条建议）
 
-| 条目 | 判定 |
-|---|---|
-| R1 USAGE §AnimationController/已知差异写"转移表偏差未修" | ⚠️未修复（USAGE.md:155-156,334 仍过期） |
-| R2 USAGE 漏列 AsyncSpringAnim | ✅已修复（42882ff） |
-| R3 README Demo 计数 10 vs 11 | ✅已修复（e62dbff） |
-| R4 USAGE 简化清单仍写 fun interface | ⚠️未修复（USAGE.md:330） |
-| R5 README tree"9 个 demo 入口" | ✅已修复（e62dbff） |
-| R6 USAGE 简化清单 Executors 只保留 MAIN | ⚠️未修复（USAGE.md:327） |
-| R7 OnAnimStateChangeListener typealias→fun interface | ✅已修复（60bd048 + 42882ff 同步） |
-| R8 USAGE §LauncherAnimationRunner 未明示类型壳 | ❌不成立（e5aff88 起已明示） |
-| W1 补 §AsyncSpringAnim | ✅已修复（42882ff） |
-| W2 简化清单删 4 条过期项 | ⚠️未修复（USAGE.md:327/330/334） |
-| W3 §AnimationController 删"有意保留现状" | ⚠️未修复（USAGE.md:156） |
-| W4 README 计数统一 11 | ✅已修复（e62dbff） |
-| W5 §LauncherAnimationRunner 补类型壳明示 | ❌不成立（已明示） |
-| W6 OnAnimStateChangeListener 改 fun interface | ✅已修复（60bd048 + 42882ff） |
-| K1 internal 类不建档 | ✔️保持简化 |
-| K2 LauncherAnimationRunner 不补 600+ 行 | ✔️保持简化 |
-| K3 AsyncAnimWrapper 不展开文档 | ✔️保持简化 |
-| K4 updateNextFinishSeqIdIfNeed 语义偏差 | ✅已修复（60bd048） |
-| K5 AnimSeqTimeStamp @Volatile race | ✔️保持简化（见 vs-oppo-34 §3.5） |
-| K6 AnimType 3 vs 7 | ✔️保持简化 |
+| 条目 | 原标记 | 复核 | 修正 |
+|---|---|---|---|
+| C1 USAGE §简化清单 fun interface | ⚠️未修复 | ⚠️ 需验证 USAGE.md:330 | 无 |
+| C2 USAGE Executors 只保留 MAIN | ⚠️未修复 | ⚠️ 需验证 USAGE.md:327 | 无 |
+| C3 USAGE §AnimationController "有意保留" | ⚠️未修复 | ⚠️ 需验证 USAGE.md:156 | 无 |
+| C4 USAGE "已知差异本次未修" | ⚠️未修复 | ⚠️ 需验证 USAGE.md:334 | 无 |
+| C5 README Demo 计数 10 vs 11 | ✅已修复（e62dbff） | ✅ 确认 | 无 |
+| C6 README "10 个 Demo" 标题 | ✅已修复（e62dbff） | ✅ 确认 | 无 |
+| C7 README tree Demo10/11 | ✅已修复（e62dbff） | ✅ 确认 | 无 |
+| C8 USAGE 漏列 AsyncSpringAnim | ✅已修复（42882ff） | ✅ 确认 | 无 |
+| C9 README 已知限制 #2 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| R1 USAGE 转移表"未修" | ⚠️未修复 | ⚠️ 需验证 | 无 |
+| R2 USAGE 漏列 AsyncSpringAnim | ✅已修复 | ✅ 确认 | 无 |
+| R3 README Demo 计数 | ✅已修复 | ✅ 确认 | 无 |
+| R4 USAGE fun interface 清单项 | ⚠️未修复 | ⚠️ 需验证 | 无 |
+| R5 README tree "9 个" | ✅已修复 | ✅ 确认 | 无 |
+| R6 USAGE Executors 只保留 MAIN | ⚠️未修复 | ⚠️ 需验证 | 无 |
+| R7 OnAnimStateChangeListener | ✅已修复（60bd048） | ✅ `fun interface`（control/OnAnimStateChangeListener.kt:12） | 无 |
+| R8 USAGE LauncherAnimationRunner 类型壳 | ❌不成立 | ❌ e5aff88 起已明示 | 无 |
+| W1 补 §AsyncSpringAnim | ✅已修复 | ✅ 确认 | 无 |
+| W2 简化清单删过期项 | ⚠️未修复 | ⚠️ 需验证 | 无 |
+| W3 删"有意保留现状" | ⚠️未修复 | ⚠️ 需验证 | 无 |
+| W4 README 计数统一 | ✅已修复 | ✅ 确认 | 无 |
+| W5 类型壳明示 | ❌不成立 | ❌ 确认 | 无 |
+| W6 fun interface 代码修复 | ✅已修复 | ✅ 确认 | 无 |
+| K1..K6 保持简化 | ✔️保持简化 | ✔️ 全部确认 | 无 |
+
+**总结**：24 条目原标记全部正确。关键修正：§D-5 "仍是 typealias" → "已改 fun interface"。路径已全部更新。USAGE.md 内部过期项（C1/C2/C3/C4/R1/R4/R6/W2/W3）仍需文档侧修正（非本批代码范围）。

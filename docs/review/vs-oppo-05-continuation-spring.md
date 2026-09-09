@@ -1,7 +1,7 @@
 # 区域 5 对比 Review：续行动画层（continuation / spring 接力）
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/continuation/`（`OplusValueAnimator.kt`、`RecordInputInterpolator.kt`）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/anim/`（`OplusValueAnimator.kt`、`RecordInputInterpolator.kt`；包重组后由 `launcher/continuation/` 迁入 `anim/`）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）
 >
 > 背景结论见 `docs/animation-thread-analysis-v4.md` 与 `docs/animation-trace-validation.md`。本区域覆盖原厂 `com/oplus/quickstep/utils/OplusValueAnimator.java`（495 行 Kotlin 反编译产物，`@SourceDebugExtension` 指向 `AppToOverviewContinuationHelper.kt`）+ `RecordInputInterpolator.java` + 三处续行调用方（`AppSwipeToRecentContinuationHelper.java`、`RecentsViewAnimUtil.java`、`BaseActivityInterface.java`、`VirtualBtnToRecentContinuationHelper.java`、`TaskViewUtils.java`）。
@@ -14,14 +14,14 @@
 
 | lib 类 / 成员 | 原厂类 / 成员 | 关系与证据 |
 |---|---|---|
-| `continuation/RecordInputInterpolator.kt:11-18` | `com/oplus/quickstep/utils/RecordInputInterpolator.java:25-40` | 1:1 镜像。lib `var inputed = 0f` (`:13`) ↔ 原厂 `private float inputed;`（Java 字段默认 0f，`RecordInputInterpolator.java:26`）；lib `getInterpolation` (`:16-18`) ↔ 原厂 `:32-35`（写 inputed 后委托 realInterpolator）。**注意**：review 04 §2.3-1 声称"lib inputed 初值 -1f、原厂 0f"是**事实错误**——本轮重新核证两边都是 0f。 |
-| `continuation/OplusValueAnimator.kt:30-79`（委托骨架 + double-write） | `com/oplus/quickstep/utils/OplusValueAnimator.java:160-330`（主类） | 委托模式镜像但有结构性偏差：lib `setCurrentFraction` (`:42-45`) ↔ 原厂 `:283-289`；lib `setInterpolator` (`:47-50`) ↔ 原厂 `:292-298`；lib `setDuration` **未 override**（缺）↔ 原厂 `:319-327`；lib 委托 6 方法 `start/cancel/end/pause/isRunning/getDuration/addListener` (`:55-78`) ↔ 原厂 `:194-208, :209-222, :225-239, :267-281, :261-264, :247-250, :241-244`（原厂还多了 `getCurrentPlayTime` 委托 `:241-244`、lib 缺）。 |
-| `continuation/OplusValueAnimator.kt:151-160`（`CURRENT_FRACTION` FloatProperty） | `com/oplus/quickstep/utils/OplusValueAnimator.java:39-56`（`Companion$CURRENT_FRACTION$1`） | 镜像但 get 分支不同：lib get 直接读 `param.currentFraction`（`:156`）；原厂 get 在 anim == null 或 param == null 时返回 `-1.0f`、否则读 `param.getCurrentFraction()`（`:43-50`）。setValue 都走 `setCurrentFraction`。 |
-| `continuation/OplusValueAnimator.kt:124-147`（`generateContinuationAnim`） | `com/oplus/quickstep/utils/OplusValueAnimator.java:89-120`（`Companion.generateContinuationAnim`） | 主流程镜像：`RecordInputInterpolator` inputed 回填 param → 边界检查 → 新 timeController + AnimParam copy → 接 LinearInterpolator → 起点→1.0。**关键差异**：lib 共享 `anim.param`（`:139` 用 `anim.param.copy()`，**但 data class copy 实际是浅拷贝独立对象**——这点 review 04 误判了），原厂用 `AnimParam.INSTANCE.copy(anim.getParam())`（`OplusValueAnimator.java:105`）也是新对象；二者结果等价。 |
-| `continuation/OplusValueAnimator.kt:117-121`（`ofFloat(isAsync, values)` 工厂） | `com/oplus/quickstep/utils/OplusValueAnimator.java:127-150`（`Companion.generateAnim(name, param, timeController)` 私有 3 参 + `:176-180` 公开 2 参静态） | lib 是简化工厂（仅 `setFloatValues` 后返回），原厂是真构造器（含 `setObjectValues`、evaluator 自动选择 `IntEvaluator`/`FloatEvaluator`、`setDuration`、`setInterpolator` 一条龙）。同名"generateAnim"在原厂还有 `RecentsViewAnimUtil.java:1873, 1890` 等多处调用，承担真实的"包装成 OplusValueAnimator"工作。 |
-| `continuation/OplusValueAnimator.kt:11-15`（`typealias ValueApplicator`） | `com/oplus/quickstep/utils/OplusValueAnimator.java:154-157`（`ValueApplicator` Java interface） | 类型壳 1:1。 |
-| `continuation/OplusValueAnimator.kt:82-90`（`AnimParam` data class, 7 字段） | `com/oplus/quickstep/utils/OplusValueAnimator.java:330-485`（`AnimParam` Kotlin data class, 4 final 字段 + 3 var 字段） | 字段数与语义一致：startValue / endValue / typeEvaluator / valueApplicator（final）+ currentFraction / duration / interpolator（var）。**差异**：原厂有 `TypeEvaluator` 字段 + `setEvaluator` 入口；lib 砍掉。原厂有 3 final 字段 + 可变 setter；lib 7 字段全 data class 可变。 |
-| `continuation/OplusValueAnimator.kt:95-111`（`TimeControllerObjectAnimator`） | 原厂无对应类——timeController 是平台 `android.animation.ObjectAnimator`（`OplusValueAnimator.java:104`，`objectAnimator = new ObjectAnimator()`） | **lib 复刻/移植件**，用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 当骨架。setTarget 持有 anim 引用并 addUpdateListener 写 `setCurrentFraction` (`:107-111`)；setProperty 是 **no-op** (`:99-101`)。原厂由 `objectAnimator.setProperty(CURRENT_FRACTION)` (`:110`) 真实接线。 |
+| `anim/RecordInputInterpolator.kt:11-19` | `com/oplus/quickstep/utils/RecordInputInterpolator.java:25-40` | 1:1 镜像。lib `var inputed = 0f private set`（`:13-14`） ↔ 原厂 `private float inputed;`（Java 字段默认 0f，`RecordInputInterpolator.java:26`）；lib `getInterpolation` (`:16-18`) ↔ 原厂 `:32-35`（写 inputed 后委托 realInterpolator）。**注意**：review 04 §2.3-1 声称"lib inputed 初值 -1f、原厂 0f"是**事实错误**——本轮重新核证两边都是 0f。 |
+| `anim/OplusValueAnimator.kt:24-82`（委托骨架 + double-write） | `com/oplus/quickstep/utils/OplusValueAnimator.java:160-330`（主类） | 委托模式镜像但有结构性偏差：lib `setCurrentFraction` (`:41-44`) ↔ 原厂 `:283-289`；lib `setInterpolator` (`:46-49`) ↔ 原厂 `:292-298`；lib `setDuration` **未 override**（缺）↔ 原厂 `:319-327`；lib 委托 6 方法 `start/cancel/end/pause/isRunning/getDuration/addListener` (`:53-82`) ↔ 原厂 `:194-208, :209-222, :225-239, :267-281, :261-264, :247-250, :241-244`（原厂还多了 `getCurrentPlayTime` 委托 `:241-244`、lib 缺）。 |
+| `anim/OplusValueAnimator.kt:158-167`（`CURRENT_FRACTION` FloatProperty，companion 私有） | `com/oplus/quickstep/utils/OplusValueAnimator.java:39-56`（`Companion$CURRENT_FRACTION$1`） | 镜像但 get 分支不同：lib get 直接读 `param.currentFraction`（`:161-162`）；原厂 get 在 anim == null 或 param == null 时返回 `-1.0f`、否则读 `param.getCurrentFraction()`（`:43-50`）。setValue 都走 `setCurrentFraction`。lib 的 CURRENT_FRACTION 现为 companion `private`（`:158`）——原厂公开 static 入口在 lib 不存在。 |
+| `anim/OplusValueAnimator.kt:130-154`（`generateContinuationAnim`） | `com/oplus/quickstep/utils/OplusValueAnimator.java:89-120`（`Companion.generateContinuationAnim`） | 主流程镜像：`RecordInputInterpolator` inputed 回填 param → 边界检查 → 新 timeController + AnimParam copy → 接 LinearInterpolator → 起点→1.0。**关键差异**：lib 共享 `anim.param`（`:145` 用 `anim.param.copy()`，**但 data class copy 实际是浅拷贝独立对象**——这点 review 04 误判了），原厂用 `AnimParam.INSTANCE.copy(anim.getParam())`（`OplusValueAnimator.java:105`）也是新对象；二者结果等价。 |
+| `anim/OplusValueAnimator.kt:123-127`（`ofFloat(isAsync, values)` 工厂） | `com/oplus/quickstep/utils/OplusValueAnimator.java:127-150`（`Companion.generateAnim(name, param, timeController)` 私有 3 参 + `:176-180` 公开 2 参静态） | lib 是简化工厂（仅 `setFloatValues` 后返回），原厂是真构造器（含 `setObjectValues`、evaluator 自动选择 `IntEvaluator`/`FloatEvaluator`、`setDuration`、`setInterpolator` 一条龙）。同名"generateAnim"在原厂还有 `RecentsViewAnimUtil.java:1873, 1890` 等多处调用，承担真实的"包装成 OplusValueAnimator"工作。 |
+| `anim/OplusValueAnimator.kt:12`（`internal typealias ValueApplicator`） | `com/oplus/quickstep/utils/OplusValueAnimator.java:154-157`（`ValueApplicator` Java interface） | 类型壳 1:1。 |
+| `anim/OplusValueAnimator.kt:86-94`（`AnimParam` data class，7 字段全 var） | `com/oplus/quickstep/utils/OplusValueAnimator.java:330-485`（`AnimParam` Kotlin data class, 4 final 字段 + 3 var 字段） | 字段数一致（7）但命名已分流：lib 现 7 字段 = `name/fromValue/toValue/currentFraction/interpolator/applicator/duration`（早期镜像版 startValue/endValue/valueApplicator 已改名并增 name）；原厂 = `startValue/endValue/typeEvaluator/valueApplicator`（4 final）+ `currentFraction/duration/interpolator`（3 var）。**差异**：原厂有 `TypeEvaluator` 字段 + `setEvaluator` 入口；lib 无（evaluator 语义由 applicator / va 承担）。原厂 4 final 字段构造器一次性写入、仅 3 var 可变；lib 7 字段全 data class 可变。 |
+| `anim/OplusValueAnimator.kt:98-118`（`TimeControllerObjectAnimator`） | 原厂无对应类——timeController 是平台 `android.animation.ObjectAnimator`（`OplusValueAnimator.java:104`，`objectAnimator = new ObjectAnimator()`） | **lib 复刻/移植件**，用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 当骨架。setTarget 持有 anim 引用并 addUpdateListener 写 `setCurrentFraction`（`:112-117`，60bd048 已接线）；setProperty 仍 **no-op**（`:102`）。原厂由 `objectAnimator.setProperty(CURRENT_FRACTION)` (`:110`) 真实接线。 |
 | （lib 无对应） | `com/oplus/quickstep/utils/AppSwipeToRecentContinuationHelper.java`（主续行业务方，含 4 个 `OplusValueAnimator<?>` 静态字段：continuationScaleAnim / continuationFullScreenAnim / continuationTransYAnim / continuationScrimBackgroundAnim） | 原厂用 `generateContinuationAnim` 在 `bind$lambda$1`/`:2`（`:213-231`）按 name (`RECENT_SCALE_IN_SWIPE_TO_RECENT` / `RECENT_TRANS_Y_IN_SWIPE_TO_RECENT` / `RECENT_FULL_SCREEN_IN_SWIPE_TO_RECENT` / `SCRIM_BACKGROUND_IN_SWIPE_TO_RECENT`) 把 4 个 OplusValueAnimator 串成续行链——业务层在 `startAlignEliminateAnim` 的 `bind()` 末尾（`:36536-`）把这些 anim 注入 `AnimatorSet` 后 start，onEnd 时各 listener 反向调用 `generateContinuationAnim` 各自接力。 |
 | （lib 无对应） | `com/oplus/quickstep/utils/RecentsViewAnimUtil.java:1851-1900`（`createAppToOverview`） + `com/android/quickstep/BaseActivityInterface.java:456-463`（构造 4 个原 OplusValueAnimator 入口） | 原厂的"第一棒"——用 `AnimParam` + `setInterpolator(LINEAR)` + `generateAnim(name, animParam)` 构造续行链的 4 个原 OplusValueAnimator 实例。`BaseActivityInterface.java:463` 构造 `SCRIM_BACKGROUND_IN_SWIPE_TO_RECENT` 时显式带 `ArgbEvaluator.getInstance()`——证明原厂 `AnimParam.typeEvaluator` 字段是真实用到的，不是 dead field。 |
 
@@ -33,35 +33,35 @@
 
 1. **`RecordInputInterpolator` 1:1 镜像**。字段、构造器、`getInterpolation` 副作用、命名全部一致。
 2. **timeController 委托的 6 生命周期方法结构**。`if (timeController != null) tc.x() else super.x()` 模式与原厂（`:194-208, :209-222, :225-239, :267-281, :261-264, :247-250`）逐句对应。
-3. **`setCurrentFraction` 的 super + param 双写**。lib `OplusValueAnimator.kt:42-45` ↔ 原厂 `:283-285`。
-4. **`setInterpolator` 的 super + param 双写**。lib `OplusValueAnimator.kt:47-50` ↔ 原厂 `:296-297`。
-5. **`CURRENT_FRACTION` FloatProperty 的 setValue → setCurrentFraction**。lib `:160` ↔ 原厂 `:55`。
-6. **`generateContinuationAnim` 主流程**。inputed 回填 → 边界检查 `[0,1)` 越界返 null → `setFloatValues(f, 1.0f)` → 条件 setDuration → `setInterpolator(LinearInterpolator())` 顺序与原厂 `:89-118` 一致。
-7. **`AnimParam` 的 7 字段结构**。原厂 final/var 划分虽不同（4 final + 3 var vs lib 7 全 data class），但字段集合一致：`startValue/endValue/typeEvaluator/valueApplicator` + `currentFraction/duration/interpolator`。
-8. **`addUpdateListener` 在构造时挂载**。lib init `OplusValueAnimator.kt:24-26` ↔ 原厂 `:166`（`addUpdateListener(new com.android.launcher3.taskbar.e(this, 2))`）。两者都用 `addUpdateListener` 在构造期把 `valueApplicator.applyValue(a.animatedValue)` 接进去——是"this 是 wrapper，valueApplicator 是真正落点"模型的核心。
+3. **`setCurrentFraction` 的 super + param 双写**。lib `anim/OplusValueAnimator.kt:41-44` ↔ 原厂 `:283-285`。
+4. **`setInterpolator` 的 super + param 双写**。lib `anim/OplusValueAnimator.kt:46-49` ↔ 原厂 `:296-297`。
+5. **`CURRENT_FRACTION` FloatProperty 的 setValue → setCurrentFraction**。lib `anim/OplusValueAnimator.kt:164-166` ↔ 原厂 `:55`。
+6. **`generateContinuationAnim` 主流程**。inputed 回填 → 边界检查 `[0,1)` 越界返 null → `setFloatValues(f, 1.0f)` → 条件 setDuration → `setInterpolator(LinearInterpolator())` 顺序与原厂 `:89-118` 一致（lib `anim/OplusValueAnimator.kt:130-154`）。
+7. **`AnimParam` 的 7 字段结构**。lib 7 字段 = `name/fromValue/toValue/currentFraction/interpolator/applicator/duration`（全 var）；原厂 = 4 final（startValue/endValue/typeEvaluator/valueApplicator）+ 3 var（currentFraction/duration/interpolator）——字段数同为 7，命名已分流。
+8. **`addUpdateListener` 在构造时挂载**。lib init `anim/OplusValueAnimator.kt:31-37`（`addUpdateListener` `:34-36`）↔ 原厂 `:166`（`addUpdateListener(new com.android.launcher3.taskbar.e(this, 2))`）。两者都用 `addUpdateListener` 在构造期把 `valueApplicator.applyValue(a.animatedValue)` 接进去——是"this 是 wrapper，valueApplicator 是真正落点"模型的核心。
 9. **`typealias ValueApplicator` ↔ 原厂 `ValueApplicator` interface**。类型壳一致。
 
 ### 2.2 有意简化
 
-1. **砍掉 `LogUtils.i` + `Debug.getCallers(15)` 调试埋点**。原厂每个生命周期方法（`:194-208, :209-222, :225-239, :267-281, :301-318, :292-300, :319-327, :283-289`）都带 `LogUtils.i(getTag(), …)` + 可选 `Debug.getCallers(N)` 堆栈；lib 用 `Trace.traceBegin/End`（`:133-145`）做续行事件的双色 trace，已够 demo/教学。
-2. **`TypeEvaluator` 字段保留但缺自动选择**。原厂 `generateAnim` 私有 3 参（`:127-150`）在 `typeEvaluator==null` 时按 start/end 是否 `Integer`/`Float` 选 `IntEvaluator`/`FloatEvaluator`——是平台 `ValueAnimator` 不带 evaluator 就会强转崩溃的必备保护。lib 的 `AnimParam` 留了字段但没复刻这条"evaluator 自动选"逻辑，等于在 `ofFloat` 路径上隐形 trust 调用方已设好。
-3. **`getName`/`getTag`/`getParam` 公开方法精简**。原厂 `getTag`（`:189-191`）用 `ObjectUtilsKt.uniquelyIdentifies(this) + "-" + name` 拼出唯一 tag 用于日志；lib 直接 `param.name` 替代，调试信息弱化但语义可读。
-4. **`isHummingEnabledAndEnhance` / `startAlignEliminateAnim` / `bind` 整套续行业务编排未复刻**。lib `OplusValueAnimator` 只保留类本体 + `generateContinuationAnim` 工厂；原厂 `AppSwipeToRecentContinuationHelper.bind`（`:36536-`）负责从 `AnimatorPlaybackController.getAnimationPlayer().getDuration() - getCurrentPlayTime()` 算 `continuationAnimDuration`（默认回退 400ms），`startAlignEliminateAnim`（`:61322-`）把 4 个 OplusValueAnimator 注入 `AnimatorSet.alignEliminateAnim`，`endAlignEliminateAnimRunnable`（`:53591-` 附近内部类）做 `Executors.MAIN_EXECUTOR.getHandler().post` 收尾。lib 的"续行"概念只在 `generateContinuationAnim` 出口自洽，业务编排（4 anim 选谁接力、duration 怎么算、alignment 校正）由 demo 5 的舞台动画等价演示。已在 `Demo5ContinuationActivity.kt:11-12` 注释里自承。
+1. **砍掉 `LogUtils.i` + `Debug.getCallers(15)` 调试埋点**。原厂每个生命周期方法（`:194-208, :209-222, :225-239, :267-281, :301-318, :292-300, :319-327, :283-289`）都带 `LogUtils.i(getTag(), …)` + 可选 `Debug.getCallers(N)` 堆栈；lib 用 `Trace.traceBegin/End`（`anim/OplusValueAnimator.kt:139-140, 151-152`）做续行事件的双色 trace，已够 demo/教学。
+2. **`TypeEvaluator` 字段保留但缺自动选择**。原厂 `generateAnim` 私有 3 参（`:127-150`）在 `typeEvaluator==null` 时按 start/end 是否 `Integer`/`Float` 选 `IntEvaluator`/`FloatEvaluator`——是平台 `ValueAnimator` 不带 evaluator 就会强转崩溃的必备保护。lib 的 `AnimParam` 无 `TypeEvaluator` 字段、`ofFloat` 工厂（`anim/OplusValueAnimator.kt:123-127`）也不做类型选择——等于在 `ofFloat` 路径上隐形 trust 调用方或退回默认 Float。
+3. **`getName`/`getTag`/`getParam` 公开方法精简**。原厂 `getTag`（`:189-191`）用 `ObjectUtilsKt.uniquelyIdentifies(this) + "-" + name` 拼出唯一 tag 用于日志；lib 用 `animName` getter（`:39`）直接读 `param.name` 替代，调试信息弱化但语义可读。
+4. **`isHummingEnabledAndEnhance` / `startAlignEliminateAnim` / `bind` 整套续行业务编排未复刻**。lib `OplusValueAnimator` 只保留类本体 + `generateContinuationAnim` 工厂；原厂 `AppSwipeToRecentContinuationHelper.bind`（`:36536-`）负责从 `AnimatorPlaybackController.getAnimationPlayer().getDuration() - getCurrentPlayTime()` 算 `continuationAnimDuration`（默认回退 400ms），`startAlignEliminateAnim`（`:61322-`）把 4 个 OplusValueAnimator 注入 `AnimatorSet.alignEliminateAnim`，`endAlignEliminateAnimRunnable`（`:53591-` 附近内部类）做 `Executors.MAIN_EXECUTOR.getHandler().post` 收尾。lib 的"续行"概念只在 `generateContinuationAnim` 出口自洽，业务编排（4 anim 选谁接力、duration 怎么算、alignment 校正）由 demo 5 的舞台动画等价演示。已在 `demo/.../Demo5ContinuationActivity.kt:19-20` 注释里自承（注意：该注释仍写 setTarget/setProperty 皆 no-op，与 60bd048 后 setTarget 已接线的现状不符——注释落后于代码）。
 5. **`VirtualBtnToRecentContinuationHelper` 未复刻**。原厂 `com/oplus/quickstep/utils/VirtualBtnToRecentContinuationHelper.java:268` 用同一套 `OplusValueAnimator.INSTANCE.generateContinuationAnim(...)` 路径，但入口常量 `RECENT_SCALE_IN_BUTTON_TO_RECENT` / `RECENT_OFFSET_IN_STATE_SWITCH` 不同（`VirtualBtnToRecentContinuationHelper.RECENT_*`），与 swipetoRecent 链路平行。lib 未对应。
 6. **`setEvaluator` 入口缺失**。原厂由私有 `generateAnim` 内部统一设置；lib 既不 override 也不在 `ofFloat` 工厂里设置——`ofFloat` 路径上 `ObjectAnimator` 的 evaluator 链是默认（IntEvaluator），跟原厂的"按类型自动 FloatEvaluator"不一致。
 7. **公开 API 裁剪到 demo 必需**。原厂 `OplusValueAnimator.java:176-180` 的 `JvmStatic` 静态 `generateAnim` / `generateContinuationAnim` / `getCURRENT_FRACTION` 在 lib 中以 `companion object` 形式保留，但 `INSTANCE` 单例的可见性降到 internal。
 
 ### 2.3 遗漏 / 偏差
 
-1. **`TimeControllerObjectAnimator.setProperty` 是 no-op**（`OplusValueAnimator.kt:99-101`，`fun setProperty(prop: FloatProperty<*>?): TimeControllerObjectAnimator = this`）。原厂 `objectAnimator.setProperty(OplusValueAnimator.INSTANCE.getCURRENT_FRACTION())`（`:110`）是真实把 CURRENT_FRACTION FloatProperty 挂给 ObjectAnimator，让 ObjectAnimator 在 0..1 → f..1.0 推进时把每帧 setValue 写到 anim 的 `setCurrentFraction`。lib 缺这一步，所以 timeController 即使 start 起来，每帧 setValue 不会到 anim——见 §3-1。
+1. **`TimeControllerObjectAnimator.setProperty` 是 no-op**（`anim/OplusValueAnimator.kt:102`，`fun setProperty(prop: FloatProperty<*>?): TimeControllerObjectAnimator = this`）。原厂 `objectAnimator.setProperty(OplusValueAnimator.INSTANCE.getCURRENT_FRACTION())`（`:110`）是真实把 CURRENT_FRACTION FloatProperty 挂给 ObjectAnimator，让 ObjectAnimator 在 0..1 → f..1.0 推进时把每帧 setValue 写到 anim 的 `setCurrentFraction`。lib 缺这一步，所以 timeController 即使 start 起来，每帧 setValue 不会到 anim——见 §3-1。
 2. **`TimeControllerObjectAnimator.setTarget` 实际写入靠 addUpdateListener 而非 ObjectAnimator 机制**。lib `:107-111` 在 setTarget 时挂 `addUpdateListener`，把 `animatedValue` 转 `setCurrentFraction`——这条路径**碰巧**能让续行段"动起来"（animatedValue 是 va 的 0..1 进度），但与原厂的 ObjectAnimator FloatProperty 机制不同语义：原版 timeController 的 `setFloatValues(currentFraction, 1.0f)` 决定 va 自身推进的 fraction 范围是 `[currentFraction, 1.0]`，**va 自身推进的就是 fraction**；lib 版本的 va 推进的是 0..1，要乘一个内部映射才能得到 fraction——而 setTarget 处的 update listener 直接把 `it` 当 fraction 写，于是 fraction 跑成 0..1，**等于从 0 重启而非从 currentFraction 续行**。
-3. **`getCurrentPlayTime` 未委托给 timeController**。lib `OplusValueAnimator.kt:54-78` 缺 `override fun getCurrentPlayTime()`。原厂 `:241-244` 返回 `timeController.getCurrentPlayTime()`。影响：调用方在 timeController 模式下读 `getCurrentPlayTime` 在 lib 中读到 super（this 自身的 ValueAnimator 时间，它根本没被驱动——`setCurrentFraction` 之外没人在 tick 它），拿到的是默认值/初始值。
+3. **`getCurrentPlayTime` 未委托给 timeController**。lib `anim/OplusValueAnimator.kt:53-82`（委托区）无 `override fun getCurrentPlayTime()`。原厂 `:241-244` 返回 `timeController.getCurrentPlayTime()`。影响：调用方在 timeController 模式下读 `getCurrentPlayTime` 在 lib 中读到 super（this 自身的 ValueAnimator 时间，它根本没被驱动——`setCurrentFraction` 之外没人在 tick 它），拿到的是默认值/初始值。
 4. **`setDuration` 未 override**。lib 无 `override fun setDuration(...)`；原厂 `:319-327` 是 super + param.setDuration(duration) 双写 + 返回 super 调用的链（`setDuration` 是 `ValueAnimator` 的重载，返回 `ValueAnimator` 不是 `Unit`，签名差异。**这是编译期就报错的风险点**——Kotlin 的 `override` 签名必须严格匹配，`fun setDuration(duration: Long)` 与 `ValueAnimator.setDuration(long): ValueAnimator` 在 JVM 字节码层面是桥接，但 Kotlin 编译器对 `override` 仍要求返回类型兼容 `ValueAnimator`）。
-5. **续行 `generateContinuationAnim` 缺 `setObjectValues`**。lib `:138` 只 `setFloatValues(f, 1.0f)`；原厂由 `Companion.generateAnim` 私有 3 参在内部 `setObjectValues(animParam.getStartValue(), animParam.getEndValue())`（`:129`）。lib 的 timeController 既然用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 起步，已经硬编码 0f→1f 范围，不需要 start/end——但这也意味着 **timeController 的 `setFloatValues(f, 1.0f)` 在 lib 实际是"覆盖掉硬编码的 0f→1f 范围"**，如果 setTarget 内的 update listener 真的按 `animatedValue` 驱动新 anim，新 anim 看到的 fraction 是 0..1，不是 f..1.0——**再次坐实了偏差 2**。
+5. **续行 `generateContinuationAnim` 缺 `setObjectValues`**。lib `:149` 只 `setFloatValues(f, 1f)`；原厂由 `Companion.generateAnim` 私有 3 参在内部 `setObjectValues(animParam.getStartValue(), animParam.getEndValue())`（`:129`）。lib 的 timeController 既然用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 起步，已经硬编码 0f→1f 范围，不需要 start/end——但这也意味着 **timeController 的 `setFloatValues(f, 1.0f)` 在 lib 实际是"覆盖掉硬编码的 0f→1f 范围"**，如果 setTarget 内的 update listener 真的按 `animatedValue` 驱动新 anim，新 anim 看到的 fraction 是 0..1，不是 f..1.0——**（60bd048 后此判据失效：`setFloatValues(f, 1f)` 已使 va 值域即 f..1.0，见 §3-1）**。
 6. **未 override `setEvaluator`**。lib 缺；原厂 `setEvaluator` 是 `ValueAnimator` 的 platform 方法，原厂并未 override，但私有 `generateAnim`（`:127-150`）在内部调用。原厂的 platform 行为是"按 start/end 类型默认 evaluator"，lib 因为用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 起步且自己管理 `va`，evaluator 链断在 `va` 内部而非 `ObjectAnimator.ofFloat` 的默认上。
 7. **`getTag` 简化带来的日志可读性差异**。原厂 `getTag`（`:189-191`）=`"<uniquelyIdentifies>-<name>"`，日志行形如 `"abc123-recentsScale: native start"`；lib 无此 tag，调试时无 anchor id。
 8. **`LogUtils.isAlwayson` 失败回调日志缺失**。原厂 `generateContinuationAnim` 当 `continuationAnimDuration <= 0` 时若 `LogUtils.isAlwayson()` 仍会 `LogUtils.i(..., Debug.getCallers(15))`（`:114-115`）——一种"防御性日志"；lib 直接吞异常（`Trace.traceBegin/End` 也只是 trace 桩）。
-9. **`AnimParam` 字段可见性差异**。原厂 4 final 字段（start/end/evaluator/applicator）通过构造器一次性写入，setter 只对 3 var 字段开放；lib data class 7 字段全 `var`，构造器只是设默认值，业务可随意 `param.evaluator = ...`。这影响"参数不可变"的设计意图——原厂隐式合约是"构造后只动 currentFraction/duration/interpolator"，lib 没守住。
+9. **`AnimParam` 字段可见性差异**。原厂 4 final 字段（start/end/evaluator/applicator）通过构造器一次性写入，setter 只对 3 var 字段开放；lib data class 7 字段全 `var`，构造器只是设默认值，业务可随意改 `param.interpolator/applicator/duration/currentFraction` 等（无 evaluator 字段）。这影响"参数不可变"的设计意图——原厂隐式合约是"构造后只动 currentFraction/duration/interpolator"，lib 没守住。
 
 ---
 
@@ -70,13 +70,11 @@
 按"可能导致语义不同"的严重度排序：
 
 > **⚠️部分修复（60bd048：setTarget 直写 setCurrentFraction 已接线；setProperty(CURRENT_FRACTION) 仍 no-op，平台 Property 写路径未建立）**
-1. **（高 / bug 级）续行动画在 lib 里实际"从 0 重启"而非"从 currentFraction 续行"**。组合 §2.3-1/2/5：
-   - `setProperty(CURRENT_FRACTION)` 是 no-op（偏差 1）→ timeController 的 ObjectAnimator 机制 FloatProperty 链路未建立。
-   - `setTarget` 走 addUpdateListener（偏差 2）→ 把 va 的 0..1 直接当 fraction 写。
-   - `setFloatValues(f, 1.0f)` 设定 va 自身推进范围为 [f, 1.0]（与偏差 2 的 update listener 处理逻辑冲突）→ 看 lib `:104-105` 的 `setFloatValues` 是直接透传到 `super.setFloatValues(*values)`（lib `OplusValueAnimator.kt:104-105` 继承自 `PendingAnimation.ObjectAnimator.setFloatValues` 是 `va.setFloatValues(*values)`）——所以 va 实际跑 0..1 还是 f..1.0 取决于 `super.setFloatValues` 是否被调用过。
-   - `super.setFloatValues(f, 1.0f)` 在 lib `:138` 中确实被调用，所以 va 自身动画范围是 f..1.0，但 update listener 处 `it.animatedValue` 拿到的还是 va 的"绝对时间进度"经过 float range 映射后的值（f..1.0），**这部分对了**。但偏差 1 的 setProperty 是 no-op，所以"`setProperty(CURRENT_FRACTION)` 触发 va 写 anim.setCurrentFraction"的链路断。
-   - 实际跑通链路：va tick → addUpdateListener (setTarget 装的) → 把 `it.animatedValue` 写 `anim.setCurrentFraction`。va 推进是 f..1.0，所以 `animatedValue` 在 [f, 1.0] 间走，写入 anim 的 fraction 也是 [f, 1.0]——**结果在 demo 5 上"碰巧"对**（demo 不计较细节，只看 banner），但**与原厂"FloatProperty 触发 setValue → setCurrentFraction"的契约不同**。任何依赖 `CURRENT_FRACTION` 公开访问 / 多 listener 链路的真实业务在 lib 上都会失效。
-   - **业务可观察后果**：调用方在续行动画上对 `OplusValueAnimator.CURRENT_FRACTION.setValue(otherAnim, f)` 不会写 otherAnim（CURRENT_FRACTION 写路径走的是 platform `Property.setValue`，但它依赖 platform ObjectAnimator 的 `mPropertyMap`——lib 的 timeController 不是 platform ObjectAnimator，setProperty 是 no-op，这整条路径完全未建立）。
+1. **（原高 / bug 级 → 60bd048 后中 / 残余偏差）续行主链已通（从 currentFraction 续行成立）；残余是 `setProperty(CURRENT_FRACTION)` no-op + CURRENT_FRACTION 私有化，平台 Property 写路径未建立**。v2 独立复核（现 `anim/OplusValueAnimator.kt`）：
+   - `setTarget`（`:112-117`）已真实接线：addUpdateListener 把 va 的 `animatedValue` 直写 `target.setCurrentFraction`；且 `generateContinuationAnim` 末尾 `setFloatValues(f, 1f)`（`:149`，经 `:104-106` 透传）使 va 值域 = [f, 1.0]——listener 收到的 animatedValue ∈ [f,1]，写入 fraction 即 [f,1]，**从 f 续行成立，不再"从 0 重启"**（原 §2.3-2 与本节旧文的"fraction 跑成 0..1"描述已随 60bd048 过时）。
+   - 残余偏差 1（`:102`）：`setProperty(CURRENT_FRACTION)` 仍 no-op，platform FloatProperty 写路径（ObjectAnimator mPropertyMap → Property.setValue → CURRENT_FRACTION.setValue）未建立；`generateContinuationAnim` 内仍调用它（`:147`）但无效果。
+   - 残余差异（`:158`）：`CURRENT_FRACTION` 是 companion `private val`——原厂公开 static getter 的「外部 `CURRENT_FRACTION.setValue(otherAnim, f)` 写入口」在 lib 不存在（也因此无外部误用面）。
+   - 结论：demo 5 的续行演示语义正确（原"bug 级 / 从 0 重启"判定下调为"残余偏差 / 中"）；真实 launcher 若依赖跨 anim 的 CURRENT_FRACTION 写或多 listener 链，lib 无法承载——回移见 §4.1-1。
 
 > **⚠️未修复（getCurrentPlayTime 未委托 timeController）**
 2. **（高）`getCurrentPlayTime` 在 timeController 模式下读到错误值**（§2.3-3）。原厂委托到 timeController，业务在续行动画上读 `getCurrentPlayTime` 拿到"在 timeController 时间轴上的当前位置"；lib 读 super（`this` 自身 ValueAnimator，**从未被 tick**——它的全部"tick"来自 `setCurrentFraction(f)` 外部写入），拿到 0 / 未定义。
@@ -89,20 +87,20 @@
 > **⚠️未修复（Int/Float evaluator 自动选择缺失，演示用 Float 不触发）**
 4. **（中）`TypeEvaluator` 缺自动选择，Float/Int 不匹配时崩溃**（§2.2-2）。原厂 `generateAnim` 私有 3 参（`:127-150`）有 IntEvaluator/FloatEvaluator 自动选择，缺 evaluator 时会 LogUtils.i 然后 return null（`LogUtils.i("OplusValueAnimator", "generateAnim fail")` `:136`）。lib 完全没有这条防线——`PendingAnimation.ObjectAnimator` 内部 va 硬编码 `setFloatValues(0f, 1f)`，animator 的 `animatedValue` 永远是 Float；如果业务传 `AnimParam(startValue=0, endValue=100, applicator={ it -> view.setBackgroundColor(it as Int) })`，va 推进给 applicator 的将是 0f/1f（Float），强转 Int = 0，**视觉上动画不播、applicator 始终收到 0**。原厂会走 IntEvaluator 分支正确产出 0/100。
 
-> **⚠️待复核（lambda 类型细节，正文后半未精读）**
-5. **（中）`addUpdateListener` lambda 类型问题**。lib `OplusValueAnimator.kt:24-26` 用 `addUpdateListener { a -> param.applicator?.invoke(a.animatedValue) }`，applicator typealias 是 `(value: Any?) -> Unit`。原厂 `OplusValueAnimator.java:166` 用 `addUpdateListener(new com.android.launcher3.taskbar.e(this, 2))`（一个 JADX 无法展开的 SAM 桥），其内部转 `_init_$lambda$0`（`:169-173`）调 `this$0.param.getValueApplicator().applyValue(it.getAnimatedValue())`——`applyValue` 接受 `Object`。两边的 applicator 入口签名都是 `Any?`/`Object`，签名层一致。
+> **✔️已复核（v2 独立复核：`anim/OplusValueAnimator.kt:34-36` 构造期 addUpdateListener lambda 捕获 this，`ValueApplicator = (value: Any?) -> Unit` ↔ 原厂 `applyValue(Object)` 入口签名一致——正文「不算语义差异」成立）**
+5. **（中）`addUpdateListener` lambda 类型问题**。lib `anim/OplusValueAnimator.kt:34-36` 用 `addUpdateListener { a -> param.applicator?.invoke(a.animatedValue) }`，applicator typealias 是 `(value: Any?) -> Unit`。原厂 `OplusValueAnimator.java:166` 用 `addUpdateListener(new com.android.launcher3.taskbar.e(this, 2))`（一个 JADX 无法展开的 SAM 桥），其内部转 `_init_$lambda$0`（`:169-173`）调 `this$0.param.getValueApplicator().applyValue(it.getAnimatedValue())`——`applyValue` 接受 `Object`。两边的 applicator 入口签名都是 `Any?`/`Object`，签名层一致。
    - 但**原厂 listener 是 `com.android.launcher3.taskbar.e` 内部类的 KFunction 引用**（被 JADX 用 `e(this, 2)` 编号），与 `init { ... }` 时的 lambda 等价，**没有捕获 this$0**（用构造参数传）；lib 直接 lambda 捕获 this。两者都正常，唯一差别是 lib 的 lambda 是 anonymous class，JADX 反编译友好度不同——不算语义差异。
 
-> **⚠️未修复（setTarget 持 strong ref）**
-6. **（中）`setTarget` 持有 strong reference**。lib `OplusValueAnimator.kt:108` `this.target = target` 是强引用，timeController 与 anim 互相强引用形成 GC 根。原厂 `objectAnimator.setTarget(oplusValueAnimatorGenerateAnim)`（`:109`）也强引用，**无差**——记录下来只是确认 lib 没引入额外 leak。
+> **✔️无差异（setTarget 强引用与原厂 `objectAnimator.setTarget(...)` 一致——本项仅确认无额外 leak，非风险项）**
+6. **（中）`setTarget` 持有 strong reference**。lib `anim/OplusValueAnimator.kt:100,113`（`private var target` + setTarget 内赋值）是强引用，timeController 与 anim 互相强引用形成 GC 根。原厂 `objectAnimator.setTarget(oplusValueAnimatorGenerateAnim)`（`:109`）也强引用，**无差**——记录下来只是确认 lib 没引入额外 leak。
 > **✔️保持简化（Trace 替代 LogUtils 已够）**
 7. **（低）`LogUtils.i` 失败回调日志缺失**（§2.3-8）。生产排查时，调用方传 `durationMs <= 0` 在原厂会进 `LogUtils.isAlwayson()` 分支打 `Debug.getCallers(15)` 堆栈；lib 完全静默。`Trace.traceBegin/End` 是 trace marker 不带调用栈。
 > **✔️保持（getTag 简化）**
 8. **（低）`getTag` 简化**（§2.3-7）。`LogUtils.i(getTag(), ...)` 在原厂所有委托方法都打 tag，lib 完全没这套——日志可读性下降。
 > **✔️保持（AnimParam 全 var 教学简化）**
-9. **（提示）`AnimParam` 字段全 var**（§2.3-9）。原厂 "构造后只动 3 var 字段" 的隐式合约在 lib 不成立。lib 的 `param.evaluator = ...`、`param.applicator = ...` 在生成后仍可改——不是 bug，但**与原厂"param 不可变"的设计意图不一致**。
+9. **（提示）`AnimParam` 字段全 var**（§2.3-9）。原厂 "构造后只动 3 var 字段" 的隐式合约在 lib 不成立。lib 的 `param.interpolator/applicator/duration/currentFraction` 等在生成后仍可改（无 evaluator 字段）——不是 bug，但**与原厂"param 不可变"的设计意图不一致**。
 
-> **⚠️未修复（AppSwipeToRecentContinuationHelper 未移植）**
+> **✔️保持简化（AppSwipeToRecentContinuationHelper / RecentsViewAnimUtil / BaseActivityInterface 续行业务编排未移植——§2.2-4 与 §4.2-1 判定有意不补；lib 无此类，Demo 5 单路舞台演示已覆盖教学目标）**
 10. **（高 / 跨类联动）`AppSwipeToRecentContinuationHelper` / `RecentsViewAnimUtil` / `BaseActivityInterface` 整套续行业务未复刻**（§2.2-4）。Lib 即使把 `OplusValueAnimator` 修得与原厂 1:1，仍缺：
     - 原 4 个 OplusValueAnimator 实例的构造入口（`RecentsViewAnimUtil.createAppToOverview` 注入 `LINEAR` interpolator + `pa.getDuration()` 时长）；
     - `AppSwipeToRecentContinuationHelper.bind` 从 `AnimatorPlaybackController` 算 `continuationAnimDuration`；
@@ -113,12 +111,12 @@
 
 ---
 
-> ⚠️ ④ 建议表各行待逐条打标（风险项状态见 ③ 打标）。
+> ④ 建议表逐条已按 §3 状态与 v2 复核标注（见下方各条前缀）。
 ## 4. 回移建议
 
 ### 4.1 值得补进 lib 的
 
-1. **修 §3-1 的"续行从 0 重启"风险**——核心是把 `TimeControllerObjectAnimator.setProperty(CURRENT_FRACTION)` 真正接线。当前 lib 用 `PendingAnimation.ObjectAnimator(null, null, 0f, 1f)` 起步，该类缺 setProperty 入口实现，setProperty 是 no-op。最直接的修法是放弃 `PendingAnimation.ObjectAnimator` 复刻，让 `TimeControllerObjectAnimator` 直接 `extends android.animation.ObjectAnimator`——然后 `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setFloatValues(f, 1.0f)` 全部走 platform 路径。这与 review 04 §4.1-2 的建议一致，本区域只是把"bug 级"标号打上去。
+1. **修 §3-1 残余项（60bd048 后已非"从 0 重启"，剩 setProperty no-op）**——核心是把 `TimeControllerObjectAnimator.setProperty(CURRENT_FRACTION)` 真正接线。当前 `anim/OplusValueAnimator.kt:102` 仍是 no-op（`PendingAnimation.ObjectAnimator` 起步件无 setProperty 入口实现）。最直接的修法是放弃 `PendingAnimation.ObjectAnimator` 复刻，让 `TimeControllerObjectAnimator` 直接 `extends android.animation.ObjectAnimator`——然后 `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setFloatValues(f, 1.0f)` 全部走 platform 路径。这与 review 04 §4.1-2 的建议一致，本区域只是把"bug 级"标号打上去。
 2. **补 `getCurrentPlayTime` 委托**（§3-2）。5 行，与 isRunning/getDuration 同一模式：`override fun getCurrentPlayTime(): Long = timeController?.currentPlayTime ?: super.getCurrentPlayTime`（需要查 `TimeControllerObjectAnimator` 是否暴露 `currentPlayTime` getter；如未暴露，给 `PendingAnimation.ObjectAnimator` 加 `fun currentPlayTime(): Long` 转发到 va）。
 3. **补 `setDuration` override + 双写**（§3-3）。原厂 `:319-327` 是 super + param 双写。lib 加：
     ```kotlin
@@ -173,7 +171,7 @@
 | `getTag` 用 `uniquelyIdentifies` 拼 anchor | `OplusValueAnimator.java:189-191` |
 | `AppToOverviewContinuationHelper.kt` 是原 Kotlin 源 | `OplusValueAnimator.java` 顶部 `@SourceDebugExtension({"SMAP\nAppToOverviewContinuationHelper.kt\nKotlin\n*F\n+ 1 AppToOverviewContinuationHelper.kt\ncom/oplus/quickstep/utils/OplusValueAnimator...` |
 | `startAlignEliminateAnim` JADX 反编译失败 | `AppSwipeToRecentContinuationHelper.java:61322`（`Code decompiled incorrectly, please refer to instructions dump.`） |
-| Demo 5 自承 TimeControllerObjectAnimator 是 no-op | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/Demo5ContinuationActivity.kt:11-12` 注释 |
+| Demo 5 注释自称 TimeControllerObjectAnimator no-op（落后于代码） | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/Demo5ContinuationActivity.kt:19-20`（注释仍写 setTarget/setProperty 均 no-op；代码 60bd048 后仅 setProperty no-op） |
 
 
 ## 复核记录（2026-09-09）
@@ -186,3 +184,19 @@
 - **60bd048** — RecordInputInterpolator.inputed -1f→0f、generateContinuationAnim param.copy + LinearInterpolator、setInterpolator 双写 param、TimeControllerObjectAnimator.setTarget 真实接线
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本批不信任既有 ✅/✔️/⚠️/❌ 标记，逐条对照当前 lib 代码亲自复核（包重组后文件位于 `com/asyncanimator/anim/`、`playback/`、`core/` 等；行号为当前文件行号）。仅改本文档，未改任何代码。
+
+- **复核条目总数**：10（§3 风险 1–10 的状态行）
+- **结论不变**：7 —— 风险 1（⚠️部分修复）、2（⚠️未修复）、3（⚠️未修复）、4（⚠️未修复）、7（✔️保持简化）、8（✔️保持）、9（✔️保持）
+- **状态修正**：3
+  1. 风险 5：⚠️待复核 → ✔️已复核（`anim/OplusValueAnimator.kt:34-36` 构造期 addUpdateListener lambda 捕获 this、`ValueApplicator=(Any?)->Unit` ↔ 原厂 `applyValue(Object)`——签名一致，正文「不算语义差异」成立）
+  2. 风险 6：⚠️未修复 → ✔️无差异（`anim/OplusValueAnimator.kt:100,113` 强引用与原厂 `objectAnimator.setTarget` 一致，本项仅为确认无额外 leak）
+  3. 风险 10：⚠️未修复 → ✔️保持简化（AppSwipeToRecentContinuationHelper / RecentsViewAnimUtil / BaseActivityInterface 业务编排未移植，§2.2-4 与 §4.2-1 判定有意不补；lib 无此类，Demo 5 单路舞台演示已覆盖）
+- **描述 / 证据刷新（结论不变，内容随代码更新）**：
+  - 风险 1 标题与正文重写：60bd048 后 `setTarget` 直写（`:112-117`）+ `generateContinuationAnim` 末 `setFloatValues(f,1f)`（`:149`）使 va 值域为 [f,1]——「从 0 重启」不再成立，残余项收敛为 `setProperty(CURRENT_FRACTION)` no-op（`:102`）+ CURRENT_FRACTION companion 私有（`:158`），原「高 / bug 级」下调为「中 / 残余偏差」
+  - §1 类对应表、§2.1/§2.2/§2.3 全部 lib 路径 `continuation/`→`anim/` 并刷新行号；AnimParam 字段集合更正为 `name/fromValue/toValue/currentFraction/interpolator/applicator/duration`（与原厂 startValue/endValue/typeEvaluator/valueApplicator 命名已分流）
+  - Demo 5 自承注释行号 11-12 → `demo/.../Demo5ContinuationActivity.kt:19-20`，且注明该注释已落后于 60bd048（现仅 setProperty 仍 no-op，setTarget 已接线）
+  - 证据表 Demo 5 行同步更新；`RecordInputInterpolator.inputed` 为 0f 且 `private set`（`:13-14`）

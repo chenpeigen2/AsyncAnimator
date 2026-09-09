@@ -36,15 +36,15 @@
 | `LauncherEntryActivity` `exported=true` + MAIN+LAUNCHER | 无对应 lib 类（仅 demo UI 壳） | `com.android.launcher.Launcher extends QuickstepLauncher`（`com/android/launcher/Launcher.java:411`）；`com.android.quickstep.LauncherSwipeHandlerV2` | demo 是 launcher 风格入口的视觉演示，但**不是** AOSP/OPPO 真 launchable Activity；OPPO 真 launchable 由 system_server + `Intent.ACTION_MAIN` 启动 `Launcher`，不需要 demo |
 | `Demo1MasterClockActivity` unexported | `lib/.../playback/AnimatorPlaybackController.kt`（MasterClock 主体） | `com/android/launcher3/anim/AnimatorPlaybackController`（多个变体，AOSP 300+ 行）+ OPPO fork | Demo1 调用 `LauncherStageView.bounceIcons(sync=true)`，**舞台侧仿真**，**不直接调** lib 的 `AnimatorPlaybackController`——v4 §6.1 描述的是 lib 等价实现 |
 | `Demo2HolderProgressActivity` unexported | `lib/.../playback/AnimatorPlaybackController.kt`（`ProgressMapper` 钩子） | 同上 | Demo2 调用 `LauncherStageView.flyIcon(...)` + `ProgressMapper` 内部回调（demo 自创，**原厂无 `ProgressMapper` 公开类**） |
-| `Demo3AsyncCrossThreadActivity` unexported | `lib/.../async/AsyncValueAnimator.kt` | `com/android/quickstep/util/animation/AsyncValueAnimator` | review 06 §2.1 已确认 100% 命中 |
+| `Demo3AsyncCrossThreadActivity` unexported | `lib/.../anim/AsyncValueAnimator.kt` | `com/android/quickstep/util/animation/AsyncValueAnimator` | review 06 §2.1 已确认 100% 命中 |
 | `Demo4SpringTransitionActivity` unexported | `lib/.../anim/OplusSpringObjectAnimator`（**注：lib 实际叫 `SceneSpring`，demo 自创**） | `com/oplus/quickstep/utils/OplusSpringObjectAnimator` | **demo 自己造的弹簧**（SceneSpring.kt 内置三段 ObjectAnimator+Spring），**不调用** lib 的 `AsyncSpringAnim`；review 04 §4.2-3 已点名这是有意简化 |
 | `Demo5ContinuationActivity` unexported | `lib/.../continuation/OplusValueAnimator.kt::generateContinuationAnim` | `com/oplus/quickstep/utils/OplusValueAnimator` | demo `playToken/coroutineJob` 模拟断点；review 05 标注"TimeControllerObjectAnimator.setTarget 是 no-op" |
-| `Demo6StateMachineActivity` unexported | `lib/.../controller/AnimationController.kt`（12 个 `AnimationState` + 3 超时 listener） | `com/oplus/quickstep/utils/AnimationController.java`（607 行；同 12 state + 3 listener） | demo 真调 `AnimationController()`，但因 lib 的 `TaskStateChangeTimeOutListener` 缺事件总线，**事件触发路径不全**（review 03 §3 / review 11 §C-2） |
+| `Demo6StateMachineActivity` unexported | `lib/.../control/AnimationController.kt`（12 个 `AnimationState` + 3 超时 listener） | `com/oplus/quickstep/utils/AnimationController.java`（607 行；同 12 state + 3 listener） | demo 真调 `AnimationController()`，但因 lib 的 `TaskStateChangeTimeOutListener` 缺事件总线，**事件触发路径不全**（review 03 §3 / review 11 §C-2） |
 | `Demo7SeqIdDedupActivity` unexported | `lib/.../seq/AnimationSeqHelper.kt` + `AnimSeqTimeStamp.kt` | `com/oplus/quickstep/utils/AnimationSeqHelper` + `com/android/systemui/shared/system/AnimSeqTimeStamp` | 真调 `AnimationSeqHelper.delayFinishRecents`；100% 调用面命中 |
-| `Demo8FeatureFlagActivity` unexported | `lib/.../manager/OplusAnimManager.kt` + `feature/AnimationFeatureHelper.kt` | `com/oplus/quickstep/utils/OplusAnimManager` + `AnimationFeatureHelper.java` | 真调 `OplusAnimManager.interruptionEnabled` + `simulateRemoteUpdate`；review 11 §C-13 标注"RUS 真通路缺" |
-| `Demo9AllAppsTransitionActivity` unexported | `lib/.../pending/PendingAnimation.kt` + `playback/AnimatorPlaybackController.kt` + `CustomRectFSpringAnim.kt` | `com/android/launcher3/QuickstepTransitionManager.java:1247-1256` `getActivityLaunchOptions(View)` + `AppLaunchAnimationRunner` 内部类（`QuickstepTransitionManager.java:2100+`） | **demo 不走真 RemoteAnimation 通路**——`stage.openApp(i)` 直接驱动舞台弹簧，**没有** `new LauncherAnimationRunner(...)` 真构造。review 06 §2.2-1 已点 Demo9 只能"概念演示" |
-| `Demo10IndependentThreadActivity` unexported | `lib/.../animthread/AnimationControlThread.kt` + `async/AsyncValueAnimator.kt` | `com/oplus/basecommon/thread/OplusExecutors.java:9943` `ANIM_EXECUTOR("launcher.anim", prio=-19)` + `:14905-15020` `ANIM_EXECUTOR$lambda$0` | 真在 launcher.anim 线程跑 `AsyncValueAnimator`；review 01 §②C-1 已点 `LauncherBooster.setUxThreadValue` 缺失（demo 跑不动 OS UX 调度器） |
-| `Demo11ViewSpringAnimThreadActivity` unexported | `lib/.../animthread/AsyncAnimWrapper.kt` + `lib/.../async/AsyncSpringAnim.kt`（USAGE 漏列，review 06 §1 末已点名） | `com/android/launcher3/anim/AsyncAnimWrapper` + `com/android/quickstep/util/OplusAsyncSpringAnimWrapper` | 真用 `androidx.dynamicanimation.SpringAnimation`（review 11 §B-3 已点"androidx 替代 OPPO fork"），验证 marshal 到 launcher.anim 的整套 `AsyncSpringAnim` 协议 |
+| `Demo8FeatureFlagActivity` unexported | `lib/.../manager/OplusAnimManager.kt` + `manager/AnimationFeatureHelper.kt` | `com/oplus/quickstep/utils/OplusAnimManager` + `AnimationFeatureHelper.java` | 真调 `OplusAnimManager.interruptionEnabled` + `simulateRemoteUpdate`；review 11 §C-13 标注"RUS 真通路缺" |
+| `Demo9AllAppsTransitionActivity` unexported | `lib/.../playback/PendingAnimation.kt` + `playback/AnimatorPlaybackController.kt` + `CustomRectFSpringAnim.kt` | `com/android/launcher3/QuickstepTransitionManager.java:1247-1256` `getActivityLaunchOptions(View)` + `AppLaunchAnimationRunner` 内部类（`QuickstepTransitionManager.java:2100+`） | **demo 不走真 RemoteAnimation 通路**——`stage.openApp(i)` 直接驱动舞台弹簧，**没有** `new LauncherAnimationRunner(...)` 真构造。review 06 §2.2-1 已点 Demo9 只能"概念演示" |
+| `Demo10IndependentThreadActivity` unexported | `lib/.../thread/AnimationControlThread.kt` + `anim/AsyncValueAnimator.kt` | `com/oplus/basecommon/thread/OplusExecutors.java:9943` `ANIM_EXECUTOR("launcher.anim", prio=-19)` + `:14905-15020` `ANIM_EXECUTOR$lambda$0` | 真在 launcher.anim 线程跑 `AsyncValueAnimator`；review 01 §②C-1 已点 `LauncherBooster.setUxThreadValue` 缺失（demo 跑不动 OS UX 调度器） |
+| `Demo11ViewSpringAnimThreadActivity` unexported | `lib/.../thread/AsyncAnimWrapper.kt` + `lib/.../anim/AsyncSpringAnim.kt`（USAGE 漏列，review 06 §1 末已点名） | `com/android/launcher3/anim/AsyncAnimWrapper` + `com/android/quickstep/util/OplusAsyncSpringAnimWrapper` | 真用 `androidx.dynamicanimation.SpringAnimation`（review 11 §B-3 已点"androidx 替代 OPPO fork"），验证 marshal 到 launcher.anim 的整套 `AsyncSpringAnim` 协议 |
 
 ### 1.2 关键结构差异：lib 把 OPPO 单个内嵌接口拆成两个独立类型
 
@@ -200,7 +200,7 @@
 | `OplusAnimManager.getAnimController().appLaunchAnimStartOrEnd` 真调用链 | `com/android/launcher3/QuickstepTransitionManager.java:2131-2133` `AppLaunchAnimationRunner.appLaunchAnimStartOrEnd()` |
 | 9 个 LauncherAnimationRunner 真构造点 | 见 §1.3 表（5 个在 `QuickstepTransitionManager`，2 个在 `RecentsActivity`，1 个在 `OplusRemoteAnimationProvider`，1 个在 `ToggleBarAppTransitionManager`） |
 | lib stub `LauncherAnimationRunner.kt` 仅保留 RemoteAnimationTarget 类型壳 | `lib/.../android/launcher3/LauncherAnimationRunner.kt:1-23`（含完整注释"仅保留类型壳"） |
-| lib 独立接口 `RemoteAnimationFactory` 10 行 | `lib/.../launcher/controller/RemoteAnimationFactory.kt:1-19` |
+| lib 独立接口 `RemoteAnimationFactory` 10 行 | `lib/.../control/RemoteAnimationFactory.kt:1-19` |
 | Demo AndroidManifest 12 个 activity + 11 unexported + 1 exported | `demo/src/main/AndroidManifest.xml:12-32` |
 | `LauncherEntryActivity` 用 `Intent(ctx, demo.activityClass)` 跳页 | `demo/.../LauncherEntryActivity.kt:114-115` |
 | Demo6 用 class literal `AnimationController()` 真调 | `demo/.../Demo6StateMachineActivity.kt:42` |
@@ -220,38 +220,42 @@
 
 Demo AndroidManifest 的 12 个 activity 契约（11 unexported + 1 exported）是 **Android 平台级最佳实践**，没有任何安全 bug；但 **lib demo 与原厂 LauncherAnimationRunner/QuickstepTransitionManager 600+ 行入口契约之间存在结构性鸿沟**——lib 故意"分裂"原厂单类（`LauncherAnimationRunner.kt` stub + 独立 `RemoteAnimationFactory` 接口），且 Demo9 完全没走真 `LauncherAnimationRunner` 构造 → `ActivityOptions.makeRemoteAnimation` 通路。所有 11 个 demo activity 都是 **lib 自创 demo harness UI**，**不直接复刻 OPPO 真实入口调用方**——它们对应 OPPO 的**子系统/调用路径**（MasterClock/Holder/Async/Spring/Continuation/StateMachine/SeqId/FeatureFlag/FullTransition/IndependentThread/SpringOnAnimThread），review 06 §2.2 已给出 78% 闭合度。本 review 在 manifest 层补足证据，并发现 10 个 demo manifest 层风险点（其中 bug 级 2 个：`LauncherEntryActivity` 信息暴露面 + Demo9 完全没走真入口通路）。
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方法**：逐条读取 `demo/src/main/AndroidManifest.xml`、demo 源码、lib 源码，不信任已有标记。
 
-本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+### Manifest 实测验证
+| 条目 | 文档描述 | 实测 | 一致 |
+|---|---|---|---|
+| LauncherEntryActivity exported | true + MAIN+LAUNCHER | `android:exported="true"`（:16） | ✅ |
+| 11 demo activities | 无 exported 声明 | 确认无声明（:22-32） | ✅ |
+| Demo 总数 | 11 + 1 Entry = 12 | 12 | ✅ |
+| applicationId | com.asyncanimator.demo | demo/build.gradle:8 `'com.asyncanimator.demo'` | ✅ |
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
-## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+### 逐条状态复核（10 条风险 + 7 条建议 + 4 条文档同步）
 
-| 条目 | 判定 |
-|---|---|
-| ③-1 LauncherEntryActivity exported=true 暴露面 | ✔️保持简化（launcher 契约必需；本文自证无安全 bug） |
-| ③-2 Demo9 不走真 LauncherAnimationRunner/makeRemoteAnimation | ✔️保持简化（review 06 §2.2-1 / §4.2-2 有意裁剪） |
-| ③-3 demo 加 deep-link 放大 exported | ❌不成立（未来假设，无当前 deep-link） |
-| ③-4 viewBinding 强绑定致 NPE | ❌不成立（编译期缺类错误，非 NPE） |
-| ③-5 redirectTraceToLogView 多次叠加 | ⚠️未修复（demo 模块，~5 行） |
-| ③-6 DemoAdapter 持 11 个 Class 强引用 | ✔️保持简化（无 RSS 实测依据） |
-| ③-7 Demo6 状态图与 controller 不同步 | ✔️保持简化（已标注 lib 内部态 + 日志同步） |
-| ③-8 manifest 省略 exported 未来编译失败 | ⚠️待复核（未来 API 行为未定） |
-| ③-9 @string/demoN_title 漏配只警告 | ❌不成立（AAPT2 编译期错误） |
-| ③-10 onBackPressed @Deprecated | ✔️保持简化（有意兼容） |
-| ④4.1-1 补 AnimationResult 最小壳 | ⚠️待复核（与 4.2-1 矛盾） |
-| ④4.1-2 补 RemoteAnimationFactory 5 default 方法 | ✔️保持简化（通路未移植） |
-| ④4.1-3 Demo9 加真构造路径 | ⚠️待复核（与 4.2-2 矛盾） |
-| ④4.1-4 修 redirectTraceToLogView 叠加 | ⚠️未修复（demo 模块，~5 行） |
-| ④4.1-5 Demo6 加 controller.animState 订阅 | ⚠️待复核（内部态不可达，建议需重定义） |
-| ④4.1-6 manifest 显式 exported=false | ⚠️待复核（加固项） |
-| ④4.2-1..7 保持简化 7 项 | ✔️保持简化 |
-| ④4.3-1 USAGE 加 Demo 入口契约节 | ⚠️未修复（USAGE.md 无 demo 章节） |
-| ④4.3-2 USAGE 加类型壳一节 | ✅已修复（USAGE.md:225-229 已明示类型壳） |
-| ④4.3-3 USAGE 补 Demo9 警示 | ⚠️未修复（USAGE.md 无 demo 章节） |
-| ④4.3-5 README 补"集成方补真链路" | ❌不成立（README 无集成章节，前提不满足） |
+| 条目 | 原标记 | 复核 | 修正 |
+|---|---|---|---|
+| ③-1 exported=true 暴露面 | ✔️保持简化 | ✔️ launcher 契约必需 | 无 |
+| ③-2 Demo9 不走真 runner | ✔️保持简化 | ✔️ 有意裁剪 | 无 |
+| ③-3 deep-link 放大 | ❌不成立 | ❌ 无当前 deep-link | 无 |
+| ③-4 viewBinding NPE | ❌不成立 | ❌ 编译期错误非 NPE | 无 |
+| ③-5 redirectTraceToLogView 叠加 | ⚠️未修复 | ⚠️ demo 模块 bug | 无 |
+| ③-6 Class 强引用 RSS | ✔️保持简化 | ✔️ 无实测依据 | 无 |
+| ③-7 Demo6 状态不同步 | ✔️保持简化 | ✔️ 已标注 | 无 |
+| ③-8 exported 未来编译失败 | ⚠️待复核 | ⚠️ 未来行为未定 | 无 |
+| ③-9 @string 漏配 | ❌不成立 | ❌ AAPT2 编译期 | 无 |
+| ③-10 onBackPressed deprecated | ✔️保持简化 | ✔️ 有意兼容 | 无 |
+| ④4.1-1 AnimationResult 壳 | ⚠️待复核 | ⚠️ 与 4.2-1 矛盾 | 无 |
+| ④4.1-2 Factory 5 defaults | ✔️保持简化 | ✔️ 通路未移植 | 无 |
+| ④4.1-3 Demo9 真构造 | ⚠️待复核 | ⚠️ 与 4.2-2 矛盾 | 无 |
+| ④4.1-4 redirectTraceToLogView | ⚠️未修复 | ⚠️ demo bug | 无 |
+| ④4.1-5 Demo6 controller 订阅 | ⚠️待复核 | ⚠️ 内部态不可达 | 无 |
+| ④4.1-6 显式 exported=false | ⚠️待复核 | ⚠️ 加固项 | 无 |
+| ④4.2-1..7 保持简化 | ✔️保持简化 | ✔️ 全部确认 | 无 |
+| ④4.3-1 USAGE Demo 章节 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| ④4.3-2 USAGE 类型壳 | ✅已修复 | ✅ USAGE.md:225-229 已明示 | 无 |
+| ④4.3-3 USAGE Demo9 警示 | ⚠️未修复 | ⚠️ 确认 | 无 |
+| ④4.3-5 README 集成章节 | ❌不成立 | ❌ README 无集成章节 | 无 |
 
-本批对 doc 32 未改任何 lib/demo 代码：风险全部落在 demo/manifest/文档层，无 ≤30 行的 lib 真 bug。
+**总结**：21 条目原标记全部正确。Manifest 实测与文档一致。路径已更新至当前包结构。

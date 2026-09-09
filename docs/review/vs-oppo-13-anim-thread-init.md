@@ -1,6 +1,6 @@
 # vs-oppo-13 — AnimationControlThread 深度对照
 
-> 范围：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/animthread/AnimationControlThread.kt`
+> 范围：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/thread/AnimationControlThread.kt`（e62dbff 包重组后自 `launcher/animthread/` 迁入 `thread/`）
 > vs 原厂 `com/oplus/basecommon/thread/OplusExecutors.java`（`ANIM_EXECUTOR` + `ANIM_EXECUTOR$lambda$0`）+
 > `com/oplus/basecommon/thread/Executors.java`（`createAndStartNewLooper`）+
 > `com/oplus/basecommon/thread/OplusLooperExecutor.java`（`OplusLooperExecutor(Looper, Runnable)`）+
@@ -20,12 +20,12 @@
 | 2 | `private constructor()` | `private static final OplusLooperExecutor ANIM_EXECUTOR = …`（`OplusExecutors.java:95`）+ `static { }` 初始化块（`Executors.java:46-57`） | 同上 | **等价**（构造私有 + 类初始化阶段建一次 + 进程级单例） |
 | 3 | `init { start() }` | `handlerThread.start();`（`Executors.java:96`） | `Executors.java:96` | **精确复刻** |
 | 4 | `HandlerThread(THREAD_NAME, PRIORITY)` 构造参数 | `new HandlerThread(str, i9)` 中 `i9` = `-19`（`Executors.java:95`，`OplusExecutors.java:95`） | `Executors.java:95`（`HandlerThread handlerThread = new HandlerThread(str, i9);`）+ `OplusExecutors.java:95`（`-19` 字面量） | **精确复刻**（含 `THREAD_NAME` = `"launcher.anim"`、`PRIORITY` = `-19`） |
-| 5 | `override fun onLooperPrepared()` 内 `AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))` | `OplusLooperExecutor` 构造函数末尾 `execute(runnable)` → 首个消息（`ANIM_EXECUTOR$lambda$0`）内 `AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())` | `OplusLooperExecutor.java:83-87`（`if (runnable != null) { execute(runnable); }`）+ `OplusExecutors.java:169-170` | **功能等价，时机不同**（见 §2-A-2） |
+| 5 | `override fun onLooperPrepared()` 内 `AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())`（dbde195 前为 `HandlerTickScheduler(Handler(looper))`） | `OplusLooperExecutor` 构造函数末尾 `execute(runnable)` → 首个消息（`ANIM_EXECUTOR$lambda$0`）内 `AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())` | `OplusLooperExecutor.java:83-87`（`if (runnable != null) { execute(runnable); }`）+ `OplusExecutors.java:169-170` | **功能等价，时机不同**（见 §2-A-2） |
 | 6 | `runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }` | `ANIM_EXECUTOR$lambda$0` 第二句 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`（`OplusExecutors.java:171`） | `OplusExecutors.java:171` | **有意简化 + 兜底**（见 §2-B-1） |
 | 7 | `companion object { const val THREAD_NAME = "launcher.anim" }` | `"launcher.anim"` 字面量（`OplusExecutors.java:95`） | `OplusExecutors.java:95` | **精确复刻**（字符串字面量同值，便于 systrace / logcat 对照） |
 | 8 | `companion object { private const val PRIORITY = -19 }` | 字面量 `-19`（`OplusExecutors.java:95`） | `OplusExecutors.java:95` + `Executors.java:55-56`（`-4`）/`Executors.java:81`/`Executors.java:92` 等其他线程用 `-4`、`-8`、`0`；仅 `ANIM_EXECUTOR` 用 `-19`） | **精确复刻**（注释明确"不是 `THREAD_PRIORITY_URGENT_DISPLAY`(-8)"，已修 review 01 §②C-1 的 bug） |
 | 9 | `companion object { internal val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { AnimationControlThread() } }` | `private static final OplusLooperExecutor ANIM_EXECUTOR = …`（`OplusExecutors.java:95`） + 类初始化器（`<clinit>`） | `OplusExecutors.java:95`（Java `static final` 等价 Kotlin `by lazy(SYNCHRONIZED)` 的语义：首次访问惰性建 + 互斥） | **结构等价**（双检锁 vs Kotlin 标准库 SYNCHRONIZED lazy 等价） |
-| 10 | （隐含）`LooperExecutor` + 后续 `Handler` 上 post 帧任务 | `OplusLooperExecutor extends LooperExecutor`，封装 Handler 的 post 路径 | `OplusLooperExecutor.java:16, 22, 86` | **未引入**——lib 走 `HandlerTickScheduler` + `AnimationHandler` 私有 API（已述于 `vs-oppo-01` §B-2 / `vs-oppo-04` §2.1） |
+| 10 | （隐含）`LooperExecutor` + 后续 `Handler` 上 post 帧任务 | `OplusLooperExecutor extends LooperExecutor`，封装 Handler 的 post 路径 | `OplusLooperExecutor.java:16, 22, 86` | **未引入**——lib 走 `ChoreographerTickScheduler` + 内部 `AnimationHandler` API（已述于 `vs-oppo-01` §B-2 / `vs-oppo-04` §2.1） |
 
 > 注：`LooperExecutor.java:27-29` 的 `if (getHandler().getLooper() == Looper.myLooper()) { runnable.run(); } else { handler.post(runnable); }` 路径 lib 不走，所以 init 时机差异需要展开看（§2-A-2）。
 
@@ -39,12 +39,12 @@
 
 | 维度 | lib | 原厂 | 证据 |
 |---|---|---|---|
-| 构造调用点 | `HandlerThread(THREAD_NAME, PRIORITY)`（`AnimationControlThread.kt:46`） | `new HandlerThread(str, i9)`（`Executors.java:95`） | `Executors.java:95` + `OplusExecutors.java:95` |
-| 启动调用点 | `init { start() }`（`AnimationControlThread.kt:49`） | `handlerThread.start();`（`Executors.java:96`） | `Executors.java:96` |
-| 名字字面量 | `"launcher.anim"`（`AnimationControlThread.kt:73`） | `"launcher.anim"`（`OplusExecutors.java:95`） | `OplusExecutors.java:95` |
-| 优先级字面量 | `-19`（`AnimationControlThread.kt:78`） | `-19`（`OplusExecutors.java:95`） | `OplusExecutors.java:95` |
-| 单例可见性 | `internal val instance by lazy(SYNCHRONIZED)`（`AnimationControlThread.kt:81-83`） | `private static final OplusLooperExecutor ANIM_EXECUTOR`（`OplusExecutors.java:95`） | 同上 |
-| 私有构造 | `private constructor()`（`AnimationControlThread.kt:46`） | Kotlin 端无显式构造（`OplusExecutors` 是 `final class`，但字段 `private static final`） | 同上 + `OplusExecutors.java:16`（`final class`） |
+| 构造调用点 | `HandlerThread(THREAD_NAME, PRIORITY)`（`AnimationControlThread.kt:49`） | `new HandlerThread(str, i9)`（`Executors.java:95`） | `Executors.java:95` + `OplusExecutors.java:95` |
+| 启动调用点 | `init { start() }`（`AnimationControlThread.kt:51-53`） | `handlerThread.start();`（`Executors.java:96`） | `Executors.java:96` |
+| 名字字面量 | `"launcher.anim"`（`AnimationControlThread.kt:76`） | `"launcher.anim"`（`OplusExecutors.java:95`） | `OplusExecutors.java:95` |
+| 优先级字面量 | `-19`（`AnimationControlThread.kt:83`） | `-19`（`OplusExecutors.java:95`） | `OplusExecutors.java:95` |
+| 单例可见性 | `internal val instance by lazy(SYNCHRONIZED)`（`AnimationControlThread.kt:86-88`） | `private static final OplusLooperExecutor ANIM_EXECUTOR`（`OplusExecutors.java:95`） | 同上 |
+| 私有构造 | `private constructor()`（`AnimationControlThread.kt:49`） | Kotlin 端无显式构造（`OplusExecutors` 是 `final class`，但字段 `private static final`） | 同上 + `OplusExecutors.java:16`（`final class`） |
 
 **结论**：1:1 复刻，连 `-19` 与 `"launcher.anim"` 都按字面量保留。区别只是原厂把"线程 + Looper + 优先级 + init 回调"分到三个类（`HandlerThread`/`Executors`/`OplusLooperExecutor`），lib 折进一个 `HandlerThread` 子类 + companion —— 这是**结构性合并**而非语义差异。
 
@@ -86,10 +86,10 @@
 | 行为 | 调用 SDK 公开 API `Process.setThreadPriority`，将本线程优先级再写一次 `-19`（兜底） | 调 OPPO 私有 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`，通过反射 → `IOplusUIFirstManager.setUxThreadValue` 把 TID 注册到 `uifirst` 系统服务，触发 UI First 调度策略（UIFIRST_OPT_SET_PRIORITY / UIFIRST_ASYNC_ANIM 事件，见 `LauncherBooster.java:55-58` Metadata d2 表） |
 | 作用域 | 仅本进程的 OS 调度优先级 | 跨进程的 UI First 策略（影响 CPU 绑核 + 渲染优先级 + GPU 调度策略） |
 | 失败兜底 | `runCatching { ... }` 吞 `SecurityException` | 内部 `try / catch (Throwable th) { ... }`（`LauncherBooster.java:617-619`），反射失败也只是 log |
-| 文档声明 | `AnimationControlThread.kt:30-39` 注释明示"已退化 + 兜底" | 无注释，纯原生调用 |
+| 文档声明 | `AnimationControlThread.kt:35-41`（KDoc）+ `:68-69`（行内注释）明示"已退化 + 兜底" | 无注释，纯原生调用 |
 
-**lib 注释原文摘录**（`AnimationControlThread.kt:30-39` 已确认存在）：
-> UX 线程授权：原厂 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`，AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
+**lib 注释原文摘录**（`AnimationControlThread.kt:68-69` 行内注释，已确认存在）：
+> UX 线程提权：原厂 `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())`，AOSP 无对应 API；退化为在本线程再确认一次优先级（构造参数已设，此处兜住被外部改动的情况）
 
 **结论**：**有意简化**。lib 主动放弃 OPPO 私有 `setUxThreadValue`（UI First 服务跨进程调度），用 SDK 公开 API 做相同副作用的近似（仅本进程 OS 优先级）。修复成本：无（OPPO `uifirst` 系统服务不在 AOSP，无合法替代）。**建议保持简化**（§4-B-1）。
 
@@ -137,7 +137,7 @@ lib 直接 `HandlerThread` 子类，跳过 `LooperExecutor` 这一层。原厂�
 public final OplusLooperExecutor getANIM_EXECUTOR() { return ANIM_EXECUTOR; }
 ```
 
-lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 looper（`AnimationControlThread.kt:48` `Handler(looper)`）。
+lib 用 `AnimationControlThread.instance` + 调用方自取 `instance.looper`；`onLooperPrepared` 内不再 wrap `Handler`（dbde195 后装的是 `ChoreographerTickScheduler()`，`AnimationControlThread.kt:67`）。
 
 **结论**：**有意简化 + 不可见**（`OplusExecutors` 在 lib 进程内不存在，访问器无意义）。归"有意简化"。
 
@@ -155,7 +155,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 ### ✔️保持简化 R-1【BUG 级，修复成本：低】`onLooperPrepared` 时 `Process.setThreadPriority` 可能在某些 ROM 上失效
 
-> **判定**：OPPO ROM 专属 UI First 功能，AOSP 公开 API 库无替代。lib 注释 `AnimationControlThread.kt:30-39` 已明示"退化为本线程再确认一次优先级 + 兜底"。**保持简化**。
+> **判定**：OPPO ROM 专属 UI First 功能，AOSP 公开 API 库无替代。lib 注释 `AnimationControlThread.kt:35-41, 68-69` 已明示"退化为本线程再确认一次优先级 + 兜底"。**保持简化**。
 
 **现象**：
 
@@ -169,9 +169,9 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **严重程度**：业务侧 launcher 跑就明显（动画卡顿），demo 跑不可见（demo 没装 OPPO `uifirst`）。
 
-**修复成本**：低——`AnimationControlThread.kt:53` 的 `runCatching` 块改为反射调用 `LauncherBooster`，但 `com.oplus.*` 类在 AOSP build 里不存在 → **实际修复成本：高（需要打包 `com.oplus.basecommon.util.LauncherBooster` 整个 vendor lib；除非 lib 注定只在 OPPO ROM 上跑）**。
+**修复成本**：低——`AnimationControlThread.kt:70` 的 `runCatching` 块改为反射调用 `LauncherBooster`，但 `com.oplus.*` 类在 AOSP build 里不存在 → **实际修复成本：高（需要打包 `com.oplus.basecommon.util.LauncherBooster` 整个 vendor lib；除非 lib 注定只在 OPPO ROM 上跑）**。
 
-**判定**：OPPO ROM 专属功能，lib 是 AOSP 公开 API 库，**接受风险**。已在 `AnimationControlThread.kt:30-39` 注释里明示"退化为本线程再确认一次优先级 + 兜底"。
+**判定**：OPPO ROM 专属功能，lib 是 AOSP 公开 API 库，**接受风险**。已在 `AnimationControlThread.kt:35-41, 68-69` 注释里明示"退化为本线程再确认一次优先级 + 兜底"。
 
 ### ✔️保持简化 R-2【BUG 级，修复成本：无】`init { start() }` 在 `by lazy` 内——主类加载触发新线程创建
 
@@ -194,7 +194,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **现象**：
 
-- lib 时序：`HandlerThread.run()` → `Looper.prepare()` → `onLooperPrepared()`（装 `HandlerTickScheduler`）→ `Looper.loop()` 启动 → 业务 post 的帧回调在队列里排到。
+- lib 时序：`HandlerThread.run()` → `Looper.prepare()` → `onLooperPrepared()`（装 `ChoreographerTickScheduler`）→ `Looper.loop()` 启动 → 业务 post 的帧回调在队列里排到。
 - 原厂时序：`HandlerThread.run()` → `Looper.prepare()` → `Looper.loop()` 启动 → `OplusLooperExecutor.execute(runnable)` 把 `ANIM_EXECUTOR$lambda$0` 入队 → loop 取出 init 跑（装 `SfVsyncFrameCallbackProvider`）→ 业务后续 post 才入队。
 
 **关键区别**：
@@ -239,9 +239,9 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 ### 4-A. 值得补的
 
-#### ⚠️未修复（runCatching 仍位于 `AnimationControlThread.kt:53`）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
+#### ⚠️未修复（runCatching 仍位于 `AnimationControlThread.kt:70`）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
 
-当前 `AnimationControlThread.kt:53`：
+当前 `AnimationControlThread.kt:70`：
 ```kotlin
 runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
 ```
@@ -257,7 +257,7 @@ runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
 `vs-oppo-01-async-thread.md` §B-5 已建议。把：
 ```kotlin
 override fun onLooperPrepared() {
-    AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(looper)))
+    AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())
     runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
 }
 ```
@@ -269,9 +269,8 @@ companion object {
 }
 
 override fun onLooperPrepared() {
-    val l = looper
-    AnimationHandler.installThreadScheduler(HandlerTickScheduler(Handler(l)))
-    onThreadReady(l)
+    AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())
+    onThreadReady(looper)
 }
 ```
 
@@ -313,7 +312,7 @@ override fun onLooperPrepared() {
 > **状态：✔️保持简化（监控项保留；若启用 UAF，eventId=2016 建议补入文档）**
 #### 4-C-1. `THREAD_NAME` / `PRIORITY` 字面量必须与原厂字面量同值
 
-理由：未来若启用 `LauncherBooster.reportKeyThreadToUAF`，`"launcher.anim"` + `2016` (`LAUNCHER_STATIC_LAUNCHER_ANIM`) 是注册表 key。lib 已经固化（`AnimationControlThread.kt:73, 78`），但 `LAUNCHER_STATIC_LAUNCHER_ANIM = 2016` 这条事件 ID 还没在 lib 任何地方记录。建议在文档里补一行："若以后调 UAF，eventId 用 2016。"
+理由：未来若启用 `LauncherBooster.reportKeyThreadToUAF`，`"launcher.anim"` + `2016` (`LAUNCHER_STATIC_LAUNCHER_ANIM`) 是注册表 key。lib 已经固化（`AnimationControlThread.kt:76, 83`），但 `LAUNCHER_STATIC_LAUNCHER_ANIM = 2016` 这条事件 ID 还没在 lib 任何地方记录。建议在文档里补一行："若以后调 UAF，eventId 用 2016。"
 
 > **状态：✔️保持简化（监控项；SYNCHRONIZED 模式已正确，start() 只跑一次）**
 #### 4-C-2. `by lazy(SYNCHRONIZED)` 单例的并发触发点
@@ -329,12 +328,12 @@ override fun onLooperPrepared() {
 | `THREAD_NAME = "launcher.anim"` 与原厂字面量一致 | ✅（`OplusExecutors.java:95`） |
 | `PRIORITY = -19` 与原厂字面量一致 | ✅（`OplusExecutors.java:95`） |
 | `HandlerThread(name, priority)` + `init { start() }` 等价于原厂 `createAndStartNewLooper` | ✅（`Executors.java:95-96`） |
-| `onLooperPrepared` 装帧源 ↔ 原厂 `ANIM_EXECUTOR$lambda$0` 装 `SfVsyncFrameCallbackProvider` | ✅ 语义等价；实现差异（`HandlerTickScheduler` 替代 `SfVsyncFrameCallbackProvider`）已在 `vs-oppo-04` §2.1 覆盖 |
+| `onLooperPrepared` 装帧源 ↔ 原厂 `ANIM_EXECUTOR$lambda$0` 装 `SfVsyncFrameCallbackProvider` | ✅ 语义等价；实现差异（dbde195 后为 `ChoreographerTickScheduler`——公开 Choreographer 真 VSYNC——替代 `SfVsyncFrameCallbackProvider`）已在 `vs-oppo-04` §2.1 / `vs-oppo-15` §③-⑤ 覆盖 |
 | `Process.setThreadPriority(myTid, -19)` 兜底 ↔ `LauncherBooster.setUxThreadValue` | ⚠ 简化（仅 OS 优先级，无 UI First 跨进程注册） |
 | 单例生命周期（lazy(SYNCHRONIZED) ↔ static final） | ✅ 等价 |
 | 时机（onLooperPrepared vs Looper 消息首条） | ✅ 对调用方不可观察 |
 
-**整体判定**：**保真度高**，与原厂逐字面对照无功能性差异；唯一一类有意简化集中在"OPPO 私有 UI First / UAF 绑核"——AOSP 公开层无替代，属设计取舍。lib 注释已明确记录取舍理由（`AnimationControlThread.kt:30-39`）。
+**整体判定**：**保真度高**，与原厂逐字面对照无功能性差异；唯一一类有意简化集中在"OPPO 私有 UI First / UAF 绑核"——AOSP 公开层无替代，属设计取舍。lib 注释已明确记录取舍理由（`AnimationControlThread.kt:35-41, 64-69`）。
 
 ## 复核记录（2026-09-09）
 
@@ -357,3 +356,36 @@ override fun onLooperPrepared() {
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
 
 批次 2 补记（2026-09-09）：§3 R-1..R-6 与 §4 4-A-1/2 维持 6428b10 标记（复核一致：runCatching 仍在 AnimationControlThread.onLooperPrepared）；本轮补标 §4 4-B-1..4 ✔️保持简化、4-B-5 ⚠️未修复（同 4-A-1）、4-C-1/2 ✔️监控项保留。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+**复核方式**：逐条对照当前代码（`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\thread\AnimationControlThread.kt`）
+及 OPPO 参考树（`D:\oppo_a6_launcher\sources\`），不信任已有标记。
+
+- **条目总数**：15
+- **状态变更**：0 条
+- **描述修正**：1 条（§KDoc :38 HandlerTickScheduler 引用过时）
+
+逐条验证明细：
+
+| 条目 | 验证结果 | 证据 |
+|---|---|---|
+| §3 R-1 | ✔️保持简化（不变） | 无 `setUxThreadValue` 调用；退化注释 `:35-41`（KDoc）+ `:68-69`（行内）仍在 |
+| §3 R-2 | ✔️保持简化（不变） | `init { start() }`（`:51-53`）+ `by lazy(SYNCHRONIZED)`（`:86-88`）结构未变 |
+| §3 R-3 | ✔️保持简化（不变） | `onLooperPrepared`（`:63-71`）仍在 `Looper.loop()` 前完成装帧源；竞争窗口分析成立 |
+| §3 R-4 | ⚠️未修复（不变） | 核实 `:70` 仍有 `runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }` |
+| §3 R-5 | ✔️保持简化（不变） | `THREAD_NAME = "launcher.anim"`（`:76`）、`PRIORITY = -19`（`:83`）字面值未变 |
+| §3 R-6 | ✔️保持简化（不变） | LooperExecutor 这一层缺失；lib 设计如此 |
+| §4 4-A-1 | ⚠️未修复（不变） | 同 R-4，`runCatching` 兜底仍在 `:70` |
+| §4 4-A-2 | ⚠️未修复（不变） | 无 `onThreadReady` 之类的线程首跑 hook |
+| §4 4-B-1 | ✔️保持简化（不变） | OPPO 私有 `setUxThreadValue`，AOSP 无替代 |
+| §4 4-B-2 | ✔️保持简化（不变） | OPPO 私有 `reportKeyThreadToUAF`，AOSP 无替代 |
+| §4 4-B-3 | ✔️保持简化（不变） | lib 调用方只用 Handler.post |
+| §4 4-B-4 | ✔️保持简化（不变） | lib 没引入 OplusExecutors 概念 |
+| §4 4-B-5 | ⚠️未修复（不变） | 同 4-A-1，runCatching 仍在 |
+| §4 4-C-1 | ✔️监控项保留（不变） | THREAD_NAME / PRIORITY 字面量已固化 |
+| §4 4-C-2 | ✔️监控项保留（不变） | `SYNCHRONIZED` 模式正确，`start()` 只跑一次 |
+
+非状态类更正：
+- KDoc `:38` 原文 `[HandlerTickScheduler]（postDelayed 兜底）` → `[ChoreographerTickScheduler]（…；HandlerTickScheduler / ScheduledTickScheduler 已在 215ecb5 删除）`
+- 路径、行号均与当前代码一致，无偏差

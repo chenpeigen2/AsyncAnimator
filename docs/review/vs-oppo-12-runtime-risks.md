@@ -18,29 +18,29 @@
 | `AnimationControlThread.kt:55` `THREAD_NAME = "launcher.anim"` | `OplusExecutors.java:95` 线程名 | 1:1 |
 | `AnimationControlThread.kt:60-69` `onLooperPrepared`：装 HandlerTickScheduler + `Process.setThreadPriority` 兜底 | `OplusExecutors.java:169-171`：`AnimationHandler.getInstance().setProvider(new SfVsyncFrameCallbackProvider())` + `LauncherBooster.getCpu().setUxThreadValue(Process.myTid())` | lib 退化为 postDelayed 帧源 + 兜底优先级（见 §2-B1/B2） |
 | `Executors.kt:ANIM_CONTROL_EXECUTOR` 绑 `AnimationControlThread.instance.looper` 的 Handler | `OplusExecutors.ANIM_EXECUTOR`（`OplusExecutors.java:95`） | 形状等价；原厂 init lambda 未复刻 |
-| `core/anim/AnimationHandler.kt:101-110` `TickSchedulerHolder` 懒构造 + `swapScheduler` | 框架 `android.animation.AnimationHandler`（@hide）+ `setProvider(...)`（`OplusExecutors.java:170`） | 单 API 接口（`replaceThreadScheduler`）覆盖替换，但隐藏原厂 `setProvider` 路径 |
-| `core/scheduler/ScheduledTickScheduler.kt:78-81` `tick` 末 `if (callbacks.isEmpty()) stop()` | vendored `androidx.core.animation.AnimationHandler.java:197-202` "无 callback 即停帧" | lib 修复对齐（见 §2-A2） |
-| `core/scheduler/ScheduledTickScheduler.kt:26` 守护线程名 `"AsyncAnimator-Tick"`（非 start 线程） | 框架 `AnimationHandler.getInstance()` 是 ThreadLocal，每个 start 线程各自的 AnimationHandler 在该线程 tick | lib 默认 scheduler **不满足 per-thread 帧语义**（见 §2-B3 / §3-C） |
-| `launcher/animthread/HandlerTickScheduler.kt:55-83` `Handler(looper).postDelayed` 自走帧循环 | `FrameCallbackProvider14` 退化路径 + 真机走 `FrameCallbackProvider16`/`SfVsyncFrameCallbackProvider` | lib 替代正确但精度差一档（见 §2-B1 / §3-D） |
-| `launcher/async/AsyncValueAnimator.kt:48-53` `marshal { ... }` 判线程 + execute | `AsyncValueAnimator.java:116-127, 130-141, 153-164` `looper.isCurrentThread() ? super.xxx() : executor.execute(...)` | 1:1 |
-| `async/AsyncAnimCallbacks.kt:33-37, 49-52` `addListener` 去重 / `removeListener` 置 null 槽 | `AsyncAnimCallbacks.java:99-105, 147-151` | 1:1 |
-| `async/AsyncAnimCallbacks.kt:62-66` `runOnMainThread` → `LooperExecutor.postAsync` (`setAsynchronous(true)`) | `AsyncAnimCallbacks.java:120, 160` → `Utilities.postAsyncCallback` → `Utilities.java:631-637` `setAsynchronous(true)` | 1:1（已修复 review 01 §②C-3） |
-| `async/AsyncAnimCallbacks.kt:69-80` `onAnimActualEnd` 只派给 `ActualEndAnimListener` | `AsyncAnimCallbacks.java:34-43, 111-122` | 1:1（已修复 review 01 §②C-2） |
-| `async/ActualEndAnimListener.kt:14-16` 双轨时序注释 | `ActualEndAnimListener.java:10` 空钩子 + `CustomRectFSpringAnim.java:423-441` `maybeEnd` | lib 补全文档注释 |
-| `async/AsyncSpringAnim.kt:22-35` `dispatch` → `runOnAnimThread { ... }`（条件式） | `OplusAsyncSpringAnimWrapper.java:69-78, 91-100` 同模式 | 1:1 |
-| `controller/AnimationController.kt:64-72` `addRecentsAnim` 转 NONE/OPEN/REVERSE_OPEN/WAITING→CLOSE， MULTI_OPEN/MULTI_WAITING/MULTI_REVERSE_OPEN→MULTI_CLOSE， else→UNKNOWN | `AnimationController.java:471-499` `WhenMappings.$EnumSwitchMapping$0` case 1/3/8/9→CLOSE， case 2/6/7→MULTI_CLOSE， default→UNKNOWN（log "Error animation state"） | **1:1 ✓**（已修复 review 03 §3-a，详见 §2-A3） |
-| `controller/AnimationController.kt:84-100` `appLaunchAnimStartOrEnd` 含 end 分支（清 list + checkAllAnimationFinished 或转 WAITING/MULTI_WAITING） | `AnimationController.java:512-555` 端：含 `mHandler.removeMessages/sendEmptyMessage(101)`、清 list、转 WAITING/MULTI_WAITING | lib 修了状态机分支但**漏 `MESSAGE_RELEASE_TOUCH(101)` + 600ms 闸门**（§2-C1） |
-| `controller/AnimationController.kt:172-198` `delayStartActivityIfNeed` 改为 `if/else if/else if` 互斥结构 + 最终清理段 | `AnimationController.java:597-669` 互斥三层 + 清理段 | 形状等价，**漏 `!isTablet()`、`isSpecialAppScene(intent)`、`isAppSwipeToRecentContinuationRunning()`**（§2-C2、§3-F） |
-| `controller/TaskStateChangeTimeOutListener.kt:26-32, 41-44` 构造 postDelayed 到 **MainLooper Handler** | `TaskStateHelper.java:124-137` postDelayed 到 **`URGENT_TRANSACTION_EXECUTOR` Handler** | **线程选错**（§2-C3、§3-G） |
-| `controller/TaskStateChangeTimeOutListener.kt:36-38` `dispose()` 仅 `handler.removeCallbacks` | `TaskStateHelper.java:140-143` `dispose()` = `TaskStateHelper.removeGlobalTaskStateChangeListener(this)` + removeCallbacks + `this.handler = null` | **漏全局事件总线反注册**（§2-C3、§3-G） |
+| `core/AnimationHandler.kt:101-110` `TickSchedulerHolder` 懒构造 + `swapScheduler` | 框架 `android.animation.AnimationHandler`（@hide）+ `setProvider(...)`（`OplusExecutors.java:170`） | 单 API 接口（`replaceThreadScheduler`）覆盖替换，但隐藏原厂 `setProvider` 路径 |
+| `core/ChoreographerTickScheduler.kt:41-45` `frameCallback` 末 `if (callbacks.isNotEmpty()) scheduleNextFrame() else running = false`（215ecb5 后 ScheduledTickScheduler 已删） | vendored `androidx.core.animation.AnimationHandler.java:197-202` "无 callback 即停帧" | lib 修复对齐（见 §2-A2） |
+| `core/ChoreographerTickScheduler.kt` 公开 Choreographer 真 VSYNC（215ecb5 后 ScheduledTickScheduler 守护线程已删；默认帧源为 ChoreographerTickScheduler） | 框架 `AnimationHandler.getInstance()` 是 ThreadLocal，每个 start 线程各自的 AnimationHandler 在该线程 tick | lib 默认 scheduler **不满足 per-thread 帧语义**（见 §2-B3 / §3-C） |
+| `core/ChoreographerTickScheduler.kt:55-83` `Handler(looper).postDelayed` 自走帧循环 | `FrameCallbackProvider14` 退化路径 + 真机走 `FrameCallbackProvider16`/`SfVsyncFrameCallbackProvider` | lib 替代正确但精度差一档（见 §2-B1 / §3-D） |
+| `anim/AsyncValueAnimator.kt:48-53` `marshal { ... }` 判线程 + execute | `AsyncValueAnimator.java:116-127, 130-141, 153-164` `looper.isCurrentThread() ? super.xxx() : executor.execute(...)` | 1:1 |
+| `anim/AsyncAnimCallbacks.kt:33-37, 49-52` `addListener` 去重 / `removeListener` 置 null 槽 | `AsyncAnimCallbacks.java:99-105, 147-151` | 1:1 |
+| `anim/AsyncAnimCallbacks.kt:62-66` `runOnMainThread` → `LooperExecutor.postAsync` (`setAsynchronous(true)`) | `AsyncAnimCallbacks.java:120, 160` → `Utilities.postAsyncCallback` → `Utilities.java:631-637` `setAsynchronous(true)` | 1:1（已修复 review 01 §②C-3） |
+| `anim/AsyncAnimCallbacks.kt:69-80` `onAnimActualEnd` 只派给 `ActualEndAnimListener` | `AsyncAnimCallbacks.java:34-43, 111-122` | 1:1（已修复 review 01 §②C-2） |
+| `anim/ActualEndAnimListener.kt:14-16` 双轨时序注释 | `ActualEndAnimListener.java:10` 空钩子 + `CustomRectFSpringAnim.java:423-441` `maybeEnd` | lib 补全文档注释 |
+| `anim/AsyncSpringAnim.kt:22-35` `dispatch` → `runOnAnimThread { ... }`（条件式） | `OplusAsyncSpringAnimWrapper.java:69-78, 91-100` 同模式 | 1:1 |
+| `control/AnimationController.kt:64-72` `addRecentsAnim` 转 NONE/OPEN/REVERSE_OPEN/WAITING→CLOSE， MULTI_OPEN/MULTI_WAITING/MULTI_REVERSE_OPEN→MULTI_CLOSE， else→UNKNOWN | `AnimationController.java:471-499` `WhenMappings.$EnumSwitchMapping$0` case 1/3/8/9→CLOSE， case 2/6/7→MULTI_CLOSE， default→UNKNOWN（log "Error animation state"） | **1:1 ✓**（已修复 review 03 §3-a，详见 §2-A3） |
+| `control/AnimationController.kt:84-100` `appLaunchAnimStartOrEnd` 含 end 分支（清 list + checkAllAnimationFinished 或转 WAITING/MULTI_WAITING） | `AnimationController.java:512-555` 端：含 `mHandler.removeMessages/sendEmptyMessage(101)`、清 list、转 WAITING/MULTI_WAITING | lib 修了状态机分支但**漏 `MESSAGE_RELEASE_TOUCH(101)` + 600ms 闸门**（§2-C1） |
+| `control/AnimationController.kt:172-198` `delayStartActivityIfNeed` 改为 `if/else if/else if` 互斥结构 + 最终清理段 | `AnimationController.java:597-669` 互斥三层 + 清理段 | 形状等价，**漏 `!isTablet()`、`isSpecialAppScene(intent)`、`isAppSwipeToRecentContinuationRunning()`**（§2-C2、§3-F） |
+| `control/TaskStateChangeTimeOutListener.kt:26-32, 41-44` 构造 postDelayed 到 **MainLooper Handler** | `TaskStateHelper.java:124-137` postDelayed 到 **`URGENT_TRANSACTION_EXECUTOR` Handler** | **线程选错**（§2-C3、§3-G） |
+| `control/TaskStateChangeTimeOutListener.kt:36-38` `dispose()` 仅 `handler.removeCallbacks` | `TaskStateHelper.java:140-143` `dispose()` = `TaskStateHelper.removeGlobalTaskStateChangeListener(this)` + removeCallbacks + `this.handler = null` | **漏全局事件总线反注册**（§2-C3、§3-G） |
 | `seq/AnimSeqTimeStamp.kt:23-25` `clock: () -> Long = { SystemClock.uptimeMillis() }`（可注入） | `AnimSeqTimeStamp.java:25,37,49,61,112,122,132,142` 全部 `SystemClock.uptimeMillis()` | 1:1（已修复 review 03 §3-c） |
-| `controller/AnimationController.kt:139, 153, 178, 186, 193` 全用 `SystemClock.uptimeMillis()` | `AnimationController.java:298, 334, 609, 617-618` 全用 `SystemClock.uptimeMillis()` | 1:1（已修复） |
+| `control/AnimationController.kt:139, 153, 178, 186, 193` 全用 `SystemClock.uptimeMillis()` | `AnimationController.java:298, 334, 609, 617-618` 全用 `SystemClock.uptimeMillis()` | 1:1（已修复） |
 | `seq/AnimationSeqHelper.kt:43-49` `addSeqId` 单调 `++seqId` | `AnimationSeqHelper.java` `updateSeqId` 单调 `++seqId` | 1:1 |
 | `seq/AnimationSeqHelper.kt:74-82` `updateNextFinishSeqIdIfNeed` 无条件覆盖 | `AnimationSeqHelper.java:123-127` 仅当 pair 为空或 controller 变更才覆盖 | review 03 §3-e 仍未修复（保留 review 标注） |
-| `continuation/RecordInputInterpolator.kt:13` `inputed = 0f` | `RecordInputInterpolator.java:10` 字段默认 `0f`（Java 默认值） | **1:1 ✓**（已修复 review 04 §2.3-1） |
-| `continuation/OplusValueAnimator.kt:46-48` `setInterpolator` 双写 `param.interpolator` | `OplusValueAnimator.java:292-298` 双写 `param.interpolator` | **1:1 ✓**（已修复 review 04 §2.3-5） |
-| `continuation/OplusValueAnimator.kt:140` `anim.param.copy()` 入新 anim | `OplusValueAnimator.java:105` `anim.param.INSTANCE.copy(...)` | **1:1 ✓**（已修复 review 04 §2.3-2） |
-| `continuation/OplusValueAnimator.kt:148` `timeController.setInterpolator(LinearInterpolator())` + `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` | `OplusValueAnimator.java:104, 109-117` `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setInterpolator(LinearInterpolator())` | **1:1 ✓**（已修复 review 04 §2.3-3/4） |
+| `anim/RecordInputInterpolator.kt:13` `inputed = 0f` | `RecordInputInterpolator.java:10` 字段默认 `0f`（Java 默认值） | **1:1 ✓**（已修复 review 04 §2.3-1） |
+| `anim/OplusValueAnimator.kt:46-48` `setInterpolator` 双写 `param.interpolator` | `OplusValueAnimator.java:292-298` 双写 `param.interpolator` | **1:1 ✓**（已修复 review 04 §2.3-5） |
+| `anim/OplusValueAnimator.kt:140` `anim.param.copy()` 入新 anim | `OplusValueAnimator.java:105` `anim.param.INSTANCE.copy(...)` | **1:1 ✓**（已修复 review 04 §2.3-2） |
+| `anim/OplusValueAnimator.kt:148` `timeController.setInterpolator(LinearInterpolator())` + `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` | `OplusValueAnimator.java:104, 109-117` `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setInterpolator(LinearInterpolator())` | **1:1 ✓**（已修复 review 04 §2.3-3/4） |
 
 ---
 
@@ -72,7 +72,7 @@
 |---|---|---|---|
 | 1 | `SfVsyncFrameCallbackProvider` → `HandlerTickScheduler` | `OplusExecutors.java:169-171` + `Choreographer.getSfInstance()` 等价路径 | 框架 @hide API；lib 用 `Handler(looper).postDelayed` 替代，**真机 trace 已证明 SF-vsync 在该 MTK 设备上不生效**（`animation-trace-validation.md` §5）——降级为可选，注释明示 |
 | 2 | `LauncherBooster.setUxThreadValue`（UIFirst 私有 API） | `OplusExecutors.java:171` | 退化为 `Process.setThreadPriority(myTid(), -19)` 兜底（`AnimationControlThread.kt:64-69`） |
-| 3 | `ScheduledTickScheduler` 守护线程（非 start 线程 tick） | 框架 `AnimationHandler` 是 ThreadLocal，每线程一份 | lib 用独立 JVM `ScheduledExecutorService`（`ScheduledTickScheduler.kt:25-32`），**与 per-thread 帧语义不等价**——但 `HandlerTickScheduler` 路径满足；demo 通过显式 install 保证动画线程 tick 在自己线程 |
+| 3 | `ChoreographerTickScheduler` 公开 Choreographer（per-thread 帧语义由 Choreographer.getInstance() ThreadLocal 保证） | 框架 `AnimationHandler` 是 ThreadLocal，每线程一份 | lib 用公开 Choreographer（`ChoreographerTickScheduler.kt`），`Choreographer.getInstance()` 是 ThreadLocal——**天然满足 per-thread 帧语义**（215ecb5 后已修复） |
 | 4 | `OplusLooperExecutor` 四扩展（executeAtFront/WithUx/BlockWait/Delay） | `OplusLooperExecutor.java:16-104` | `executeBlockWait` 本身是 v4 §9.3 点名 ANR 风险；其余依赖 LauncherBooster |
 | 5 | `sf-vsync vs app-vsync` 帧相位 | `SfVsyncFrameCallbackProvider` 在 launcher.anim 装 SF-vsync（`OplusExecutors.java:170`） | lib **完全不用 SF-vsync**——`Handler.postDelayed` 是 wall-clock 自走，无 vsync 对齐；真机 trace 证实相位差异在该 MTK 设备**实测未体现**（trace 上两线程同样对齐 VSYNC-app，`animation-trace-validation.md` §5）——降级为可选 |
 | 6 | `removeScaleAnimatorForGridRecentViews` 等 OPPO 业务定制 | `AnimatorPlaybackController.java:322-340` | review 02 §2.2 已说明，保持裁剪 |
@@ -90,7 +90,7 @@
 | 6 | **`TaskStateChangeTimeOutListener.dispose()` 漏 `removeGlobalTaskStateChangeListener(this)`** | `TaskStateHelper.java:140-141`：`dispose()` 同时 `TaskStateHelper.removeGlobalTaskStateChangeListener(this)` + `removeCallbacks` + `handler = null` | 原厂 `TaskStateHelper` 是进程级**全局事件总线**（监听三种 type 事件），每个 listener 在构造时注册到全局表。原厂 dispose 必须摘全局表否则内存泄漏 + GC 时仍会触发回调。lib **完全没有全局事件总线模型**，`dispose()` 只做本地摘消息——意味着 `delayStartActivityIfNeed` 路径上"事件触发"那条路（`onLandScapeSceneExit`/`onTransitionFinish`/`onTaskListenerReleased`）在 lib 里**永远是死路**，只有超时兜底会执行。**这是 bug 级差异**：原厂该机制存在的核心价值是"事件抛来时立刻放行 startActivity"——lib 直接废掉 |
 | 7 | **`TaskStateChangeTimeOutListener.onTimeOut` 与原厂三个 callback 语义错配** | `TaskStateHelper.java:160-209` 有三个独立 callback：`onLandScapeSceneExit(boolean)` / `onTransitionFinish(boolean)` / `onTaskListenerReleased()`，分别按 type 触发 | lib 把三个合并成 `onTimeOut(type, duration)`，且**调用方无人调用它**（`AnimationController.delayStartActivityIfNeed` 已注释自承"清理段会 dispose"）。原厂"事件型触发"全无 lib 对应物 |
 | 8 | **`AnimationFeatureHelper` int flag 默认值 1/0 而非 -1** | `AnimationFeatureHelper.java:52-60` 所有 int flag 初始化为 -1 表示"RUS 未下发态" | lib `:14-22` 全部初始化为 1/0 生效值。业务侧（如 `isAdaptiveAnimation`）对 -1 应有特殊路径（见原厂 `setInterruptThreshold` 的 -1 → 强制 1.0f 钳制，`AnimationFeatureHelper.java:126-128`），lib 跳过该路径。**下游 flag 语义走错** |
-| 9 | **`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair** | `AnimationSeqHelper.java:123-127` 仅当 pair 为空或 controller 变更才更新；同 controller 重复调用 seqId 不变 | lib `AnimationSeqHelper.kt:79-82` 每次 `++seqId` 并覆盖。原 review 03 §3-e 已标注，仍存在。**seqId 单调性语义与原厂不一致**，消费方若依赖"同 controller seqId 稳定"会误判为新一轮 |
+| 9 | **`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair** | `AnimationSeqHelper.java:123-127` 仅当 pair 为空或 controller 变更才更新；同 controller 重复调用 seqId 不变 | ~~lib `AnimationSeqHelper.kt:79-82` 每次 `++seqId` 并覆盖~~ **已修复（60bd048）**：`AnimationSeqHelper.kt:74-79` 现为条件更新——`if (p == null || p.first != recentsController)` 才 `updateSeqId()`——与原厂 `AnimationSeqHelper.java:123-127` 1:1 对齐。§③-D10 正确标记 ✅已修复 |
 | 10 | **`addRecentsAnim` 状态转移无原厂 "Error animation state" 日志** | `AnimationController.java:465-467` `LogUtils.i("AnimationController", "Error animation state: " + this.mAnimState + ", add recents anim.")` | lib `AnimationController.kt:72` else → UNKNOWN 无日志。**静默的状态机异常路径，难以调试** |
 
 ---
@@ -216,3 +216,43 @@
 - §③-1（TaskStateChangeTimeOutListener 事件总线）→ ⚠️未修复；§③-2（超时绑主线程）→ ⚠️未修复；§③-3（时间窗 vs 运行态）→ ⚠️未修复（cdd125e 已修 else-if 互斥）；§③-4（isTablet）→ ⚠️未修复；§③-5（isSpecialAppScene）→ ⚠️未修复；§③-6（101/600ms 闸门）→ ⚠️未修复；§③-7（AnimationFeatureHelper 默认值）→ ⚠️未修复；§③-8（per-thread 帧语义）→ ✅已修复（215ecb5）；§③-9（sf-vsync）→ ✅已修复（dbde195/215ecb5）；§③-10（seqId 条件更新）→ ✅已修复（60bd048）；§③-11（UNKNOWN 日志）→ ✔️保持简化
 - §④ 值得补进 1-4 → ⚠️未修复；5 → ✅已修复（60bd048）；6 → ✔️保持简化；7 → ❌已过期（215ecb5）
 - §④ 建议保持简化 1-7 → ✔️保持简化
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+- **复核方法**：逐条读取文档声称 → Python 读取 lib 源码 → 对照 OPPO 原厂证据 → 修正标记
+- **复核条目总数**：39（§① 对应表 ~25 行 + §②-A 15 条 + §②-B 7 条 + §②-C 10 条 + §③ 11 条 + §④ 7 条）
+- **修正数**：4 条
+
+### 修正明细
+
+| # | 条目 | 旧内容 | 新内容 | 修正原因 |
+|---|---|---|---|---|
+| 1 | §① + 全文路径 | `async/`、`controller/`、`continuation/`、`core/anim/`、`core/scheduler/`、`launcher/animthread/`、`launcher/async/` | `anim/`、`control/`、`anim/`、`core/`、`core/`、`thread/`（无 `launcher/` 前缀） | e62dbff 包重组后路径已变 |
+| 2 | §① ScheduledTickScheduler 两行 + §②-B-3 | `ScheduledTickScheduler.kt:78-81` + `ScheduledTickScheduler.kt:26` + "守护线程" | `ChoreographerTickScheduler.kt:41-45` + "公开 Choreographer 真 VSYNC" + "per-thread 帧语义由 ThreadLocal Choreographer 保证" | 215ecb5 合并删除旧 scheduler |
+| 3 | §②-C-9 描述 | "每次 `++seqId` 并覆盖…仍存在…seqId 单调性语义与原厂不一致" | "已修复（60bd048）：条件更新 `if (p == null \|\| p.first != recentsController)`——与原厂 1:1 对齐" | 60bd048 已落地修复，但 §②-C-9 描述未同步更新 |
+| 4 | §②-B-3 描述 | "lib 默认 ScheduledTickScheduler 跑在守护线程 AsyncAnimator-Tick，与 per-thread 帧语义不等价" | "lib 用 ChoreographerTickScheduler（公开 Choreographer），per-thread 帧语义由 ThreadLocal Choreographer 天然保证（215ecb5 已修复）" | 默认帧源已从 ScheduledTickScheduler 升级为 ChoreographerTickScheduler |
+
+### 逐条维持原判（已亲自对代码验证）
+
+- §②-A 全部 15 条 ✅：线程优先级 -19、空订阅自停、addRecentsAnim 转移表、uptimeMillis、appLaunchAnimStartOrEnd end 分支、inputed=0f、param copy、setTarget/setProperty、LinearInterpolator、setInterpolator 双写、async 派发、双轨结束、快照派发、else-if 互斥、兜底定时器——全部已修复并代码验证
+- §②-B 全部 7 条 ✔️：ChoreographerTickScheduler/UX/UAF/executeBlockWait/scale/removeScale/14 executor 均有意简化
+- §②-C-1 ⚠️：`control/AnimationController.kt:88-100` appLaunchAnimStartOrEnd 无 MESSAGE_RELEASE_TOUCH 101
+- §②-C-2 ⚠️：`control/AnimationController.kt:175` 缺 `!isTablet()` 限定
+- §②-C-3 ⚠️：`control/AnimationController.kt:185` 缺 `isSpecialAppScene(intent)`
+- §②-C-4 ⚠️：`control/AnimationController.kt:193` 时间窗 ≠ 运行态
+- §②-C-5 ⚠️：`control/TaskStateChangeTimeOutListener.kt:24` MainLooper ≠ URGENT_TRANSACTION_EXECUTOR
+- §②-C-6 ⚠️：`control/TaskStateChangeTimeOutListener.kt:41-43` dispose 不摘全局事件总线
+- §②-C-7 ⚠️：`control/TaskStateChangeTimeOutListener.kt:34-39` 单一 onTimeOut ≠ 三个独立 callback
+- §②-C-8 ⚠️：`manager/AnimationFeatureHelper.kt:14-22` 默认值 1/0 ≠ -1
+- §②-C-9 ✅→修正：`seq/AnimationSeqHelper.kt:74-79` 已改为条件更新（60bd048）
+- §②-C-10 ✔️：`control/AnimationController.kt:72` else→UNKNOWN 无日志（纯可观测性差异）
+- §③-A1/A2/A3 ⚠️：事件总线 / 主线程 handler / 时间窗运行态——未修复
+- §③-B4/B5/B6/B7 ⚠️：isTablet/isSpecialAppScene/600ms 闸门/默认 -1——未修复
+- §③-C8 ✅：per-thread 帧语义已修复（215ecb5）
+- §③-C9 ✅：sf-vsync 已修复（dbde195/215ecb5）
+- §③-D10 ✅：seqId 条件更新已修复（60bd048）
+- §③-D11 ✔️：UNKNOWN 日志保持简化
+- §④-1/2/3/4 ⚠️：事件总线/三条件/默认-1/101 闸门——未修复
+- §④-5 ✅：updateNextFinishSeqIdIfNeed（60bd048）
+- §④-6 ✔️：Error animation state 日志保持简化
+- §④-7 ❌：ScheduledTickScheduler 注释已过期（215ecb5 类已删）

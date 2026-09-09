@@ -43,7 +43,7 @@
 | `Interpolators`（internal object） | `com.android.launcher3.anim.Interpolators` | 全 launcher 转场 |
 | `PropertySetter`（internal） | `com.android.launcher3.anim.PropertySetter` | PendingAnimation |
 
-USAGE.md 漏列 1 个：`AsyncSpringAnim`（Demo11 在用，对应原厂 `OplusAsyncSpringAnimWrapper`）——文档与代码不一致，应补。
+USAGE.md 原漏列 `AsyncSpringAnim` 已在 42882ff 补齐（现见 `docs/USAGE.md:97-106` §anim「AsyncSpringAnim — View 属性弹簧跑独立线程」），Demo11 在用，文档与代码一致。
 
 ---
 
@@ -55,7 +55,7 @@ USAGE.md 漏列 1 个：`AsyncSpringAnim`（Demo11 在用，对应原厂 `OplusA
 
 | lib 实际有 | 原厂对应 | 状态 |
 |---|---|---|
-| `AsyncSpringAnim` | `OplusAsyncSpringAnimWrapper` | USAGE.md 漏写，Demo11 已用 |
+| `AsyncSpringAnim` | `OplusAsyncSpringAnimWrapper` | USAGE.md 已补（42882ff，`docs/USAGE.md:97-106`），Demo11 已用 |
 | `OplusValueAnimator`（internal） | `com.oplus.quickstep.utils.OplusValueAnimator` | 内部 API 但跨层引用 |
 | `RecordInputInterpolator`（internal） | `RecordInputInterpolator` | 同上 |
 
@@ -87,17 +87,17 @@ USAGE.md 漏列 1 个：`AsyncSpringAnim`（Demo11 在用，对应原厂 `OplusA
 3. **`OplusAnimManager.Impl` 字段初始化时序**（与区域 07 重叠）——原厂 `static final INSTANCE + static{}` 类加载即触发 6 helper 链式创建；lib `var ... = null` 首次访问字段才触发 `init`，并发切换 feature flag 时 race。
 > **✔️已澄清（6bbe9a1：lib 已真用 runOnMainThread；原厂为保留骨架）**
 4. **`AsyncAnimWrapper` 的 `runOnMainThread` 在原厂两个 wrapper 也不调用**（与区域 01 重叠）——已在最近修复中让 `AsyncSpringAnim.addEndListener` 真正使用。
-> **⚠️未修复（3 vs 7 值，demo 有意简化）**
+> **✔️保持简化（215ecb5 定型 3 值：`anim/CustomRectFSpringAnim.kt:13-17` 现为 SWIPE_TO_HOME / RECENTS_TRANSITION / APP_LAUNCH；原厂 7 值见 `CustomRectFSpringAnim.java:115-123`。有意裁剪，跨设备对接才需 7 值——见 §4.2-3）**
 5. **AnimType 枚举不一致导致跨设备兼容性预期偏差**——上游 launcher 业务代码若按 `OPEN_FROM_HOME` 编号对接 lib，会因 enum 顺序不同行为差异。
 
 ---
 
-> ⚠️ ④ 建议表各行待逐条打标（风险项状态见 ③ 打标）。
+> ④ 建议表逐条已按 §3 状态与 v2 复核标注（见下各条前缀与文末「复核记录 v2」）。
 ## 4. 回移建议
 
 ### 4.1 值得补的
 
-1. **USAGE.md 补 `AsyncSpringAnim` 节**（5 行，文档与代码一致性）。
+1. ~~USAGE.md 补 `AsyncSpringAnim` 节~~ → ✅已完成（42882ff；`docs/USAGE.md:97-106`）。
 2. **`AnimationController` 改 `AnimationState.OPEN_FROM_HOME` 替代 `OPEN`**（如果真要导出枚举值与原厂兼容），或 doc 中声明"lib 简化枚举，跨设备用原厂需对齐 OPPO 7 值"。
 3. **`OnAnimStateChangeListener` 改 `fun interface` 恢复引用相等性**（10 行，区域 10 已列）。
 4. **Demo9 真实演示多 app merge 路径**——至少补 `MultiOpenPreStartHelper` 骨架（80 行，区域 11）。
@@ -117,13 +117,13 @@ USAGE.md 漏列 1 个：`AsyncSpringAnim`（Demo11 在用，对应原厂 `OplusA
 | 论断 | 证据 |
 |---|---|
 | USAGE.md 暴露面 100% 命中原厂 | `docs/USAGE.md` vs `oppo_launcher/sources/**/AsyncValueAnimator.java` 等的 import 关系 |
-| AsyncSpringAnim 缺文档 | `docs/USAGE.md` grep "AsyncSpringAnim" → 0 hit |
-| AnimType 枚举偏差 | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:115-123`（7 值） vs `lib/.../CustomRectFSpringAnim.kt:13-18`（3 值） |
+| AsyncSpringAnim 文档已补 | `docs/USAGE.md:97-106`（42882ff）——grep "AsyncSpringAnim" 有命中 |
+| AnimType 枚举偏差 | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:115-123`（7 值） vs `lib/.../anim/CustomRectFSpringAnim.kt:13-17`（3 值） |
 | TaskStateHelper 7 回调 | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209` + Listener 接口体 |
 | OplusAnimManager 6 helper | `com/oplus/quickstep/utils/OplusAnimManager.java:104-118` |
 | MultiAnimatorSet 调用方 | `oppo_launcher/sources/**` 20+ 文件 `new MultiAnimatorSet(...)`（RecentsTransition / Launcher / 主页拖出等） |
-| Demo11 用 androidx 弹簧 | `lib/.../demo/Demo11ViewSpringAnimThreadActivity.kt:23-24` |
-| `OnAnimStateChangeListener` typealias 风险 | `lib/.../launcher/controller/DefaultAnimationController.kt:25` + `Demo6StateMachineActivity` 调用点 |
+| Demo11 用 androidx 弹簧 | `demo/.../Demo11ViewSpringAnimThreadActivity.kt:153,158`（构造 AsyncSpringAnim(s, supportAnimThread=true) 并 start；import :16） |
+| `OnAnimStateChangeListener` 引用相等性（已修复） | `lib/.../control/OnAnimStateChangeListener.kt:11`（fun interface，注释 :8-9 自述）+ `control/DefaultAnimationController.kt:15,21-23`（remove 走实例相等）+ `Demo6StateMachineActivity.kt:55`（lambda add） |
 
 ---
 
@@ -134,7 +134,7 @@ USAGE.md 暴露面 100% 在原厂有对应，调用面覆盖率约 78%，缺口�
 2. `OplusAnimManager` 4 个 merge helper 缺失（multi-app merge 路径整块被砍）
 3. `TaskStateHelper` 主体类只剩 listener 实体，事件源 7 回调全无
 4. AnimType 枚举自创 3 值与原厂 7 值不一致
-5. `AsyncSpringAnim` 漏列文档
+5. ~~`AsyncSpringAnim` 漏列文档~~ → 已补（42882ff，`docs/USAGE.md:97-106`）
 
 D4 demo 把原厂真实存在但 lib 没有对应的 `OplusSpringObjectAnimator` 当主题——属于"OPPO 真用但 lib 缺"的未闭合缺口。
 
@@ -150,3 +150,17 @@ D4 demo 把原厂真实存在但 lib 没有对应的 `OplusSpringObjectAnimator`
 - **215ecb5** — AnimType 3 值（Demo 11 路径不再依赖 7 值）
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本批不信任既有标记，逐条对照当前 lib 代码（包重组后 `control/`、`manager/`、`anim/` 等）与 `docs/USAGE.md`、demo/ 亲自复核。仅改本文档。
+
+- **复核条目总数**：11（§3 风险 5 + §1 漏列注 + §2.1 补列 3 行 + §4.1-1 + §5-5）
+- **结论不变**：6 —— §3-1（✅已修复：`control/OnAnimStateChangeListener.kt:11` 现为 fun interface）、§3-2（⚠️未修复：`control/TaskStateChangeTimeOutListener.kt:34` onTimeOut 无任何事件源调用，无 BaseTaskStateChangeListener/TaskStateHelper）、§3-3（✔️已复核：`manager/OplusAnimManager.kt:25-30` init + `:53-64` @set:Synchronized，字段 `:20-23` @Volatile）、§3-4（✔️已澄清：`anim/AsyncSpringAnim.kt:37-42` addEndListener 真用 runOnMainThread，`thread/AsyncAnimWrapper.kt:25-27`）、§2.1 行2/行3（OplusValueAnimator / RecordInputInterpolator internal，USAGE.md 不列 internal）
+- **修正**：5
+  1. §1 漏列注：AsyncSpringAnim「漏列应补」→ 已补（42882ff，`docs/USAGE.md:97-106`）
+  2. §2.1 表行1：USAGE.md「漏写」→「已补（42882ff）+ Demo11 在用」
+  3. §3-5 风险 5：⚠️未修复（3 vs 7 值）→ ✔️保持简化（215ecb5 定型 3 值：`anim/CustomRectFSpringAnim.kt:13-17`；原厂 7 值 `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:115-123`——有意裁剪，跨设备对接才需 7 值，见 §4.2-3）
+  4. §4.1-1：建议「补 USAGE.md AsyncSpringAnim 节」→ ✅已完成（42882ff）
+  5. §5-5：AsyncSpringAnim「漏列文档」→ 已补（42882ff）
+- **描述 / 证据刷新**：证据表 4 行——AsyncSpringAnim 缺文档（grep 0 hit）→ 已补；AnimType 行 lib 行号 13-18→13-17；Demo11 证据行号 23-24→153,158（`Demo11ViewSpringAnimThreadActivity.kt` 构造/start 处，import :16）；OnAnimStateChangeListener 行由「typealias 风险」改为「fun interface 已修复」证据（`control/DefaultAnimationController.kt:15,21-23` + `control/OnAnimStateChangeListener.kt:11` + `Demo6StateMachineActivity.kt:55`）

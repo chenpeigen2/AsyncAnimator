@@ -6,7 +6,7 @@
 >
 > **取证**：
 > - 原厂：`D:/oppo_a6_launcher/sources/com/android/launcher3/LauncherAnimationRunner.java`（DLP 加密，dump.py → PLAINTEXT，32192 chars / 108 行 JADX）。
-> - lib：`D:/AsyncAnimator/lib/src/main/java/com/android/launcher3/LauncherAnimationRunner.kt`（20 行）+ `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/RemoteAnimationFactory.kt`（17 行）+ `AnimationController.kt`（225 行）+ `DefaultAnimationController.kt`（89 行）。
+> - lib：`D:/AsyncAnimator/lib/src/main/java/com/android/launcher3/LauncherAnimationRunner.kt`（20 行）+ `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/RemoteAnimationFactory.kt`（17 行；e62dbff 包重组后迁至 `control` 包）+ `AnimationController.kt`（258 行）+ `DefaultAnimationController.kt`（85 行）。
 > - 调用方：`demo/.../Demo6StateMachineActivity.kt:172`（唯一 call site，`appLaunchAnimStartOrEnd(false, null, arrayOf())`）。
 
 ---
@@ -25,7 +25,7 @@
 | **L6** | — | `private WeakReference<ActivityInitListener> activityInitListenerRef` + `setActivityInitListener(...)` | 原厂 `LauncherAnimationRunner.java:68` + `:572`；**lib 无** |
 | **L7** | — | `private AnimationResult mAnimationResult` + `private final Reference<RemoteAnimationFactory> mFactory` + `private final Handler mHandler` + `private IRemoteTransitionInputCallback mInputCallback` + `private boolean mIsFromRecents` + `private Scenes mScenes` + `private final boolean mStartAtFrontOfQueue` | 原厂 `LauncherAnimationRunner.java:69-76`；**lib 全砍** |
 | **L8** | `interface RemoteAnimationFactory { fun createAnimation(): AnimatorSet ; fun onAnimationFinished() }`（2 方法 demo 接口） | `public interface RemoteAnimationFactory`（`@FunctionalInterface`，1 abstract + 9 default） | lib `RemoteAnimationFactory.kt:10-17` vs 原厂 `LauncherAnimationRunner.java:242-279` |
-| **L9** | — | `default void appLaunchAnimStartOrEnd(boolean z8, RemoteAnimationTarget[] remoteAnimationTargetArr)`（空 body） | 原厂 `LauncherAnimationRunner.java:243-245`；**lib 不在 RemoteAnimationFactory**，但同名方法 `DefaultAnimationController.appLaunchAnimStartOrEnd(isEnd, factory, targets)` (`AnimationController.kt:100-127`) 吸收了"事件总线"语义 |
+| **L9** | — | `default void appLaunchAnimStartOrEnd(boolean z8, RemoteAnimationTarget[] remoteAnimationTargetArr)`（空 body） | 原厂 `LauncherAnimationRunner.java:243-245`；**lib 不在 RemoteAnimationFactory**，但同名方法 `DefaultAnimationController.appLaunchAnimStartOrEnd(isEnd, factory, targets)` (`AnimationController.kt:100-124`) 吸收了"事件总线"语义 |
 | **L10** | — | `default CustomRectFSpringAnim getAnimation()` → `return null` | 原厂 `LauncherAnimationRunner.java:246-249`；**lib 无** |
 | **L11** | — | `default int getIconSurfaceRecordId()` → `return -1` | 原厂 `LauncherAnimationRunner.java:250-253`；**lib 无** |
 | **L12** | — | `default boolean handleAnimationMerged(TransitionInfo, SurfaceControl.Transaction, BreakParam, IRecentsAnimationController, boolean, boolean)` → `return false` | 原厂 `LauncherAnimationRunner.java:254-257`；**lib 无**（外层 `handleAnimationMerged` 也只转发到 factory，`LauncherAnimationRunner.java:494-501`） |
@@ -52,7 +52,7 @@
 
 | # | 项 | 证据 | 评估 |
 |---|---|---|---|
-| F1 | `RemoteAnimationTarget` 作为 `appLaunchAnimStartOrEnd` 形参类型 | lib `LauncherAnimationRunner.kt:13-20` + `AnimationController.kt:100`（`Array<LauncherAnimationRunner.RemoteAnimationTarget>?`） | **精确类型壳**——满足"`DefaultAnimationController.appLaunchAnimStartOrEnd` 签名形状与原厂一致"的设计目标；引用 demo `Demo6StateMachineActivity.kt:172` 实际调用 `arrayOf()`（空数组），类型壳**真正被消费** |
+| F1 | `RemoteAnimationTarget` 作为 `appLaunchAnimStartOrEnd` 形参类型 | lib `LauncherAnimationRunner.kt:13-20` + `AnimationController.kt:100-101`（`Array<LauncherAnimationRunner.RemoteAnimationTarget>?`） | **精确类型壳**——满足"`DefaultAnimationController.appLaunchAnimStartOrEnd` 签名形状与原厂一致"的设计目标；引用 demo `Demo6StateMachineActivity.kt:172` 实际调用 `arrayOf()`（空数组），类型壳**真正被消费** |
 | F2 | `RemoteAnimationFactory` Kotlin 接口默认实现语义 | lib `RemoteAnimationFactory.kt:10-17` 用 Kotlin 接口（Kotlin 1.4+ 接口允许 default body）；原厂用 Java 8 default method (`LauncherAnimationRunner.java:242-279`) | **语义等价**——demo 实现只需 override 需要的方法，未实现的方法保持 default 行为；review 10 §10 评 Kotlin 风格化 OK |
 | F3 | `LauncherAnimationRunner.kt:4-12` 文件头注释明示设计取舍 | "本移植工程不需要真实 Binder 通道，仅保留 RemoteAnimationTarget 类型壳" | **有意识的接口冻结**——给后续读者清楚的"为什么是 20 行" |
 
@@ -61,7 +61,7 @@
 | # | 项 | 简化理由 | 证据 |
 |---|---|---|---|
 | S1 | 砍掉 `mInputCallback` Binder callback | lib 是 JVM demo，没有 system_server binder 线程 | `LauncherAnimationRunner.java:71-72, 290-302` vs lib `LauncherAnimationRunner.kt:13-20` |
-| S2 | 砍掉 `AnimationResult` 三段式 finish | lib 走 `DefaultAnimationController.appLaunchAnimStartOrEnd` 状态机路径，不直接持有 `AnimatorSet` / `MultiAnimatorSet` | `LauncherAnimationRunner.java:77-241` vs lib `AnimationController.kt:100-127` |
+| S2 | 砍掉 `AnimationResult` 三段式 finish | lib 走 `DefaultAnimationController.appLaunchAnimStartOrEnd` 状态机路径，不直接持有 `AnimatorSet` / `MultiAnimatorSet` | `LauncherAnimationRunner.java:77-241` vs lib `AnimationController.kt:100-124` |
 | S3 | 砍掉 9 个 default 方法 | 不接 binder 通道、demo 也不演示多 app merge / 预启动 / 弹簧链场景 | `LauncherAnimationRunner.java:243-278` vs lib `RemoteAnimationFactory.kt:10-17`（仅 2 方法） |
 | S4 | `RemoteAnimationTarget` 砍到 2 字段（taskId/leash） | 原厂用 `android.view.RemoteAnimationTarget`（系统类 27 字段 Parcelable），demo 不做 leash reparent / SurfaceControl.Transaction | `LauncherAnimationRunner.kt:16-19` vs `LauncherAnimationRunner.java:11`（import `android.view.RemoteAnimationTarget`） |
 | S5 | 砍掉 5 个构造函数 + 内部 `Scenes` 枚举 | lib 不实例化 `LauncherAnimationRunner`（demo 用 `controller.appLaunchAnimStartOrEnd(...)` 直调） | `LauncherAnimationRunner.java:288, 605-616` vs lib 无对应 |
@@ -76,7 +76,7 @@
 | M3 | `handleAnimationMerged(...)` 6 参 default 在 lib 是 no-op | 多 app 启动合并（Demo9 multi-app 路径）需要这个钩子；review 11 §11 标记 F 项 | `LauncherAnimationRunner.java:254-257` vs lib 无 |
 | M4 | `preLoadIcon()` / `getIconSurfaceRecordId()` / `isSameIcon(View)` default 在 lib 是 no-op | 图标预加载/同图标判定逻辑；Demo11 弹簧链需要 `isSameIcon` 决定 RectFSpringAnim 复用 | `LauncherAnimationRunner.java:250-261, 268-270` |
 | M5 | `supportInterruption()` default 在 lib 是 no-op | QuickstepTransitionManager 通过这个判断是否走"打断→开 app"流程；lib 永远返回 false → 上层永远走非打断路径 | `LauncherAnimationRunner.java:271-274` + 上层调用 `Runner.supportInterruption()` (`LauncherAnimationRunner.java:578-580`) |
-| M6 | `appLaunchAnimStartOrEnd(boolean, RemoteAnimationTarget[])` default 在 lib 是 no-op | 注意：这个 default body 在原厂就是空，调用由外层 `LauncherAnimationRunner.lambda$onAnimationStart$2/3` 完成 (`LauncherAnimationRunner.java:357-381`)；lib `AnimationController.appLaunchAnimStartOrEnd(isEnd, factory, targets)` 是状态机入口（**不是**覆写原厂 default），语义对等 | `LauncherAnimationRunner.java:243-245` + lib `AnimationController.kt:100-127` |
+| M6 | `appLaunchAnimStartOrEnd(boolean, RemoteAnimationTarget[])` default 在 lib 是 no-op | 注意：这个 default body 在原厂就是空，调用由外层 `LauncherAnimationRunner.lambda$onAnimationStart$2/3` 完成 (`LauncherAnimationRunner.java:357-381`)；lib `AnimationController.appLaunchAnimStartOrEnd(isEnd, factory, targets)` 是状态机入口（**不是**覆写原厂 default），语义对等 | `LauncherAnimationRunner.java:243-245` + lib `AnimationController.kt:100-124` |
 
 ---
 
@@ -101,7 +101,7 @@
 | N1 | ✔️保持简化 — `setCurrentPlayTime` 首帧补偿（`LauncherAnimationRunner.java:192-196`）缺失 | 原厂：`Math.min(RefreshRateTracker.getSingleFrameMs(context), totalDuration)`；lib 无 | demo 启动 AnimatorSet 时首帧可能延迟 1 帧（vsync 相位差） | 否——lib 走 AsyncValueAnimator 自己的 start 流程（review 01 §2.2）；原厂这个补偿是为了 binder 通道下的首帧黑屏，lib 场景不触发 |
 | N2 | ✔️保持简化 — WeakReference factory GC 处理（`finalized=` 日志，`LauncherAnimationRunner.java:419, 419-451`）缺失 | lib 无 GC race | 否——lib 不持有 `RemoteAnimationFactory` 强引用，demo 也不会跨 GC 边界 |
 | N3 | ✔️保持简化 — `mInputCallback` Binder callback / KeyEvent 拦截缺失 | `LauncherAnimationRunner.java:71-72, 290-302` | lib demo 不会有 BACK 键拦截的 `simulateUpSlide()` 行为 | 否——JVM demo 收不到 system_server KeyEvent |
-| N4 | ✔️保持简化 — `isAppTransitionDisableInterruption` / `isFromRecents` / `isMultiOpenAnimStart` / `isRecentsRunning` / `supportLightOsPreStart` 等查询方法缺失 | 原厂 12 个 `@Override public boolean` 方法 | lib 调用方改用 `OplusAnimManager.getAnimController().hasRecentsAnim()` / `isOpeningAnim` 等（`AnimationController.kt:140-153`）替代 | 否——上层已经走 `DefaultAnimationController` 路径 |
+| N4 | ✔️保持简化 — `isAppTransitionDisableInterruption` / `isFromRecents` / `isMultiOpenAnimStart` / `isRecentsRunning` / `supportLightOsPreStart` 等查询方法缺失 | 原厂 12 个 `@Override public boolean` 方法 | lib 调用方改用 `OplusAnimManager.animController.hasRecentsAnim` / `isOpeningAnim` 等（`AnimationController.kt:150-154`）替代 | 否——上层已经走 `DefaultAnimationController` 路径 |
 
 ---
 
@@ -132,11 +132,11 @@
 
 ### 4.3 文档同步
 
-`USAGE.md:210-216` §"RemoteAnimationFactory / LauncherAnimationRunner" 章节目前只说"类型壳 + 2 方法 demo 接口"，**与本文档 R1-R5 修复方案不一致**。补完 R1-R5 后需同步更新：
+`docs/USAGE.md:225-229` §"RemoteAnimationFactory / LauncherAnimationRunner" 章节目前只说"类型壳 + 2 方法 demo 接口"，**与本文档 R1-R5 修复方案不一致**。补完 R1-R5 后需同步更新：
 > **✔️保持简化（条件不成立：R2/B2 tryFinishOpenRemote 未回移，USAGE 无需补该行；现状与类型壳描述一致）**
-- `USAGE.md:154` 表加 `tryFinishOpenRemote(Runnable)` 行
+- `docs/USAGE.md:158-169`（AnimationController 成员表）加 `tryFinishOpenRemote(Runnable)` 行
 > **✔️保持简化（条件不成立：R1-R5 全部保持简化未实施，无需列 default 方法；42882ff 已加 AsyncSpringAnim 节）**
-- `USAGE.md:213` 增补 `RemoteAnimationFactory` 9 个 default 方法列表（含 `supportInterruption()`、`onAnimationCancelled()`、`handleAnimationMerged(...)` 等），标注哪些是 demo 演示用、哪些与原厂 default body 等价
+- `docs/USAGE.md:225-229` 增补 `RemoteAnimationFactory` 9 个 default 方法列表（含 `supportInterruption()`、`onAnimationCancelled()`、`handleAnimationMerged(...)` 等），标注哪些是 demo 演示用、哪些与原厂 default body 等价
 
 ---
 
@@ -177,3 +177,18 @@ demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:172
 - **N1-N4/K1-K6** — 经独立验证均为合理简化（demo 不示宜 binder keyevent、不示宜 GC race、不示宜 launcher 实例化场景）
 按条目补记：
 - **§4.3 文档同步两 bullets** — ✔️保持简化（R1-R5 未实施 ⇒ USAGE 无需同步；42882ff 已补 AsyncSpringAnim 节）
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+- 复核条目总数：22（B1-B5、N1-N4、R1-R5、K1-K6、§4.3 两 bullet）；结论不变：22 条；修正：0 条
+- 全部条目经复核与当前代码一致：
+  - B1：`LauncherAnimationRunner.kt:16-19` 仍仅 taskId/leash 两字段 → ⚠️未修复 成立
+  - B2/B3/B4/B5：`control/RemoteAnimationFactory.kt:10-17` 仍仅 `createAnimation`+`onAnimationFinished` 两方法，无 tryFinishOpenRemote/supportInterruption/onAnimationCancelled/handleAnimationMerged → ⚠️未修复 成立
+  - R1-R5：对应修复均未落地（同 B1-B5）→ ⚠️未修复 成立
+  - N1-N4、K1-K6：AnimationResult/mInputCallback/WeakReference factory/首帧补偿/Scenes/构造函数在 lib 全树 Grep 无对应实现 → ✔️保持简化 成立
+  - §4.3 两 bullet：R1-R5 未实施 ⇒ 条件不成立 ⇒ USAGE 无需同步 → ✔️保持简化 成立（42882ff 已加 AsyncSpringAnim 节，见 docs/USAGE.md）
+- 路径/行号更正（非状态变更）：
+  - 取证段 lib 路径 `com/asyncanimator/launcher/controller/` → `com/asyncanimator/control/`（e62dbff 包重组）；AnimationController.kt 225→258 行、DefaultAnimationController.kt 89→85 行
+  - `appLaunchAnimStartOrEnd` 引用 `AnimationController.kt:100-127` → `:100-124`（L9/S2/M6 共 3 处）；F1 `:100` → `:100-101`
+  - N4 `OplusAnimManager.getAnimController()...（kt:140-153）` → 现属性式 API `OplusAnimManager.animController...（kt:150-154）`
+  - §4.3 USAGE 引用 `USAGE.md:210-216/:154/:213` → `docs/USAGE.md:225-229/:158-169/:225-229`（USAGE.md 已迁至 docs/ 下且行号漂移）
+  - demo 唯一 call site `Demo6StateMachineActivity.kt:172` 经 Grep 复核仍在 172 行，不变

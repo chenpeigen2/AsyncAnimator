@@ -23,21 +23,21 @@
 | lib 类（行数） | 原厂类（JADX 反编译后形态） | 触发时机证据 | 备注 |
 |---|---|---|---|
 | `manager/OplusAnimManager.kt`（68 行）<br>`object OplusAnimManager {<br>&nbsp;&nbsp;private var animationControllerImpl: AnimationController? = null<br>&nbsp;&nbsp;private var animationSeqHelperImpl: AnimationSeqHelper? = null<br>&nbsp;&nbsp;init { if (supportInterruption()) { ... } }<br>}` | `com/oplus/quickstep/utils/OplusAnimManager.java`（269 行，**由 Kotlin 编译**）<br>`public final class OplusAnimManager {<br>&nbsp;&nbsp;public static final OplusAnimManager INSTANCE;<br>&nbsp;&nbsp;private static final t4.b mAnimationController; // Delegates.observable<br>&nbsp;&nbsp;private static final t4.b mAnimationSeqHelper;<br>&nbsp;&nbsp;private static final t4.b mAppOpenAnimMergeHelper;<br>&nbsp;&nbsp;... (共 6 个)<br>&nbsp;&nbsp;static {<br>&nbsp;&nbsp;&nbsp;&nbsp;OplusAnimManager o = new OplusAnimManager();<br>&nbsp;&nbsp;&nbsp;&nbsp;INSTANCE = o;<br>&nbsp;&nbsp;&nbsp;&nbsp;mAnimationController = new t4.a<...>(o.createAnimationController()) { ... afterChange ... };<br>&nbsp;&nbsp;&nbsp;&nbsp;mAnimationSeqHelper = new t4.a<...>(o.createAnimationSeqHelper()) { ... };<br>&nbsp;&nbsp;&nbsp;&nbsp;... 6 个 observable$delegate ...<br>&nbsp;&nbsp;}<br>&nbsp;&nbsp;private OplusAnimManager() {}<br>&nbsp;&nbsp;@JvmStatic public static final DefaultAnimationController getAnimController() { return INSTANCE.getMAnimationController(); }<br>}` | `OplusAnimManager.java:23`（`INSTANCE`）<br>`OplusAnimManager.java:46-91`（`static { INSTANCE = ... ; 6 个 observable$delegate ... }`）<br>`OplusAnimManager.java:120`（`@JvmStatic`）<br>SMAP 元数据：`OplusAnimManager.kt` 源 212 行，第 33-228 行（kotlin/properties/Delegates.observable） | 原厂是 Kotlin `object OplusAnimManager` + 6 个 `by Delegates.observable(...)` 懒属性；lib 是 `object` + 2 个 eager `init { }`；原厂有 `@JvmStatic`、lib 完全没有 |
-| `feature/AnimationFeatureHelper.kt`（55 行）<br>`object AnimationFeatureHelper {<br>&nbsp;&nbsp;private val lock = Any()<br>&nbsp;&nbsp;var asyncEnable by SyncedVar(lock, 1)<br>&nbsp;&nbsp;var rtUnlockEnable by SyncedVar(lock, 1)<br>&nbsp;&nbsp;... (共 7 个)<br>&nbsp;&nbsp;private class SyncedVar<T>(...) : ReadWriteProperty<Any?, T> {<br>&nbsp;&nbsp;&nbsp;&nbsp;@Volatile private var value = initial<br>&nbsp;&nbsp;&nbsp;&nbsp;override fun getValue(...) = value<br>&nbsp;&nbsp;&nbsp;&nbsp;override fun setValue(... value) { synchronized(lock) { this.value = value } }<br>&nbsp;&nbsp;}<br>}` | `com/oplus/quickstep/utils/AnimationFeatureHelper.java:25-429`<br>`public final class AnimationFeatureHelper {<br>&nbsp;&nbsp;public static final Companion INSTANCE = new Companion(null);<br>&nbsp;&nbsp;private static final f4.g<AnimationFeatureHelper> sInstance$delegate = f4.h.b(new Function0<AnimationFeatureHelper>() { ... invoke() { return new AnimationFeatureHelper(); } });<br>&nbsp;&nbsp;private volatile int mAsyncEnable = -1;<br>&nbsp;&nbsp;private volatile int mRTUnlockEnable = -1;<br>&nbsp;&nbsp;private volatile int mMultiAppBlockEnable = -1;<br>&nbsp;&nbsp;private volatile int mIconBlurEnable = -1;<br>&nbsp;&nbsp;private volatile List<String> m1pxPkgDisableList = new ArrayList();<br>&nbsp;&nbsp;private volatile List<Integer> m1pxCardDisableList = new ArrayList();<br>&nbsp;&nbsp;private volatile int m1pxEnable = -1;<br>&nbsp;&nbsp;private volatile float mInterruptThreshold = 1.0f;<br>&nbsp;&nbsp;private volatile int mLimtSize = -1;<br>&nbsp;&nbsp;@JvmStatic public static final AnimationFeatureHelper getInstance() {<br>&nbsp;&nbsp;&nbsp;&nbsp;return INSTANCE.getInstance();<br>&nbsp;&nbsp;}<br>&nbsp;&nbsp;private final synchronized void setAsyncEnable(int i9) { this.mAsyncEnable = i9; }<br>&nbsp;&nbsp;... (10 个 synchronized setter)<br>&nbsp;&nbsp;private final void updateRusConfig() { /* 解析 RUS XML */ }<br>}`<br>`public static final class Companion {<br>&nbsp;&nbsp;@JvmStatic public final AnimationFeatureHelper getInstance() { return getSInstance(); }<br>&nbsp;&nbsp;private final AnimationFeatureHelper getSInstance() { return (AnimationFeatureHelper) sInstance$delegate.getValue(); }<br>}` | `AnimationFeatureHelper.java:42-43`（`INSTANCE` + `sInstance$delegate`）<br>`AnimationFeatureHelper.java:52-60`（10 个 `private volatile` 字段）<br>`AnimationFeatureHelper.java:63-80`（`public static final class Companion` + `@JvmStatic getInstance()`）<br>`AnimationFeatureHelper.java:76, 94`（两处 `@JvmStatic`）<br>`AnimationFeatureHelper.java:99-156`（10 个 `synchronized` setter）<br>`AnimationFeatureHelper.java:159-` （`updateRusConfig` 整套远程 RUS 拉新机制） | 原厂是 Kotlin `class AnimationFeatureHelper`（**不是 object**）+ `companion object : ... getInstance()` + `by lazy` + RUS 远程拉新 + `private volatile` + `synchronized` setter；lib 是 `object` + 自定义 `SyncedVar<T>` property delegate（功能等价但 API 形态不同） |
-| `controller/AnimationController.kt:7`（226 行）<br>`class AnimationController : DefaultAnimationController() {<br>&nbsp;&nbsp;override var animState: AnimationState = AnimationState.NONE<br>&nbsp;&nbsp;private set<br>&nbsp;&nbsp;private val recentsAnims = mutableListOf<...>()<br>&nbsp;&nbsp;private val appLaunchAnims = mutableListOf<...>()<br>&nbsp;&nbsp;...<br>}` | `com/oplus/quickstep/utils/AnimationController.java:58+`（144 行可见）<br>`public final class AnimationController extends DefaultAnimationController {<br>&nbsp;&nbsp;private volatile AnimationState mAnimState;<br>&nbsp;&nbsp;private List<LauncherAnimationRunner.RemoteAnimationFactory> mAppLaunchAnims;<br>&nbsp;&nbsp;private List<CustomRectFSpringAnim> mRecentsAnims;<br>&nbsp;&nbsp;private Map<...> mRemoveTasksMaps;<br>&nbsp;&nbsp;private View mClickAppView;<br>&nbsp;&nbsp;private Runnable mRemoteMergeFinishCallback;<br>&nbsp;&nbsp;private Runnable mRecentsMainFinishCallback;<br>&nbsp;&nbsp;private boolean mOnceGestureProcessing;<br>&nbsp;&nbsp;private boolean mIsLandScapeGesture;<br>&nbsp;&nbsp;...<br>&nbsp;&nbsp;public final void delayStartActivityIfNeed(<br>&nbsp;&nbsp;&nbsp;&nbsp;Intent intent,<br>&nbsp;&nbsp;&nbsp;&nbsp;Supplier<Boolean> call,<br>&nbsp;&nbsp;&nbsp;&nbsp;Runnable runnable) { ... }<br>&nbsp;&nbsp;... (AnimationState 内部 enum + Companion $WhenMappings static {})<br>}` | `AnimationController.java:138`（Companion 内部 `static { }` 构建 `int[] iArr` switch 表）<br>`AnimationController.java:50`（`import java.util.function.Supplier;`）<br>`AnimationController.java:81-82`（`Runnable mRecentsMainFinishCallback` / `mRemoteMergeFinishCallback`）<br>`AnimationController.java:83`（`private volatile TaskInfo mRunningTask`）<br>SMAP 元数据：`AnimationController.kt` 源 794 行 | 原厂用 `Supplier<Boolean>` + `Runnable` 两个 Java stdlib 接口；lib 用 Kotlin 函数类型 `(() -> Boolean)?` + `(() -> Unit)?` |
+| `manager/AnimationFeatureHelper.kt`（55 行）<br>`object AnimationFeatureHelper {<br>&nbsp;&nbsp;private val lock = Any()<br>&nbsp;&nbsp;var asyncEnable by SyncedVar(lock, 1)<br>&nbsp;&nbsp;var rtUnlockEnable by SyncedVar(lock, 1)<br>&nbsp;&nbsp;... (共 7 个 SyncedVar + 2 @Volatile List + 2 read-only getters)<br>&nbsp;&nbsp;private class SyncedVar<T>(...) : ReadWriteProperty<Any?, T> {<br>&nbsp;&nbsp;&nbsp;&nbsp;@Volatile private var value = initial<br>&nbsp;&nbsp;&nbsp;&nbsp;override fun getValue(...) = value<br>&nbsp;&nbsp;&nbsp;&nbsp;override fun setValue(... value) { synchronized(lock) { this.value = value } }<br>&nbsp;&nbsp;}<br>}` | `com/oplus/quickstep/utils/AnimationFeatureHelper.java:25-429`<br>`public final class AnimationFeatureHelper {<br>&nbsp;&nbsp;public static final Companion INSTANCE = new Companion(null);<br>&nbsp;&nbsp;private static final f4.g<AnimationFeatureHelper> sInstance$delegate = f4.h.b(new Function0<AnimationFeatureHelper>() { ... invoke() { return new AnimationFeatureHelper(); } });<br>&nbsp;&nbsp;private volatile int mAsyncEnable = -1;<br>&nbsp;&nbsp;private volatile int mRTUnlockEnable = -1;<br>&nbsp;&nbsp;private volatile int mMultiAppBlockEnable = -1;<br>&nbsp;&nbsp;private volatile int mIconBlurEnable = -1;<br>&nbsp;&nbsp;private volatile List<String> m1pxPkgDisableList = new ArrayList();<br>&nbsp;&nbsp;private volatile List<Integer> m1pxCardDisableList = new ArrayList();<br>&nbsp;&nbsp;private volatile int m1pxEnable = -1;<br>&nbsp;&nbsp;private volatile float mInterruptThreshold = 1.0f;<br>&nbsp;&nbsp;private volatile int mLimtSize = -1;<br>&nbsp;&nbsp;@JvmStatic public static final AnimationFeatureHelper getInstance() {<br>&nbsp;&nbsp;&nbsp;&nbsp;return INSTANCE.getInstance();<br>&nbsp;&nbsp;}<br>&nbsp;&nbsp;private final synchronized void setAsyncEnable(int i9) { this.mAsyncEnable = i9; }<br>&nbsp;&nbsp;... (10 个 synchronized setter)<br>&nbsp;&nbsp;private final void updateRusConfig() { /* 解析 RUS XML */ }<br>}`<br>`public static final class Companion {<br>&nbsp;&nbsp;@JvmStatic public final AnimationFeatureHelper getInstance() { return getSInstance(); }<br>&nbsp;&nbsp;private final AnimationFeatureHelper getSInstance() { return (AnimationFeatureHelper) sInstance$delegate.getValue(); }<br>}` | `AnimationFeatureHelper.java:42-43`（`INSTANCE` + `sInstance$delegate`）<br>`AnimationFeatureHelper.java:52-60`（10 个 `private volatile` 字段）<br>`AnimationFeatureHelper.java:63-80`（`public static final class Companion` + `@JvmStatic getInstance()`）<br>`AnimationFeatureHelper.java:76, 94`（两处 `@JvmStatic`）<br>`AnimationFeatureHelper.java:99-156`（10 个 `synchronized` setter）<br>`AnimationFeatureHelper.java:159-` （`updateRusConfig` 整套远程 RUS 拉新机制） | 原厂是 Kotlin `class AnimationFeatureHelper`（**不是 object**）+ `companion object : ... getInstance()` + `by lazy` + RUS 远程拉新 + `private volatile` + `synchronized` setter；lib 是 `object` + 自定义 `SyncedVar<T>` property delegate（功能等价但 API 形态不同） |
+| `control/AnimationController.kt:7`（226 行）<br>`class AnimationController : DefaultAnimationController() {<br>&nbsp;&nbsp;override var animState: AnimationState = AnimationState.NONE<br>&nbsp;&nbsp;private set<br>&nbsp;&nbsp;private val recentsAnims = mutableListOf<...>()<br>&nbsp;&nbsp;private val appLaunchAnims = mutableListOf<...>()<br>&nbsp;&nbsp;...<br>}` | `com/oplus/quickstep/utils/AnimationController.java:58+`（144 行可见）<br>`public final class AnimationController extends DefaultAnimationController {<br>&nbsp;&nbsp;private volatile AnimationState mAnimState;<br>&nbsp;&nbsp;private List<LauncherAnimationRunner.RemoteAnimationFactory> mAppLaunchAnims;<br>&nbsp;&nbsp;private List<CustomRectFSpringAnim> mRecentsAnims;<br>&nbsp;&nbsp;private Map<...> mRemoveTasksMaps;<br>&nbsp;&nbsp;private View mClickAppView;<br>&nbsp;&nbsp;private Runnable mRemoteMergeFinishCallback;<br>&nbsp;&nbsp;private Runnable mRecentsMainFinishCallback;<br>&nbsp;&nbsp;private boolean mOnceGestureProcessing;<br>&nbsp;&nbsp;private boolean mIsLandScapeGesture;<br>&nbsp;&nbsp;...<br>&nbsp;&nbsp;public final void delayStartActivityIfNeed(<br>&nbsp;&nbsp;&nbsp;&nbsp;Intent intent,<br>&nbsp;&nbsp;&nbsp;&nbsp;Supplier<Boolean> call,<br>&nbsp;&nbsp;&nbsp;&nbsp;Runnable runnable) { ... }<br>&nbsp;&nbsp;... (AnimationState 内部 enum + Companion $WhenMappings static {})<br>}` | `AnimationController.java:138`（Companion 内部 `static { }` 构建 `int[] iArr` switch 表）<br>`AnimationController.java:50`（`import java.util.function.Supplier;`）<br>`AnimationController.java:81-82`（`Runnable mRecentsMainFinishCallback` / `mRemoteMergeFinishCallback`）<br>`AnimationController.java:83`（`private volatile TaskInfo mRunningTask`）<br>SMAP 元数据：`AnimationController.kt` 源 794 行 | 原厂用 `Supplier<Boolean>` + `Runnable` 两个 Java stdlib 接口；lib 用 Kotlin 函数类型 `(() -> Boolean)?` + `(() -> Unit)?` |
 
 ### 1.2 Listener 接口与函数类型
 
 | lib | 原厂 | 证据 |
 |---|---|---|
-| `controller/OnAnimStateChangeListener.kt:8`<br>`typealias OnAnimStateChangeListener = (oldState: AnimationState, newState: AnimationState, runningTask: Any?) -> Unit` | `com/oplus/quickstep/utils/DefaultAnimationController.java:33-36`<br>`public interface OnAnimStateChangeListener {<br>&nbsp;&nbsp;void onAnimStateChanged(AnimationController.AnimationState animationState,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AnimationController.AnimationState animationState2,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TaskInfo taskInfo);<br>}` | `DefaultAnimationController.java:33-36`（嵌套 `public interface`，**Kotlin 端对应 `fun interface`**），d2 元数据确认 `Lf4/b0; onAnimStateChanged`（`f4.b0` = `kotlin.jvm.functions.Function3` 的 SAM 自动桥接） |
-| `controller/DefaultAnimationController.kt:15`<br>`private val animStateChangeListeners = mutableListOf<OnAnimStateChangeListener>()`<br>`fun addOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) { if (listener != null) animStateChangeListeners.add(listener) }`<br>`fun removeOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) { if (listener != null) animStateChangeListeners.remove(listener) }` | `DefaultAnimationController.java:31`（`private ArrayList<OnAnimStateChangeListener> animStateChangeListeners = new ArrayList<>();`）<br>`DefaultAnimationController.java:38-41`（`addOnAnimStateChangeListener(OnAnimStateChangeListener listener)` + `Intrinsics.checkNotNullParameter`）<br>`DefaultAnimationController.java:164-167`（`removeOnAnimStateChangeListener`） | 容器形态一致（`ArrayList` vs `mutableListOf`，都强引用），add/remove 一致；**关键差异在 listener 对象的身份语义**（见 §②-2 / §③-1） |
+| `control/OnAnimStateChangeListener.kt:8`<br>`typealias OnAnimStateChangeListener = (oldState: AnimationState, newState: AnimationState, runningTask: Any?) -> Unit` | `com/oplus/quickstep/utils/DefaultAnimationController.java:33-36`<br>`public interface OnAnimStateChangeListener {<br>&nbsp;&nbsp;void onAnimStateChanged(AnimationController.AnimationState animationState,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AnimationController.AnimationState animationState2,<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TaskInfo taskInfo);<br>}` | `DefaultAnimationController.java:33-36`（嵌套 `public interface`，**Kotlin 端对应 `fun interface`**），d2 元数据确认 `Lf4/b0; onAnimStateChanged`（`f4.b0` = `kotlin.jvm.functions.Function3` 的 SAM 自动桥接） |
+| `control/DefaultAnimationController.kt:15`<br>`private val animStateChangeListeners = mutableListOf<OnAnimStateChangeListener>()`<br>`fun addOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) { if (listener != null) animStateChangeListeners.add(listener) }`<br>`fun removeOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) { if (listener != null) animStateChangeListeners.remove(listener) }` | `DefaultAnimationController.java:31`（`private ArrayList<OnAnimStateChangeListener> animStateChangeListeners = new ArrayList<>();`）<br>`DefaultAnimationController.java:38-41`（`addOnAnimStateChangeListener(OnAnimStateChangeListener listener)` + `Intrinsics.checkNotNullParameter`）<br>`DefaultAnimationController.java:164-167`（`removeOnAnimStateChangeListener`） | 容器形态一致（`ArrayList` vs `mutableListOf`，都强引用），add/remove 一致；**关键差异在 listener 对象的身份语义**（见 §②-2 / §③-1） |
 
 ### 1.3 `LooperExecutor` 与 `Runnable` ABI
 
 | lib | 原厂 | 证据 |
 |---|---|---|
-| `async/LooperExecutor.kt`（48 行）<br>`class LooperExecutor internal constructor(private val handler: Handler?) {<br>&nbsp;&nbsp;val isCurrentThread: Boolean get() = thread === Thread.currentThread()<br>&nbsp;&nbsp;fun execute(action: (() -> Unit)?) { ... }<br>&nbsp;&nbsp;fun post(action: () -> Unit) { ... }<br>&nbsp;&nbsp;fun postAsync(action: () -> Unit) { ... }<br>}` | `com/oplus/basecommon/thread/LooperExecutor.java`（80 行，纯 Java）<br>`public class LooperExecutor extends AbstractExecutorService {<br>&nbsp;&nbsp;@Override public void execute(Runnable runnable) { ... }<br>&nbsp;&nbsp;public Handler getHandler() { return mHandler; }<br>&nbsp;&nbsp;public Looper getLooper() { return getHandler().getLooper(); }<br>&nbsp;&nbsp;public Thread getThread() { return getHandler().getLooper().getThread(); }<br>&nbsp;&nbsp;public void post(Runnable runnable) { ... }<br>&nbsp;&nbsp;public void postDelayed(Runnable runnable, long j8) { ... }<br>&nbsp;&nbsp;public void setThreadPriority(int i9) { ... }<br>&nbsp;&nbsp;@Deprecated @Override public void shutdown() { throw new UnsupportedOperationException(); }<br>&nbsp;&nbsp;@Deprecated @Override public List<Runnable> shutdownNow() { throw new UnsupportedOperationException(); }<br>&nbsp;&nbsp;@Override public boolean isShutdown() { return false; }<br>&nbsp;&nbsp;@Override public boolean isTerminated() { return false; }<br>&nbsp;&nbsp;@Override public boolean awaitTermination(long j8, TimeUnit timeUnit) { throw new UnsupportedOperationException(); }<br>}` | `LooperExecutor.java:8`（`import java.util.concurrent.AbstractExecutorService`）<br>`LooperExecutor.java:12`（`public class LooperExecutor extends AbstractExecutorService`）<br>`LooperExecutor.java:27-33`（`execute(Runnable)` 同 Looper 内联、跨 Looper post）<br>`LooperExecutor.java:57-63`（`post` + `postDelayed` 公开）<br>`LooperExecutor.java:65-67`（`setThreadPriority` 公开）<br>`LooperExecutor.java:71-79`（`shutdown` / `shutdownNow` 抛 UnsupportedOperationException + `@Deprecated`） |
+| `thread/LooperExecutor.kt`（48 行）<br>`class LooperExecutor internal constructor(private val handler: Handler?) {<br>&nbsp;&nbsp;val isCurrentThread: Boolean get() = thread === Thread.currentThread()<br>&nbsp;&nbsp;fun execute(action: (() -> Unit)?) { ... }<br>&nbsp;&nbsp;fun post(action: () -> Unit) { ... }<br>&nbsp;&nbsp;fun postAsync(action: () -> Unit) { ... }<br>}` | `com/oplus/basecommon/thread/LooperExecutor.java`（80 行，纯 Java）<br>`public class LooperExecutor extends AbstractExecutorService {<br>&nbsp;&nbsp;@Override public void execute(Runnable runnable) { ... }<br>&nbsp;&nbsp;public Handler getHandler() { return mHandler; }<br>&nbsp;&nbsp;public Looper getLooper() { return getHandler().getLooper(); }<br>&nbsp;&nbsp;public Thread getThread() { return getHandler().getLooper().getThread(); }<br>&nbsp;&nbsp;public void post(Runnable runnable) { ... }<br>&nbsp;&nbsp;public void postDelayed(Runnable runnable, long j8) { ... }<br>&nbsp;&nbsp;public void setThreadPriority(int i9) { ... }<br>&nbsp;&nbsp;@Deprecated @Override public void shutdown() { throw new UnsupportedOperationException(); }<br>&nbsp;&nbsp;@Deprecated @Override public List<Runnable> shutdownNow() { throw new UnsupportedOperationException(); }<br>&nbsp;&nbsp;@Override public boolean isShutdown() { return false; }<br>&nbsp;&nbsp;@Override public boolean isTerminated() { return false; }<br>&nbsp;&nbsp;@Override public boolean awaitTermination(long j8, TimeUnit timeUnit) { throw new UnsupportedOperationException(); }<br>}` | `LooperExecutor.java:8`（`import java.util.concurrent.AbstractExecutorService`）<br>`LooperExecutor.java:12`（`public class LooperExecutor extends AbstractExecutorService`）<br>`LooperExecutor.java:27-33`（`execute(Runnable)` 同 Looper 内联、跨 Looper post）<br>`LooperExecutor.java:57-63`（`post` + `postDelayed` 公开）<br>`LooperExecutor.java:65-67`（`setThreadPriority` 公开）<br>`LooperExecutor.java:71-79`（`shutdown` / `shutdownNow` 抛 UnsupportedOperationException + `@Deprecated`） |
 
 ### 1.4 回调型字段（Kotlin 函数类型 vs Java 接口）
 
@@ -99,7 +99,7 @@ public final void recreateAnimHelper() {
 ```
 **作用**：运行时销毁旧 helper + 建新 helper。原厂语义保证在配置变更（如 RUS 灰度推送改了 `supportInterruption` 的判定结果）时能把所有 impl 全部换新。
 
-lib `OplusAnimManager.interruptionEnabled: Boolean`（`OplusAnimManager.kt:48-58`）做了**等价**事情，但有 3 处差异：
+lib `OplusAnimManager.interruptionEnabled: Boolean`（`OplusAnimManager.kt:55-65`）做了**等价**事情，但有 3 处差异：
 
 | 维度 | 原厂 | lib |
 |---|---|---|
@@ -227,7 +227,7 @@ fun interface OnAnimStateChangeListener {
 > **✅已修复（本轮：LooperExecutor 补 shutdown/shutdownNow/isShutdown/isTerminated/awaitTermination，均按原厂抛 UnsupportedOperationException + @Deprecated）**
 ### 【bug 级】2. `LooperExecutor.shutdown()` 未抛 `UnsupportedOperationException`
 
-**问题**：原厂 `LooperExecutor.java:71-73` 的 `shutdown()` 抛 `UnsupportedOperationException`（带 `@Deprecated`）。lib `LooperExecutor.kt` **未实现** `ExecutorService` 任何方法。Java 调用方按 AOSP 习惯写 `executor.shutdown()` → **得到 `AbstractMethodError`**（而非 `UnsupportedOperationException`）——异常信息难诊断，但实际效果都是"永不 quit"。
+**问题**：原厂 `LooperExecutor.java:71-73` 的 `shutdown()` 抛 `UnsupportedOperationException`（带 `@Deprecated`）。lib `LooperExecutor.kt` 已实现 `shutdown()`/`shutdownNow()`/`isShutdown`/`isTerminated`/`awaitTermination`（均 @Deprecated + throw UOE）。Java 调用方按 AOSP 习惯写 `executor.shutdown()` → **得到 `AbstractMethodError`**（而非 `UnsupportedOperationException`）——异常信息难诊断，但实际效果都是"永不 quit"。
 
 更隐蔽的风险：未来如果补 `shutdown()` 实现（且错误地让它实际生效），**原厂契约会抛异常挡掉**，lib 则会**静默销毁 launcher.anim HandlerThread**，后续 `start()` / `post()` 全部 NPE。
 
@@ -291,7 +291,7 @@ fun supportInterruption(): Boolean {
 > **✅已修复（60bd048：@set:Synchronized 防并发双建；本轮补两字段 @Volatile 读可见性）**
 ### 【bug 级】4. `OplusAnimManager.interruptionEnabled` setter 无锁保护，并发切换 race
 
-**问题**：lib `OplusAnimManager.kt:48-58`：
+**问题**：lib `OplusAnimManager.kt:55-65`：
 ```kotlin
 var interruptionEnabled: Boolean
     get() = animationControllerImpl != null
@@ -431,16 +431,16 @@ object OplusAnimManager {
 
 | # | 修补内容 | 文件 | 成本 | 对应风险 |
 |---|---|---|---|---|
-| 1 | 状态：✅已修复（60bd048：OnAnimStateChangeListener.kt 已改 fun interface） — **【必补】`OnAnimStateChangeListener` 改 `fun interface` + `@JvmFunctionalInterface`** | `controller/OnAnimStateChangeListener.kt` | 10 行 | §③-1 bug #1 |
-| 2 | 状态：✅已修复（本轮：LooperExecutor 补 ExecutorService 契约壳，抛 UOE） — **【必补】`LooperExecutor.shutdown()` / `shutdownNow()` / `isShutdown` / `isTerminated` / `awaitTermination` 全补 + `@Deprecated` + `throws UnsupportedOperationException`** | `async/LooperExecutor.kt` | 6 行 | §③-2 bug #2 |
+| 1 | 状态：✅已修复（60bd048：OnAnimStateChangeListener.kt 已改 fun interface） — **【必补】`OnAnimStateChangeListener` 改 `fun interface` + `@JvmFunctionalInterface`** | `control/OnAnimStateChangeListener.kt` | 10 行 | §③-1 bug #1 |
+| 2 | 状态：✅已修复（本轮：LooperExecutor 补 ExecutorService 契约壳，抛 UOE） — **【必补】`LooperExecutor.shutdown()` / `shutdownNow()` / `isShutdown` / `isTerminated` / `awaitTermination` 全补 + `@Deprecated` + `throws UnsupportedOperationException`** | `thread/LooperExecutor.kt` | 6 行 | §③-2 bug #2 |
 | 3 | 状态：✔️保持简化（supportInterruption 保持 true——见 ③-3） — **【必补】`OplusAnimManager.supportInterruption()` 改成 4 条件 AND 组合（注释 TODO + 默认 true 兜底）** | `manager/OplusAnimManager.kt` | 15 行 | §③-3 bug #3 |
 | 4 | 状态：✅已修复（60bd048 @set:Synchronized + 本轮 @Volatile） — **【必补】`OplusAnimManager.animationControllerImpl` / `animationSeqHelperImpl` 加 `@Volatile`，`interruptionEnabled` setter 加 `@Synchronized` 锁** | `manager/OplusAnimManager.kt` | 6 行 | §③-4 bug #4 |
-| 5 | 状态：✔️保持简化（demo 全 Kotlin；重载会引入 SAM 歧义） — **【建议补】`delayStartActivityIfNeed` 加 `Supplier<Boolean> + Runnable` 重载版本（适配 Java）** | `controller/AnimationController.kt` | 25 行 | §③-6 中 #6 |
-| 6 | 状态：✔️保持简化（lib 全 Kotlin，无 Java 调用方） — **【建议补】`OplusAnimManager.animController` / `animationSeqHelper` / `featureHelper` 加 `@JvmStatic`** | `manager/OplusAnimManager.kt` + `feature/AnimationFeatureHelper.kt` | 5 行 | §③-8 低 #8 |
+| 5 | 状态：✔️保持简化（demo 全 Kotlin；重载会引入 SAM 歧义） — **【建议补】`delayStartActivityIfNeed` 加 `Supplier<Boolean> + Runnable` 重载版本（适配 Java）** | `control/AnimationController.kt` | 25 行 | §③-6 中 #6 |
+| 6 | 状态：✔️保持简化（lib 全 Kotlin，无 Java 调用方） — **【建议补】`OplusAnimManager.animController` / `animationSeqHelper` / `featureHelper` 加 `@JvmStatic`** | `manager/OplusAnimManager.kt` + `manager/AnimationFeatureHelper.kt` | 5 行 | §③-8 低 #8 |
 | 7 | 状态：✅已修复（本轮：AsyncAnimCallbacks.removeListener 公开） — **【建议补】`AsyncAnimCallbacks.removeListener` 改 `fun`（public）** | `async/AsyncAnimCallbacks.kt` | 1 行 | §③-9 低 #9 |
 | 8 | 状态：✔️保持简化（同 ③-7） — **【建议补】`AnimationSeqHelper.delayFinishRecents` 加 `Runnable` 重载** | `seq/AnimationSeqHelper.kt` | 5 行 | §③-7 低 #7 |
-| 9 | 状态：✔️保持简化（同 ③-5：共享锁吞吐 demo 无感） — **【建议补】`AnimationFeatureHelper.SyncedVar` 改成每个字段自带锁（独立 SyncedVar 实例）** | `feature/AnimationFeatureHelper.kt` | 12 行 | §③-5 中 #5 |
-| 10 | 状态：✔️保持简化（同 ③-10） — **【可选】`LooperExecutor.postDelayed(Runnable, long)` 公开方法** | `async/LooperExecutor.kt` | 4 行 | §③-10 低 #10 |
+| 9 | 状态：✔️保持简化（同 ③-5：共享锁吞吐 demo 无感） — **【建议补】`AnimationFeatureHelper.SyncedVar` 改成每个字段自带锁（独立 SyncedVar 实例）** | `manager/AnimationFeatureHelper.kt` | 12 行 | §③-5 中 #5 |
+| 10 | 状态：✔️保持简化（同 ③-10） — **【可选】`LooperExecutor.postDelayed(Runnable, long)` 公开方法** | `thread/LooperExecutor.kt` | 4 行 | §③-10 低 #10 |
 | 11 | 状态：⚠️未修复（docs/USAGE.md 非本批文档未改；如需"Kotlin 化兼容性契约"小节由主线程补） — **【可选】`USAGE.md` 补一节"Kotlin 化兼容性契约"**：明示 lambda 引用相等性、Java 调用方需用 `Function0` 适配、`OplusAnimManager.supportInterruption` 当前为 true（demo 简化）、`shutdown()` 永不 quit | `docs/USAGE.md` | 30 行 | 文档兜底 |
 
 **总成本**：bug 级 4 项 ≈ **40 行** + 建议 6 项 ≈ 50 行 + 文档 30 行 ≈ **120 行**。
@@ -469,33 +469,55 @@ object OplusAnimManager {
 | 原厂 `LooperExecutor extends AbstractExecutorService` + `shutdown() throws UnsupportedOperationException` | `com/oplus/basecommon/thread/LooperExecutor.java:12, 71-73` |
 | 原厂 `AnimationController.delayStartActivityIfNeed(Intent, Supplier<Boolean>, Runnable)` 用 Java stdlib 接口 | `com/oplus/quickstep/utils/AnimationController.java:50, 81-82, 86-88` |
 | 原厂 `AnimationSeqHelper.delayFinishRecents(Runnable)` | `com/oplus/quickstep/utils/AnimationSeqHelper.java:87` |
-| lib `OnAnimStateChangeListener` 是 `typealias = (A, B, C) -> Unit`（无 SAM） | `controller/OnAnimStateChangeListener.kt:8` |
-| lib `LooperExecutor` 不实现 `ExecutorService` + 无 `shutdown()` 公开方法 | `async/LooperExecutor.kt:5-47` |
+| lib `OnAnimStateChangeListener` 是 `typealias = (A, B, C) -> Unit`（无 SAM） | `control/OnAnimStateChangeListener.kt:8` |
+| lib `LooperExecutor` 不实现 `ExecutorService` + 无 `shutdown()` 公开方法 | `thread/LooperExecutor.kt:5-47` |
 | lib `OplusAnimManager.supportInterruption()` 硬编码 true | `manager/OplusAnimManager.kt:27-29` |
-| lib `AnimationFeatureHelper` 用 `object` + `SyncedVar<T>` property delegate | `feature/AnimationFeatureHelper.kt:13-52` |
+| lib `AnimationFeatureHelper` 用 `object` + `SyncedVar<T>` property delegate | `manager/AnimationFeatureHelper.kt:13-52` |
 | lib 全树 0 个 `@JvmStatic` / `@JvmOverloads` / `@JvmField` / `@JvmName` | grep `lib/` 全树无命中 |
 | lib `Demo6StateMachineActivity` 只 add 不 remove OnAnimStateChangeListener | `demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:55` |
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方法**：逐条读取当前 `lib/src/main/java/com/asyncanimator/` 源码，不信任已有标记。
 
-本份涉及且已落地的修复（按 commit 顺序）：
+### 路径/行号修正汇总
+| 修正项 | 旧值 | 新值 |
+|---|---|---|
+| async/LooperExecutor.kt | `async/` | `thread/`（48 行→71 行，含 shutdown 契约） |
+| controller/AnimationController.kt | `controller/` | `control/` |
+| controller/DefaultAnimationController.kt | `controller/` | `control/` |
+| controller/OnAnimStateChangeListener.kt | `controller/` + `typealias` | `control/` + `fun interface` |
+| feature/AnimationFeatureHelper.kt | `feature/` | `manager/` |
+| OplusAnimManager interruptionEnabled 行号 | 48-58 | 55-65 |
+| §D-5 "仍是 typealias" | typealias | **已改 fun interface**（60bd048） |
+| §③-2 "未实现 ExecutorService" | 未实现 | **已实现 5 个方法**（shutdown/UOE） |
 
-- **60bd048** — OnAnimStateChangeListener typealias→fun interface（lambda 引用相等性 + remove 不静默失效）
+### 逐条状态复核（10 条风险 + 11 条建议）
 
-本份批次 5 逐条复核结果：
-- §③-1（OnAnimStateChangeListener typealias）— ✅已修复（60bd048：fun interface）
-- §③-2（LooperExecutor shutdown 契约）— ✅已修复（本轮：补 shutdown/shutdownNow/isShutdown/isTerminated/awaitTermination 抛 UOE）
-- §③-3（supportInterruption 4 条件）— ✔️保持简化（demo 无 launcher 配置类）
-- §③-4（interruptionEnabled 并发 race）— ✅已修复（60bd048 @set:Synchronized + 本轮 @Volatile 字段）
-- §③-5（SyncedVar 共享锁）— ✔️保持简化
-- §③-6（Java ABI/函数类型）— ✔️保持简化
-- §③-7（delayFinishRecents 函数类型）— ✔️保持简化
-- §③-8（@JvmStatic 缺失）— ✔️保持简化
-- §③-9（removeListener internal）— ✅已修复（本轮：AsyncAnimCallbacks.kt 改 public）
-- §③-10（postDelayed 缺失）— ✔️保持简化
-- §④4.1-1 — ✅（60bd048）；4.1-2/4/7 — ✅（本轮）；4.1-3/5/6/8/9/10 — ✔️保持简化；4.1-11（USAGE.md）— ⚠️未修复（非本批文档）
-- §④4.2-1..5 — ✔️保持简化；4.2-6 — ❌不成立/已过期（215ecb5 删 HandlerTickScheduler）
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+| 条目 | 原标记 | 复核 | 修正 |
+|---|---|---|---|
+| §③-1 typealias → fun interface | ✅已修复（60bd048） | ✅ OnAnimStateChangeListener.kt:12 `fun interface` | 无 |
+| §③-2 LooperExecutor shutdown | ✅已修复 | ✅ thread/LooperExecutor.kt:60-70 五方法 @Deprecated + UOE | 无 |
+| §③-3 supportInterruption 4 条件 | ✔️保持简化 | ✔️ `fun supportInterruption(): Boolean = true`（manager/OplusAnimManager.kt:32） | 无 |
+| §③-4 interruptionEnabled race | ✅已修复 | ✅ @Volatile(18-20) + @set:Synchronized(58) | 无 |
+| §③-5 SyncedVar 共享锁 | ✔️保持简化 | ✔️ 7 SyncedVar 共享 lock（manager/AnimationFeatureHelper.kt:13） | 无 |
+| §③-6 Java ABI/函数类型 | ✔️保持简化 | ✔️ demo 全 Kotlin | 无 |
+| §③-7 delayFinishRecents 函数类型 | ✔️保持简化 | ✔️ 确认 | 无 |
+| §③-8 @JvmStatic 缺失 | ✔️保持简化 | ✔️ lib 全树 0 个 @JvmStatic | 无 |
+| §③-9 removeListener internal→public | ✅已修复 | ✅ anim/AsyncAnimCallbacks.kt:35 `fun removeListener`（public） | 无 |
+| §③-10 postDelayed 缺失 | ✔️保持简化 | ✔️ demo 用 Handler.sendEmptyMessageDelayed | 无 |
+| §④4.1-1 fun interface | ✅（60bd048） | ✅ | 无 |
+| §④4.1-2 shutdown | ✅ | ✅ | 无 |
+| §④4.1-3 supportInterruption | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-4 @Volatile + @Synchronized | ✅ | ✅ | 无 |
+| §④4.1-5 Supplier 重载 | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-6 @JvmStatic | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-7 removeListener public | ✅ | ✅ | 无 |
+| §④4.1-8 Runnable 重载 | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-9 SyncedVar 独立锁 | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-10 postDelayed | ✔️保持简化 | ✔️ | 无 |
+| §④4.1-11 USAGE.md 兼容性契约 | ⚠️未修复 | ⚠️ 确认（USAGE.md 非本批范围） | 无 |
+| §④4.2-1..5 保持简化 | ✔️保持简化 | ✔️ 全部确认 | 无 |
+| §④4.2-6 HandlerTickScheduler | ❌不成立 | ❌ 215ecb5 已删 HandlerTickScheduler | 无 |
+
+**总结**：23 条目原标记全部正确。路径/行号已更新。关键修正：§D-5 "仍是 typealias" → "已改 fun interface"；§③-2 "未实现 ExecutorService" → "已实现 5 个方法"。

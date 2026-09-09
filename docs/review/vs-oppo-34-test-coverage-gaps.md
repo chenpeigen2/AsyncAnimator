@@ -23,7 +23,7 @@
 | lib 测试 | 方法数 | 测试目标（lib） | OPPO 原厂对应 | 文件:行（OPPO） |
 |---|---|---|---|---|
 | `AnimationHandlerTest.kt` | 5 | `core/anim/AnimationHandler.kt` | `MultiDynamicAnimation` 间接挂的 `android.animation.AnimationHandler` | 系统框架（AndroidX），OPPO 只调用方在 `MultiDynamicAnimation.java:21,127,152` |
-| `AnimationControllerTest.kt` | 9 | `controller/AnimationController.kt` + `AnimationState.kt` | `AnimationController`（含 12 状态 enum + `addRecentsAnim` 转移表 + 3 个 `TaskStateChangeTimeOutListener`） | `com/oplus/quickstep/utils/AnimationController.java:58,103,471,508` |
+| `AnimationControllerTest.kt` | 9 | `control/AnimationController.kt` + `AnimationState.kt` | `AnimationController`（含 12 状态 enum + `addRecentsAnim` 转移表 + 3 个 `TaskStateChangeTimeOutListener`） | `com/oplus/quickstep/utils/AnimationController.java:58,103,471,508` |
 | `AnimationSeqHelperTest.kt` | 7（1 `@Ignore`） | `seq/AnimationSeqHelper.kt` + `seq/AnimSeqTimeStamp.kt` | `AnimationSeqHelper` + `AnimSeqTimeStamp`（systemui shared） | `com/oplus/quickstep/utils/AnimationSeqHelper.java:30-37` + `com/android/systemui/shared/system/AnimSeqTimeStamp.java:8-148` |
 
 ### 1.2 被测试的 lib 类 vs 未被测试的 lib 类
@@ -35,13 +35,13 @@
 | `AnimationController.kt` | ✅ 9 个 | 257 | 状态机 + 3 listener + 决策树 |
 | `AnimationSeqHelper.kt` | ✅ 7 个（1 ignore） | 89 | seqId 自增 + 500/300ms 时间窗 + Handler 延迟 |
 | `AnimSeqTimeStamp.kt` | ⚠️ 间接 2 个 | 80 | 4 字段时间戳（通过 `AnimationSeqHelperTest.@Before resetAllForTest` 触达） |
-| `DefaultAnimationController.kt` | ❌ | 87 | no-op 基类（review 03 已论证） |
+| `DefaultAnimationController.kt` | ❌ | 86 | no-op 基类（review 03 已论证） |
 | `DefaultAnimationSeqHelper.kt` | ❌ | 22 | no-op 基类 |
 | `CustomRectFSpringAnim.kt` | ❌ | 17 | 仅 `AnimType` 句柄，被 `AnimationControllerTest` 当作入参 |
 | `TaskStateChangeTimeOutListener.kt` | ❌ | 56 | 间接由 `testThreeTimeoutListenersIndependent` 触达构造，未触发 timeout 实际执行 |
 | `ScheduledTickScheduler.kt` / `TickScheduler.kt` | ❌ | — | 帧调度器，被 `AnimationHandlerTest` 当作入参 |
 | `OnAnimStateChangeListener.kt` | ❌ | 5 | `typealias` lambda 类型，间接通过 `testAddRecentsAnimTriggersClose` 触达 |
-| `OplusAnimManager.kt` | ❌ | 60 | 单例工厂，未被测试 |
+| `OplusAnimManager.kt` | ❌ | 66 | 单例工厂，未被测试 |
 | `RemoteAnimationFactory.kt` | ❌ | — | 入参类型，未被测试 |
 
 ### 1.3 OPPO 关键类在 lib 中"消失" / "被简化"一览
@@ -51,9 +51,9 @@
 | `MultiDynamicAnimation` | `com/android/quickstep/util/animation/MultiDynamicAnimation.java:21` | ❌ 不存在 | 165 行核心弹簧多体协调器；0 测试覆盖 |
 | `SpringHolder` | `com/android/quickstep/util/animation/SpringHolder.java:1` | ❌ 不存在 | 与 MultiDynamicAnimation 绑定；lib 用 `SpringAnimation` AndroidX 直接替代 |
 | `TaskStateChangeTimeOutListener`（原版） | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209` | ⚠️ 重写为 56 行简化版 | 砍掉 `BaseTaskStateChangeListener` 全局总线 + 3 个回调方法 |
-| `AnimationSeqHelper`（原版） | `com/oplus/quickstep/utils/AnimationSeqHelper.java:30-37` | ⚠️ 重写为 89 行 | 砍掉 `OplusAnimManager.supportInterruption()` 守门 + `MAX_GO_NORMAL_DELAY_TIME = 200` 常量 |
+| `AnimationSeqHelper`（原版） | `com/oplus/quickstep/utils/AnimationSeqHelper.java:30-37` | ⚠️ 重写为 105 行 | 砍掉 `OplusAnimManager.supportInterruption()` 守门 + `MAX_GO_NORMAL_DELAY_TIME = 200` 常量 |
 | `AnimSeqTimeStamp`（原版） | `com/android/systemui/shared/system/AnimSeqTimeStamp.java:8-148` | ⚠️ 重写为 80 行 | 砍掉 `synchronized` 全方法锁 → 改 `@Volatile` 字段；`resetLast*` 由 4 个独立方法合成 `resetAllForTest()` |
-| `AnimationController`（原版） | `com/oplus/quickstep/utils/AnimationController.java:58,993 行` | ⚠️ 重写为 257 行 | 砍掉 13 个状态字段（`mForbidSwipeUpWhileStartingLandApp` 等）、`AnonymousClass1` 监听、`OplusAnimManager.getMultiAppAnimMergeHelper()`、`mHandler.sendEmptyMessageDelayed(101, 600L)` 触摸释放、9 个 `WhenMappings.$EnumSwitchMapping$0` 入口 → 简化为 5 个 `when` 字面量 |
+| `AnimationController`（原版） | `com/oplus/quickstep/utils/AnimationController.java:58,993 行` | ⚠️ 重写为 259 行 | 砍掉 13 个状态字段（`mForbidSwipeUpWhileStartingLandApp` 等）、`AnonymousClass1` 监听、`OplusAnimManager.getMultiAppAnimMergeHelper()`、`mHandler.sendEmptyMessageDelayed(101, 600L)` 触摸释放、9 个 `WhenMappings.$EnumSwitchMapping$0` 入口 → 简化为 5 个 `when` 字面量 |
 
 ---
 
@@ -256,37 +256,54 @@
 
 **总补全工作量 ~220 行**（折合约 5–6 个工作小时）；最小可发布集合 = A1 + A5 = **~95 行**。
 
-## 复核记录（2026-09-09）
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+**复核方法**：逐条读取 `lib/src/test/` 3 个测试文件（21 @Test，1 @Ignore）、`lib/src/main/` 源码，不信任已有标记。
 
-本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+### 测试实测验证
+| 测试文件 | @Test 数 | @Ignore 数 | 文档描述 | 一致 |
+|---|---|---|---|---|
+| control/AnimationControllerTest.kt | 9 | 0 | 9 | ✅ |
+| core/AnimationHandlerTest.kt | 5 | 0 | 5 | ✅ |
+| seq/AnimationSeqHelperTest.kt | 7 | 1 | 7（1 @Ignore） | ✅ |
+| **总计** | **21** | **1** | **21（1 @Ignore）** | ✅ |
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
-## 批次 6 逐条复核（2026-09-09 / 子代理逐项）
+### 路径/行数修正
+| 修正项 | 旧值 | 新值 |
+|---|---|---|
+| controller/ → control/ | controller/ | control/ |
+| feature/ → manager/ | feature/ | manager/ |
+| async/ → thread/ | async/ | thread/ |
+| AnimationController 行数 | 257 | 259 |
+| AnimationSeqHelper 行数 | 89 | 105 |
+| DefaultAnimationController 行数 | 87 | 86 |
+| OplusAnimManager 行数 | 60 | 66 |
 
-| 条目 | 判定 |
-|---|---|
-| 3.1 MultiDynamicAnimation 未移植 | ✔️保持简化（AndroidX 单弹簧既定替代） |
-| 3.2 12 状态 × 4 转移位覆盖 1/9 | ⚠️未修复（A1 未补） |
-| 3.3 checkAllAnimationFinished 端分支 | ✅已修复（cdd125e+60bd048；NPE 论述不成立；A2 测试未补） |
-| 3.4 TaskStateChangeTimeOutListener 全局事件总线 | ⚠️未修复（doc 03 §3-d 同判） |
-| 3.5 AnimSeqTimeStamp @Volatile vs synchronized | ✔️保持简化（无跨字段不变式） |
-| 3.6 testCallbackReturnsTrueEndsAnimation 名不符 | ⚠️未修复（A4 未补） |
-| 3.7 canFinishRecent 缺 feature 闸门测试 | ⚠️未修复（A6 未补） |
-| 3.8 delayStartActivityIfNeed 决策树 0 覆盖 | ⚠️未修复（A3 未补） |
-| 3.9 lastRecentStartTime/lastLaunchTaskTime 0 覆盖 | ⚠️未修复（A7 未补） |
-| 3.10 MAX_GO_NORMAL_DELAY_TIME 未移植 | ✔️保持简化 |
-| 3.11 LogUtils.i 全砍 | ✔️保持简化 |
-| 3.12 Intrinsics.checkNotNullParameter 砍掉 | ✔️保持简化 |
-| 3.13 MESSAGE_RELEASE_TOUCH 定时器砍掉 | ✔️保持简化 |
-| A1 addRecentsAnim 9 转移位全枚举测试 | ⚠️未修复（未补 ~70 行） |
-| A2 checkAllAnimationFinished end 单测 | ⚠️未修复（未补 ~12 行；底层已 ✅） |
-| A3 delayStartActivityIfNeed 决策树测试 | ⚠️未修复（未补 ~40 行） |
-| A4 AnimationHandler 真驱动一帧 | ⚠️未修复（未补 ~6 行） |
-| A5 TaskStateChangeTimeOutListener 单测 | ⚠️未修复（未补 ~25 行；P0） |
-| A6 canFinishRecent/canInterceptGesture 边界测试 | ⚠️未修复（未补 ~20 行） |
-| A7 AnimSeqTimeStamp reset 独立性 | ⚠️未修复（未补 ~15 行） |
-| A8 AnimSeqTimeStamp 并发 stress | ⚠️未修复（未补 ~30 行） |
-| 4.2-1..6 保持简化 6 项 | ✔️保持简化 |
+### 逐条状态复核（13 条风险 + 8 条建议 + 6 条保持简化）
+
+| 条目 | 原标记 | 复核 | 修正 |
+|---|---|---|---|
+| 3.1 MultiDynamicAnimation 未移植 | ✔️保持简化 | ✔️ AndroidX 单弹簧既定替代 | 无 |
+| 3.2 12 状态转移覆盖 1/9 | ⚠️未修复 | ⚠️ testAddRecentsAnimTriggersClose 仅测 NONE→CLOSE | 无 |
+| 3.3 checkAllAnimationFinished | ✅已修复 | ✅ `?.invoke()` 安全调用（control/AnimationController.kt:123-124） | 无 |
+| 3.4 TaskStateChangeTimeOutListener 总线 | ⚠️未修复 | ⚠️ control/TaskStateChangeTimeOutListener.kt 仅 timeout 兜底 | 无 |
+| 3.5 AnimSeqTimeStamp @Volatile | ✔️保持简化 | ✔️ 无跨字段不变式 | 无 |
+| 3.6 testCallbackReturnsTrueEndsAnimation | ⚠️未修复 | ⚠️ 仅断 callbackSize==1，未驱动帧 | 无 |
+| 3.7 canFinishRecent feature 闸门 | ⚠️未修复 | ⚠️ seq/AnimationSeqHelper.kt:42 `gap > MAX_DELAY_TIME` 无条件 | 无 |
+| 3.8 delayStartActivityIfNeed 0 覆盖 | ⚠️未修复 | ⚠️ AnimationControllerTest 无该方法测试 | 无 |
+| 3.9 lastRecentStartTime/lastLaunchTaskTime | ⚠️未修复 | ⚠️ 字段存在但无业务消费者 | 无 |
+| 3.10 MAX_GO_NORMAL_DELAY_TIME | ✔️保持简化 | ✔️ lib 无 canGoNormalRecent API | 无 |
+| 3.11 LogUtils.i 全砍 | ✔️保持简化 | ✔️ demo 用 Trace | 无 |
+| 3.12 checkNotNullParameter | ✔️保持简化 | ✔️ Kotlin 非空类型替代 | 无 |
+| 3.13 MESSAGE_RELEASE_TOUCH | ✔️保持简化 | ✔️ 手势层有意简化 | 无 |
+| A1 9 转移位测试 | ⚠️未修复 | ⚠️ 未补 | 无 |
+| A2 checkAllAnimationFinished 测试 | ⚠️未修复 | ⚠️ 底层已✅但测试未补 | 无 |
+| A3 delayStartActivityIfNeed 测试 | ⚠️未修复 | ⚠️ 未补 | 无 |
+| A4 AnimationHandler 真驱动 | ⚠️未修复 | ⚠️ 未补 | 无 |
+| A5 TaskStateChangeTimeOutListener 单测 | ⚠️未修复 | ⚠️ P0 未补 | 无 |
+| A6 canFinishRecent 边界测试 | ⚠️未修复 | ⚠️ 未补 | 无 |
+| A7 AnimSeqTimeStamp reset 独立性 | ⚠️未修复 | ⚠️ 未补 | 无 |
+| A8 AnimSeqTimeStamp 并发 stress | ⚠️未修复 | ⚠️ 未补 | 无 |
+| 4.2-1..6 保持简化 | ✔️保持简化 | ✔️ 全部确认 | 无 |
+
+**总结**：21 条目原标记全部正确。测试数 21/@Ignore 1 与实际一致。路径已更新。行数修正 4 处。

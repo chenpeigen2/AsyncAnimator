@@ -1,7 +1,7 @@
 # 区域 09 对比 Review：生命周期与资源回收
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/`（async、animthread、controller 子包 + 顶层监听器）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/`（core/thread/anim/playback/seq/control/manager 子包，e62dbff 包重组后）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24 JADX 反编译）
 >
 > 原厂文件经 DLP 加密（`%TSD-Header`），全部证据通过 Grep（ripgrep 明文通道）取得，行号为 JADX 反编译文本行号。
@@ -16,16 +16,16 @@
 
 | lib 类 | 原厂类 | 关键证据（原厂 文件:行） |
 |---|---|---|
-| `async/AsyncValueAnimator.kt` | `com.android.quickstep.util.animation.AsyncValueAnimator` | `com/android/quickstep/util/animation/AsyncValueAnimator.java:24-165`（Kotlin，`classes3.dex`）；cancel 路径 `:116-127`，`mIsEnd` 门控 `:57,61,69,80` |
-| `async/AsyncAnimCallbacks.kt` | `com.android.quickstep.util.animation.AsyncAnimCallbacks` | `AsyncAnimCallbacks.java:23-172`；`getListeners()` 快照模式 `:29-32`，`removeListener` 置 null 槽 `:147-152`，`clearListeners` `:107-109`，`runOnMainThread` 走 `Utilities.postAsyncCallback` `:154-162` |
-| `async/LooperExecutor.kt`（含 `postAsync`） | `com.oplus.basecommon.thread.LooperExecutor`（+ `OplusLooperExecutor`） | `com/oplus/basecommon/thread/LooperExecutor.java:12-80`；`shutdown()` 抛 `UnsupportedOperationException` `:71-73`；`OplusLooperExecutor.java:46-71` 的 `executeBlockWait`（v4 §9.3 点名的 ANR 风险） |
-| `async/Executors.kt` | `com.oplus.basecommon.thread.Executors` + `OplusExecutors` | `Executors.java:54`（MAIN_EXECUTOR）、`:95-99`（createAndStartNewLooper）；`OplusExecutors.java:95`（ANIM_EXECUTOR static final）、`:169-171`（线程 init 回调） |
-| `animthread/AnimationControlThread.kt` | **无同名类**；对应 `OplusExecutors.ANIM_EXECUTOR` 内联创建 + init lambda | `OplusExecutors.java:95`（`createAndStartNewLooper("launcher.anim", -19, …)`）、`:169-171`（`setProvider(SfVsyncFrameCallbackProvider)` + `setUxThreadValue`）；`Executors.java:94-99` |
-| `core/anim/AnimationHandler.kt` | `androidx.core.animation.AnimationHandler`（vendored） + 框架 `android.animation.AnimationHandler`（@hide，import-only） | 详见 review 04 §1；框架版 `AnimationHandler.getInstance()` 为 ThreadLocal；vendored 版 `core/animation/AnimationHandler.java:13,158-168,204-210` |
-| `controller/AnimationController.kt`（`reset()`） | `com.oplus.quickstep.utils.AnimationController` | `com/oplus/quickstep/utils/AnimationController.java:58`（extends DefaultAnimationController）、`reset` `:811-822`、`cleanUpRecentsAnim` `:733-755` |
-| `controller/TaskStateChangeTimeOutListener.kt`（自管理超时） | `TaskStateHelper$TaskStateChangeTimeOutListener` | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209`；构造 postDelayed `:130,136`、dispose removeCallbacks `:147-154`、全局 listener 注册 `:225-231` |
+| `anim/AsyncValueAnimator.kt` | `com.android.quickstep.util.animation.AsyncValueAnimator` | `com/android/quickstep/util/animation/AsyncValueAnimator.java:24-165`（Kotlin，`classes3.dex`）；cancel 路径 `:116-127`，`mIsEnd` 门控 `:57,61,69,80` |
+| `anim/AsyncAnimCallbacks.kt` | `com.android.quickstep.util.animation.AsyncAnimCallbacks` | `AsyncAnimCallbacks.java:23-172`；`getListeners()` 快照模式 `:29-32`，`removeListener` 置 null 槽 `:147-152`，`clearListeners` `:107-109`，`runOnMainThread` 走 `Utilities.postAsyncCallback` `:154-162` |
+| `thread/LooperExecutor.kt`（含 `postAsync`） | `com.oplus.basecommon.thread.LooperExecutor`（+ `OplusLooperExecutor`） | `com/oplus/basecommon/thread/LooperExecutor.java:12-80`；`shutdown()` 抛 `UnsupportedOperationException` `:71-73`；`OplusLooperExecutor.java:46-71` 的 `executeBlockWait`（v4 §9.3 点名的 ANR 风险） |
+| `thread/Executors.kt` | `com.oplus.basecommon.thread.Executors` + `OplusExecutors` | `Executors.java:54`（MAIN_EXECUTOR）、`:95-99`（createAndStartNewLooper）；`OplusExecutors.java:95`（ANIM_EXECUTOR static final）、`:169-171`（线程 init 回调） |
+| `thread/AnimationControlThread.kt` | **无同名类**；对应 `OplusExecutors.ANIM_EXECUTOR` 内联创建 + init lambda | `OplusExecutors.java:95`（`createAndStartNewLooper("launcher.anim", -19, …)`）、`:169-171`（`setProvider(SfVsyncFrameCallbackProvider)` + `setUxThreadValue`）；`Executors.java:94-99` |
+| `core/AnimationHandler.kt` | `androidx.core.animation.AnimationHandler`（vendored） + 框架 `android.animation.AnimationHandler`（@hide，import-only） | 详见 review 04 §1；框架版 `AnimationHandler.getInstance()` 为 ThreadLocal；vendored 版 `core/animation/AnimationHandler.java:13,158-168,204-210` |
+| `control/AnimationController.kt`（`reset()`） | `com.oplus.quickstep.utils.AnimationController` | `com/oplus/quickstep/utils/AnimationController.java:58`（extends DefaultAnimationController）、`reset` `:811-822`、`cleanUpRecentsAnim` `:733-755` |
+| `control/TaskStateChangeTimeOutListener.kt`（自管理超时） | `TaskStateHelper$TaskStateChangeTimeOutListener` | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:117-209`；构造 postDelayed `:130,136`、dispose removeCallbacks `:147-154`、全局 listener 注册 `:225-231` |
 | `com/android/launcher3/LauncherAnimationRunner.kt`（类型壳） | `com.android.launcher3.LauncherAnimationRunner` | `com/android/launcher3/LauncherAnimationRunner.java`（600+ 行）；lib 仅 20 行类型壳，无 finish 三段式收尾 |
-| `core/scheduler/HandlerTickScheduler.kt`（`stop()` / 懒清空） | 框架 `android.animation.AnimationHandler` + `FrameCallbackProvider16` | `MultiDynamicAnimation.java:127,185-191` 的 `addAnimationFrameCallback` / `requestEnd`；`com/android/quickstep/util/animation/MultiDynamicAnimation.java:92-101` 的 `endAnimationInternal`（`AnimationHandler.getInstance().removeCallback(this)`） |
+| `core/ChoreographerTickScheduler.kt`（`stop()` / 空订阅自停；215ecb5 后 ScheduledTickScheduler/HandlerTickScheduler 已删） | 框架 `android.animation.AnimationHandler` + `FrameCallbackProvider16` | `MultiDynamicAnimation.java:127,185-191` 的 `addAnimationFrameCallback` / `requestEnd`；`com/android/quickstep/util/animation/MultiDynamicAnimation.java:92-101` 的 `endAnimationInternal`（`AnimationHandler.getInstance().removeCallback(this)`） |
 | （lib 无对应） | `TaskStateHelper.removeAllListener()` | `com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java:270-277`；**Activity onDestroy 集中清理的唯一显式钩子** |
 | （lib 无对应） | `AnimationRecord.sAnimationId = -1` 复位 | `com/android/launcher/Launcher.java:3832`（onDestroy 时复位进程级 animationId 单调计数） |
 | （lib 无对应） | `Launcher.onStop` 的多类资源回收 | `com/android/launcher/Launcher.java:4397-4460`；folder/stack `cancelRunningAnimations()`（`:4410, :4417`）、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags(3, false)`（`:4454`）、`AnimSeqTimeStamp.resetLastLaunchTaskTime()`（`:4457`） |
@@ -38,26 +38,26 @@
 
 | # | 设计点 | 原厂证据 | lib 证据 |
 |---|---|---|---|
-| 1 | **ANIM_EXECUTOR 进程级单例、never-quit**：static final 在类加载时实例化 HandlerThread | `OplusExecutors.java:95`（`private static final OplusLooperExecutor ANIM_EXECUTOR = new OplusLooperExecutor(...)`）；`LooperExecutor.java:71-73` 的 `shutdown()` 抛 `UnsupportedOperationException`（API 形式契约） | `AnimationControlThread.kt:81-83`（`internal val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED)`）+ `LooperExecutor.kt` 不实现 `ExecutorService`、无 `shutdown`——隐式契约（API 形式与原厂不一致，见 §C-1） |
-| 2 | **`mIsEnd` AtomicBoolean 门控：cancel/start 遇 end 即丢弃，end 用 CAS 保证只发一次** | `AsyncValueAnimator.java:61,69,80` | `AsyncValueAnimator.kt:29,33,37` |
-| 3 | **listener 懒删除**：remove 置 null 槽而非立即移除（`set(idx, null)`） | `AsyncAnimCallbacks.java:147-151` | `AsyncAnimCallbacks.kt:29-32`（`animListeners[idx] = null`） |
-| 4 | **addListener 去重** | `AsyncAnimCallbacks.java:101-103` | `AsyncAnimCallbacks.kt:26` |
-| 5 | **派发前把 `animationId` 同步进 `NullableAnimatorListenerAdapter`** | `AsyncAnimCallbacks.java:49,61,73` | `AsyncAnimCallbacks.kt:51` |
-| 6 | **listener 始终回主线程 fire**（`MAIN_EXECUTOR` + isCurrentThread 内联） | `AsyncAnimCallbacks.java:154-162`（`runOnMainThread` → `Utilities.postAsyncCallback`） | `AsyncAnimCallbacks.kt:59-62, 74-79`（`runOnMainThread` → `exec.postAsync`，已对齐 async message 派发） |
-| 7 | **`LooperExecutor.execute`：同 Looper 内联执行，否则 Handler.post** | `LooperExecutor.java:27-33` | `LooperExecutor.kt:30-33` |
-| 8 | **线程名 `"launcher.anim"`** | `OplusExecutors.java:95` | `AnimationControlThread.kt:75`（`THREAD_NAME = "launcher.anim"`） |
-| 9 | **线程 init 回调在 looper 准备好时设置帧源**（原厂换 `SfVsyncFrameCallbackProvider`，lib 装 `HandlerTickScheduler`） | `OplusExecutors.java:170`（`AnimationHandler.getInstance().setProvider(...)`） | `AnimationControlThread.kt:60-62`（`override fun onLooperPrepared()` → `AnimationHandler.installThreadScheduler(HandlerTickScheduler(...))`） |
-| 10 | **`dispatch` 派发前** `getListeners()` 快照迭代（`removeNullEntries` + `toArray`） | `AsyncAnimCallbacks.java:29-32, 81-97` | `AsyncAnimCallbacks.kt:56-59`（`removeAll { it == null }` + `filterNotNull`） |
-| 11 | **`TaskStateChangeTimeOutListener` 构造即 `postDelayed` 超时兜底、`dispose` 时 `removeCallbacks`** | `TaskStateHelper.java:134-137`（handler.postDelayed）、`:149-154`（handler.removeCallbacks + handler=null） | `TaskStateChangeTimeOutListener.kt:30-35`（init postDelayed）、`:37-39`（dispose removeCallbacks） |
-| 12 | **`MultiDynamicAnimation.endAnimationInternal` 摘 AnimationHandler 回调** | `MultiDynamicAnimation.java:94-96`（`AnimationHandler.getInstance().removeCallback(this)`） | `AnimationHandler.kt:69-76`（`removeCallback` → 置 null 槽 + listDirty）+ `:104-108`（`cleanUpList` 压缩） |
-| 13 | **`MultiDynamicAnimation` 帧末 stop-self**（回调列表空则自维持回路停） | v4 §3 路径 C：原厂框架版 AnimationHandler 通过 `onAnimationFrame` 的返回值（`return zArr[0]` = 是否还活着）让框架自停 | `HandlerTickScheduler.kt:74-78`（空则 `running = false`） |
+| 1 | **ANIM_EXECUTOR 进程级单例、never-quit**：static final 在类加载时实例化 HandlerThread | `OplusExecutors.java:95`（`private static final OplusLooperExecutor ANIM_EXECUTOR = new OplusLooperExecutor(...)`）；`LooperExecutor.java:71-73` 的 `shutdown()` 抛 `UnsupportedOperationException`（API 形式契约） | `thread/AnimationControlThread.kt:86-88`（`internal val instance: AnimationControlThread by lazy(LazyThreadSafetyMode.SYNCHRONIZED)`）+ `thread/LooperExecutor.kt:57-69` 已补 `shutdown()`/`shutdownNow()`/`awaitTermination()` 抛 `UnsupportedOperationException` + `isShutdown`/`isTerminated` 恒 false——契约已硬保（见 §C-1 / ③-1，已修复） |
+| 2 | **`mIsEnd` AtomicBoolean 门控：cancel/start 遇 end 即丢弃，end 用 CAS 保证只发一次** | `AsyncValueAnimator.java:61,69,80` | `anim/AsyncValueAnimator.kt:31,35,39` |
+| 3 | **listener 懒删除**：remove 置 null 槽而非立即移除（`set(idx, null)`） | `AsyncAnimCallbacks.java:147-151` | `anim/AsyncAnimCallbacks.kt:41-44`（`animListeners[idx] = null`） |
+| 4 | **addListener 去重** | `AsyncAnimCallbacks.java:101-103` | `anim/AsyncAnimCallbacks.kt:37-39` |
+| 5 | **派发前把 `animationId` 同步进 `NullableAnimatorListenerAdapter`** | `AsyncAnimCallbacks.java:49,61,73` | `anim/AsyncAnimCallbacks.kt:65, 86` |
+| 6 | **listener 始终回主线程 fire**（`MAIN_EXECUTOR` + isCurrentThread 内联） | `AsyncAnimCallbacks.java:154-162`（`runOnMainThread` → `Utilities.postAsyncCallback`） | `anim/AsyncAnimCallbacks.kt:97-100, 82-91`（`runOnMainThread` → `exec.postAsync`，已对齐 async message 派发） |
+| 7 | **`LooperExecutor.execute`：同 Looper 内联执行，否则 Handler.post** | `LooperExecutor.java:27-33` | `thread/LooperExecutor.kt:31-34` |
+| 8 | **线程名 `"launcher.anim"`** | `OplusExecutors.java:95` | `thread/AnimationControlThread.kt:76`（`THREAD_NAME = "launcher.anim"`） |
+| 9 | **线程 init 回调在 looper 准备好时设置帧源**（原厂换 `SfVsyncFrameCallbackProvider`，lib 装 `ChoreographerTickScheduler`） | `OplusExecutors.java:170`（`AnimationHandler.getInstance().setProvider(...)`） | `thread/AnimationControlThread.kt:63-71`（`override fun onLooperPrepared()` → `AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())`；215ecb5 后帧源为公开 Choreographer 真 VSYNC） |
+| 10 | **`dispatch` 派发前** `getListeners()` 快照迭代（`removeNullEntries` + `toArray`） | `AsyncAnimCallbacks.java:29-32, 81-97` | `anim/AsyncAnimCallbacks.kt:76-79`（`removeAll { it == null }` + `filterNotNull`） |
+| 11 | **`TaskStateChangeTimeOutListener` 构造即 `postDelayed` 超时兜底、`dispose` 时 `removeCallbacks`** | `TaskStateHelper.java:134-137`（handler.postDelayed）、`:149-154`（handler.removeCallbacks + handler=null） | `control/TaskStateChangeTimeOutListener.kt:30-32`（init postDelayed）、`:41-43`（dispose removeCallbacks） |
+| 12 | **`MultiDynamicAnimation.endAnimationInternal` 摘 AnimationHandler 回调** | `MultiDynamicAnimation.java:94-96`（`AnimationHandler.getInstance().removeCallback(this)`） | `core/AnimationHandler.kt:64-71`（`removeCallback` → 置 null 槽 + listDirty）+ `:105-109`（`cleanUpList` 压缩） |
+| 13 | **`MultiDynamicAnimation` 帧末 stop-self**（回调列表空则自维持回路停） | v4 §3 路径 C：原厂框架版 AnimationHandler 通过 `onAnimationFrame` 的返回值（`return zArr[0]` = 是否还活着）让框架自停 | `core/ChoreographerTickScheduler.kt:41-45`（空则 `running = false`，停止订阅 vsync） |
 
 ### B. 有意简化（lib 注释/文档中明示）
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| 1 | `SfVsyncFrameCallbackProvider` → `HandlerTickScheduler`（Looper postDelayed 自走帧循环） | `OplusExecutors.java:169-171` | 框架 @hide API；review 01 §B-1 已声明 |
-| 2 | `LauncherBooster.getCpu().setUxThreadValue(...)` UX 线程注册未移植 | `OplusExecutors.java:171` | OPPO 私有；退化为 `Process.setThreadPriority` 兜底（`AnimationControlThread.kt:65-66`） |
+| 1 | `SfVsyncFrameCallbackProvider` → `ChoreographerTickScheduler`（公开 Choreographer 真 VSYNC；215ecb5 删 HandlerTickScheduler/ScheduledTickScheduler） | `OplusExecutors.java:169-171` | 框架 @hide API；review 01 §B-1 已声明；dbde195/215ecb5 已升级为公开 Choreographer |
+| 2 | `LauncherBooster.getCpu().setUxThreadValue(...)` UX 线程注册未移植 | `OplusExecutors.java:171` | OPPO 私有；退化为 `Process.setThreadPriority` 兜底（`thread/AnimationControlThread.kt:70`） |
 | 3 | `OplusLooperExecutor` 四扩展（`executeAtFront` / `executeWithUx` / `executeBlockWait` / `executeDelay`）未复刻 | `OplusLooperExecutor.java:38-103` | `executeBlockWait` 是 v4 §9.3 点名的主线程 5s 硬等 ANR 风险；其他三个依赖 LauncherBooster 私有 API；review 01 §B-4 |
 | 4 | `Executors` 只保留 `MAIN_EXECUTOR` + `ANIM_CONTROL_EXECUTOR`；事务/加载/线程池/affinity 全砍 | `Executors.java:18-99`、UAF 绑核 2001/2003/2005/2007 | 与动画线程主题无关；review 01 §B-3 |
 | 5 | `LauncherAnimationRunner` 砍成 `RemoteAnimationTarget` 类型壳 | `com/android/launcher3/LauncherAnimationRunner.java` 600+ 行 | review 03 §2.2；类型壳用于 `appLaunchAnimStartOrEnd` 签名 |
@@ -69,14 +69,14 @@
 
 | # | 遗漏点 | 原厂证据 | 影响 |
 |---|---|---|---|
-| 1 | **`LooperExecutor` 不再 `extends AbstractExecutorService`，且无 `shutdown()` 契约** | `LooperExecutor.java:12`（`extends AbstractExecutorService`）、`:71-73`（`shutdown() throws UnsupportedOperationException`）、`:77-79`（`shutdownNow() throws UnsupportedOperationException`） | lib `LooperExecutor.kt` 不实现任何 `ExecutorService` 方法，因此 `OplusLooperExecutor` 的"永不 quit"语义被弱化为"未暴露 quit 入口"。demo 若按 AOSP 习惯调用 `ANIM_CONTROL_EXECUTOR.shutdown()`，将得到 `AbstractMethodError` 而非 `UnsupportedOperationException`——错误信息更难诊断，但实际效果相同（仍是永不 quit） |
-| 2 | **`LooperExecutor` 缺 `getLooper()` / `getHandler()` / `getThread()` / `setThreadPriority()` 公开访问器** | `LooperExecutor.java:35-45, 65-67` | 原厂 `AsyncValueAnimator.cancel()` 用 `mAnimLooperExecutor.getLooper().isCurrentThread()`（`AsyncValueAnimator.java:117-127`），等价于"判线程 + post 纠偏"。lib 改为 `executor.isCurrentThread`（`AsyncValueAnimator.kt:43`），行为一致但**调用方若要从 executor 拿 Looper 或调 setThreadPriority 则无入口** |
+| 1 | **`LooperExecutor` 不再 `extends AbstractExecutorService`，且无 `shutdown()` 契约** | `LooperExecutor.java:12`（`extends AbstractExecutorService`）、`:71-73`（`shutdown() throws UnsupportedOperationException`）、`:77-79`（`shutdownNow() throws UnsupportedOperationException`） | **已修复**：`thread/LooperExecutor.kt:57-69` 补 `shutdown()`/`shutdownNow()`/`awaitTermination()` 抛 `UnsupportedOperationException`（标 `@Deprecated`）+ `isShutdown`/`isTerminated` 恒 false——never-quit 契约已硬保，调用方得到与原厂一致的明确异常。本条遗漏消除 |
+| 2 | **`LooperExecutor` 缺 `getLooper()` / `getHandler()` / `getThread()` / `setThreadPriority()` 公开访问器** | `LooperExecutor.java:35-45, 65-67` | 原厂 `AsyncValueAnimator.cancel()` 用 `mAnimLooperExecutor.getLooper().isCurrentThread()`（`AsyncValueAnimator.java:117-127`），等价于"判线程 + post 纠偏"。lib 改为 `executor.isCurrentThread`（`anim/AsyncValueAnimator.kt:44`），行为一致但**调用方若要从 executor 拿 Looper 或调 setThreadPriority 则无入口** |
 | 3 | **`AsyncAnimCallbacks` listener 容器是 `ArrayList<NullableAnimatorListener>`，add/remove 走 synchronized / 强引用** | `AsyncAnimCallbacks.java:27`（`private final ArrayList<NullableAnimatorListener> mAnimListeners = new ArrayList<>();`） | lib `mutableListOf<NullableAnimatorListener?>()` 同等语义——业务 listener 强引用业务对象，**业务 listener 强引用 View 即漏 View**。原厂 v4 §9.5 指出 WeakReference/SoftReference 持有 factory 会造成动画瞬结、窗口跳变（`LauncherAnimationRunner.java:305,419-451`）；lib 与原厂**面临同一泄漏形态**——listener 自己泄漏 View |
-| 4 | **`TaskStateChangeTimeOutListener` 的全局注册、事件驱动分发、超时-事件 OR 语义均缺失** | `TaskStateHelper.java:117-209`（extends `BaseTaskStateChangeListener` implements `TaskStateChangeListener`，由 `TaskStateHelper.addGlobalTaskStateChangeListener` 注册到 `globalListeners` CopyOnWriteArrayList `:31`）；事件通过 taskListener 的 binder 回调驱动；事件/超时任一先到都会 `dispose() + option.run()`（`:177-204`） | lib `TaskStateChangeTimeOutListener.kt` 只是被动回调类，构造 postDelayed + dispose removeCallbacks 语义保留，但**没人调 onTimeOut**（无 system_server task 事件源）——demo 演示的就是"超时兜底"，回调方主动触发（`DemoBaseActivity` 通过 `log("timeout")`），与原厂的"系统事件先到先发、超时兜底"是**字面同形不同语义**。Activity onDestroy 时 lib 侧**没有任何机制通知**这些 listener 提前 dispose（除 `delayStartActivityIfNeed` 收尾段 `:218-231` 的 dispose） |
-| 5 | **`TaskStateHelper.removeAllListener()` 全局清理钩子缺失** | `TaskStateHelper.java:270-277`（遍历 globalListeners，对每个调 `onTaskListenerReleased()` + `globalListeners.clear()`）；由 `Launcher.onDestroy` 调（`Launcher.java:3846`） | lib 无对应集中清理。`AnimationController.reset()`（`:155-167`）只清 controller 自身字段，**不 dispose 三种 TaskStateChangeTimeOutListener**（仅 `delayStartActivityIfNeed` 收尾段 `:218-231` 在条件不命中时 dispose）。Demo 反复进出场次时 listener 残留，靠 GC 回收 |
+| 4 | **`TaskStateChangeTimeOutListener` 的全局注册、事件驱动分发、超时-事件 OR 语义均缺失** | `TaskStateHelper.java:117-209`（extends `BaseTaskStateChangeListener` implements `TaskStateChangeListener`，由 `TaskStateHelper.addGlobalTaskStateChangeListener` 注册到 `globalListeners` CopyOnWriteArrayList `:31`）；事件通过 taskListener 的 binder 回调驱动；事件/超时任一先到都会 `dispose() + option.run()`（`:177-204`） | lib `TaskStateChangeTimeOutListener.kt` 只是被动回调类，构造 postDelayed + dispose removeCallbacks 语义保留，但**没人调 onTimeOut**（无 system_server task 事件源）——demo 演示的就是"超时兜底"，回调方主动触发（`Demo6StateMachineActivity.kt:268-294` 手工 `onTimeOut(...)` + `log("超时触发: ...")`），与原厂的"系统事件先到先发、超时兜底"是**字面同形不同语义**。Activity onDestroy 时 lib 侧**没有任何机制通知**这些 listener 提前 dispose（除 `delayStartActivityIfNeed` 收尾段 `AnimationController.kt:244-249` 的 dispose） |
+| 5 | **`TaskStateHelper.removeAllListener()` 全局清理钩子缺失** | `TaskStateHelper.java:270-277`（遍历 globalListeners，对每个调 `onTaskListenerReleased()` + `globalListeners.clear()`）；由 `Launcher.onDestroy` 调（`Launcher.java:3846`） | lib 无对应集中清理。`control/AnimationController.reset()`（`:134-148`）只清 controller 自身字段，**不 dispose 三种 TaskStateChangeTimeOutListener**（仅 `delayStartActivityIfNeed` 收尾段 `:244-249` 在条件不命中时 dispose）。Demo 反复进出场次时 listener 残留，靠 GC 回收 |
 | 6 | **`Launcher.onDestroy` 的多类清理缺失**（folder/stack `cancelRunningAnimations()`、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags`、`AnimSeqTimeStamp.resetLastLaunchTaskTime()`、`AnimationRecord.sAnimationId = -1`、`TaskStateHelper.removeAllListener()`） | `Launcher.java:3829-3847, 4397-4457` | lib `DemoBaseActivity` 无任何 `onDestroy`；demo 进出场次依赖 framework 默认行为（View detach + GC）。**demo 自身的 animator / listener 没有任何集中收尾路径**——`AsyncAnimCallbacks` 实例随 Activity 一起 GC，`AnimationControlThread.instance` 是进程级单例永远存在 |
 | 7 | **`AnimationRecord.sAnimationId = -1` 复位缺失** | `Launcher.java:3832`（onDestroy 时复位进程级 animationId 单调计数）；`AnimationRecord.java:63-67`（sAnimationId 是 AtomicInteger，单调 ++） | lib 完全没复刻 `AnimationRecord`。demo 反复进出场次不会污染 animationId 计数（因为根本没这个机制），但同时**也失去了"复用上次动画的 IconLayer"语义**——属行为分歧但 demo 场景无关 |
-| 8 | **`AsyncAnimCallbacks.clearListeners()` 公开但无调用方** | `AsyncAnimCallbacks.java:107-109`（`mAnimListeners.clear()`，公开方法） | lib `AsyncAnimCallbacks.kt:34` 同样提供 `clearListeners()` 内部方法——demo 无调用方，纯粹是公共 API 对齐 |
+| 8 | **`AsyncAnimCallbacks.clearListeners()` 公开但无调用方** | `AsyncAnimCallbacks.java:107-109`（`mAnimListeners.clear()`，公开方法） | lib `anim/AsyncAnimCallbacks.kt:46` 同样提供 `clearListeners()` 内部方法——demo 无调用方，纯粹是公共 API 对齐 |
 | 9 | **`TaskStateHelper.removeListenerAllOfList` / `removePendingLaunchCookieListener` 等局部摘除** | `TaskStateHelper.java:286-307` | lib 无对应机制；`TaskStateChangeTimeOutListener.dispose` 只摘自己的 callback |
 | 10 | **`LooperExecutor.postDelayed`（非 postAsync）的全局可用入口缺失** | `LooperExecutor.java:61-63`（`postDelayed` 公开方法） | lib `LooperExecutor` 没暴露 `postDelayed`；仅 `execute / post / postAsync` 三个动词。`AnimationSeqHelper` 类比场景无延迟任务需求——属遗漏但 demo 不可见 |
 | 11 | **`TaskStateChangeTimeOutListener.dispose` 不 dispose `option` 自身引用** | 原厂 `TaskStateHelper.java:147-154` 的 dispose 把 `handler = null` 但**未清 option 引用**——option 是 runnable 闭包可能持 View | lib `TaskStateChangeTimeOutListener.kt:37-39` 同样未清 option 引用——`option` 闭包被 class 字段持有直到 GC——与原厂一致 |
@@ -88,8 +88,8 @@
 
 按风险从高到低：
 
-> **⚠️未修复（约 2 行 shutdown() 抛 UnsupportedOperationException 未补——纯 API 形式契约；注：lib LooperExecutor 不实现 ExecutorService，按 AOSP 习惯调用实为编译错误而非 doc 所称 AbstractMethodError，风险面更小）**
-1. **【bug 级】ANIM_EXECUTOR never-quit 契约丢失（API 形式）**（C-1）。原厂 `LooperExecutor extends AbstractExecutorService` 且 `shutdown()` 抛 `UnsupportedOperationException`（`LooperExecutor.java:12,71-73`），调用方写 `ANIM_EXECUTOR.shutdown()` 会得到明确的"不支持"异常；lib 的 `LooperExecutor` 不实现任何 `ExecutorService` 方法，按 AOSP 习惯调用 `shutdown()`` 得到 `AbstractMethodError`——异常类型错误诊断更困难。实际行为都是"永不 quit"，但若未来 lib 增加 `shutdown()` 实现（且错误地让它实际生效），原厂的契约会抛异常挡掉，lib 则会**静默销毁 launcher.anim HandlerThread**，后续 `start()` 调用将 NPE。**建议：补 `shutdown()` 抛 `UnsupportedOperationException` + 标 `@Deprecated`，硬保契约**。
+> **✅已修复（`thread/LooperExecutor.kt:57-69` 已补 `shutdown()`/`shutdownNow()`/`awaitTermination()` 抛 `UnsupportedOperationException`（标 `@Deprecated`）+ `isShutdown`/`isTerminated` 恒 false——never-quit 契约已硬保）**
+1. **【bug 级】ANIM_EXECUTOR never-quit 契约丢失（API 形式）**（C-1）——**已修复**。原厂 `LooperExecutor extends AbstractExecutorService` 且 `shutdown()` 抛 `UnsupportedOperationException`（`LooperExecutor.java:12,71-73`）；lib `thread/LooperExecutor.kt:57-69` 现已补齐 `shutdown()`/`shutdownNow()`/`awaitTermination()` 抛 `UnsupportedOperationException`（标 `@Deprecated`），外加 `isShutdown`/`isTerminated` 恒 false 两个只读属性。调用方按 AOSP 习惯写 `shutdown()` 得到与原厂一致的明确异常，契约已硬保。
 
 > **✔️保持简化（demo 无 system_server 任务事件源；"超时兜底 + 手工 dispose"已足够演示——§B-8 / 4.2-1 明示保留）**
 2. **【bug 级】`TaskStateChangeTimeOutListener` 是无主孤儿**：原厂该 listener 通过 `addGlobalTaskStateChangeListener` 注册到 `TaskStateHelper.globalListeners`（`CopyOnWriteArrayList`，`:31`），由 system_server 任务事件回调驱动 `onTimeOut`，并由 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 集中 dispose。lib 的 listener 是裸 `class`，构造 postDelayed + dispose 配对但**无人调用构造**——demo 演示的全是手工 `registerSpecialSceneExitTimeOutListener(1500L)` + 手工 `.onTimeOut(...)`。原厂的语义是"事件/超时 OR 触发，Activity onDestroy 兜底 dispose"；lib 是"构造即挂超时、谁 dispose 谁负责"。**两种语义的鸿沟在于"事件先到先发"——lib 完全没有事件源**，demo 演示价值有限。
@@ -101,15 +101,15 @@
 4. **【高】`Launcher.onStop` / `onDestroy` 多类动画 cancel 缺失**（C-6）。原厂在 `onStop` 里 folder/stack `cancelRunningAnimations()`（`Launcher.java:4410, :4417`），`onDestroy` 里复位 `AnimationRecord.sAnimationId = -1`、调 `removeAllListener`、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags(3, false)`（`:4454`）、`AnimSeqTimeStamp.resetLastLaunchTaskTime()`（`:4457`）。lib 无对应路径——demo 退场时动画继续 tick 直到 `cancel` 显式调用或自然结束。**演示场景下若 `AsyncValueAnimator.start()` 后用户立即退出 Activity，未 cancel 的 animator 仍在 ANIM 线程跑直到 end**，本身无害（ANIM_EXECUTOR 永远活），但若业务 listener 持有 Activity View，会形成 1~2 帧的"已 detach View 仍收到回调"的幽灵引用窗口——**这是 View 泄漏的间接路径**。
 
 > **✔️保持简化（null 槽 + 快照派发与原厂同构；clearListeners 调用点双方都缺——doc 自认非 lib 独有）**
-5. **【中】listener 强引用 View 的泄漏形态未变**（C-3）。原厂 AsyncAnimCallbacks 用 `ArrayList` 强持 `NullableAnimatorListener`，lib 用 `mutableListOf`——本质相同。`AsyncAnimCallbacks.clearListeners` 是公开 API（`AsyncAnimCallbacks.java:107-109`、lib `AsyncAnimCallbacks.kt:34`），但**调用方** `IconLayerUpdater` / `CustomRectFSpringAnim` 都没有显式调它。动画自然结束后 listener 不被清——`ArrayList` 里持续持有（null 槽会增长；lib 的 `removeAll { it == null }` 在 `getListeners` 调用时才压缩，原厂 `removeNullEntries` 同样惰性压缩）。**长生命周期进程 + 短生命周期 listener**的场景下，list 大小线性增长（最坏 O(n)，n = 历次 addListener 累计）。这点上原厂与 lib 都一样，**这是个**：
+5. **【中】listener 强引用 View 的泄漏形态未变**（C-3）。原厂 AsyncAnimCallbacks 用 `ArrayList` 强持 `NullableAnimatorListener`，lib 用 `mutableListOf`——本质相同。`AsyncAnimCallbacks.clearListeners` 是公开 API（`AsyncAnimCallbacks.java:107-109`、lib `anim/AsyncAnimCallbacks.kt:46`），但**调用方** `IconLayerUpdater` / `CustomRectFSpringAnim` 都没有显式调它。动画自然结束后 listener 不被清——`ArrayList` 里持续持有（null 槽会增长；lib 的 `removeAll { it == null }` 在 `getListeners` 调用时才压缩，原厂 `removeNullEntries` 同样惰性压缩）。**长生命周期进程 + 短生命周期 listener**的场景下，list 大小线性增长（最坏 O(n)，n = 历次 addListener 累计）。这点上原厂与 lib 都一样，**这是个**：
 
    - 原厂已知设计取舍：v4 §9.5 提到 WeakReference 持有 factory 会造成动画瞬结、窗口跳变（`LauncherAnimationRunner.java:305,419-451`），是 OPPO 自己在线上踩过的坑。所以**保留 null 槽 + 快照派发是正确的**，但调用方需要在合理时机 `clearListeners`——这点两边都缺失。
 
 > **⚠️未修复（随 MultiDynamicAnimation/CustomRectFSpringAnim 回移时对齐多帧时序；当前 lib 无该链路——同 review 01 §③-5 占位缺口）**
-6. **【中】cancel 是"下一帧生效"的语义缺失标注**（C-12）。`MultiDynamicAnimation.requestEnd(true)` 是置 `mCancelRequest` 标志，下一次 `doAnimationFrame` 帧末才 `endAnimationInternal`（`MultiDynamicAnimation.java:168-176`）。`endAnimationInternal` 摘 AnimationHandler 回调（`:95`）、跑 `mEndListeners` 派发（`:97-101`）。lib 的 `AnimationHandler.removeCallback` 是置 null 槽 + listDirty=true，**派发循环下一次 doAnimationFrame 时跳过 null**（`AnimationHandler.kt:94-101`），帧末 `cleanUpList` 压缩（`:104-108`）——单回调摘除语义一致。但**原厂多帧时序**（cancel → 帧末 → end 派发 → AsyncAnimCallbacks 走 marshal → 主线程回调 → 业务继续）在 lib 上**单帧即生效**（cancel → listDirty → 下一帧不再分发 → 下一帧清理），回调时机更激进。**业务如果在 cancel 后立刻假设"已结束"做副作用**，lib 比原厂更早触发；反之若业务等下一帧验证 "end 已发"，lib 比原厂更晚可见。**两个方向都潜在偏差，需逐用例确认**。
+6. **【中】cancel 是"下一帧生效"的语义缺失标注**（C-12）。`MultiDynamicAnimation.requestEnd(true)` 是置 `mCancelRequest` 标志，下一次 `doAnimationFrame` 帧末才 `endAnimationInternal`（`MultiDynamicAnimation.java:168-176`）。`endAnimationInternal` 摘 AnimationHandler 回调（`:95`）、跑 `mEndListeners` 派发（`:97-101`）。lib 的 `AnimationHandler.removeCallback` 是置 null 槽 + listDirty=true，**派发循环下一次 doAnimationFrame 时跳过 null**（`core/AnimationHandler.kt:92-102`），帧末 `cleanUpList` 压缩（`:105-109`）——单回调摘除语义一致。但**原厂多帧时序**（cancel → 帧末 → end 派发 → AsyncAnimCallbacks 走 marshal → 主线程回调 → 业务继续）在 lib 上**单帧即生效**（cancel → listDirty → 下一帧不再分发 → 下一帧清理），回调时机更激进。**业务如果在 cancel 后立刻假设"已结束"做副作用**，lib 比原厂更早触发；反之若业务等下一帧验证 "end 已发"，lib 比原厂更晚可见。**两个方向都潜在偏差，需逐用例确认**。
 
 > **✔️保持简化（进程级单例线程永不退出是有意设计；demo 安全；暴露 quit 入口反而引入误用）**
-7. **【低】`AnimationHandler` ThreadLocal 的隐式生命周期**：原厂框架版 `AnimationHandler.getInstance()` 是 ThreadLocal，由线程 exit 时 ThreadLocalMap 随 Thread 实例回收。launcher.anim 永不 quit，**该 ThreadLocal 永不清理**。`setProvider(SfVsyncFrameCallbackProvider)` 只在 `ANIM_EXECUTOR$lambda$0()` 调一次（`OplusExecutors.java:170`），线程整个生命周期都是 SF provider——**没有 `resetProvider` 路径**。lib `AnimationHandler.installThreadScheduler`（`AnimationHandler.kt:151-157`）也只装不拆，`replaceThreadScheduler` 提供运行时换 scheduler（`:168-172`）。**两端都没有"清理"语义**——这是设计正确（进程级单例线程），但若 lib 在测试场景用 `ScheduledTickScheduler` 后调 `AnimationControlThread.instance.quitSafely()`，会**泄漏 ThreadLocal**。`HandlerThread.quitSafely` 是公开 API；lib 没暴露这个入口。**demo 安全，但调用方要主动意识到"线程一旦启动永不退出"**。
+7. **【低】`AnimationHandler` ThreadLocal 的隐式生命周期**：原厂框架版 `AnimationHandler.getInstance()` 是 ThreadLocal，由线程 exit 时 ThreadLocalMap 随 Thread 实例回收。launcher.anim 永不 quit，**该 ThreadLocal 永不清理**。`setProvider(SfVsyncFrameCallbackProvider)` 只在 `ANIM_EXECUTOR$lambda$0()` 调一次（`OplusExecutors.java:170`），线程整个生命周期都是 SF provider——**没有 `resetProvider` 路径**。lib `AnimationHandler.installThreadScheduler`（`core/AnimationHandler.kt:153-159`）也只装不拆，`replaceThreadScheduler` 提供运行时换 scheduler（`:167-171`）。**两端都没有"清理"语义**——这是设计正确（进程级单例线程），但若 lib 在测试场景替换 scheduler 后调 `AnimationControlThread.instance.quitSafely()`，会**泄漏 ThreadLocal**。`HandlerThread.quitSafely` 是公开 API；lib 没暴露这个入口。**demo 安全，但调用方要主动意识到"线程一旦启动永不退出"**。
 
 > **✔️保持简化（场景外：依赖 IconLayer 复用体系——4.2-2 同判）**
 8. **【低】`AnimationRecord` 缺失导致"复用上次动画 IconLayer"语义丢失**（C-7）。原厂 `AnimationRecord` 提供 `sAnimationId` 单调计数 + `tryConnectExistingAnim`（`AnimationRecord.java:405-431`）+ `canReuseIconLayer`（`:178`），用于快速切换应用时复用上次动画的 icon leash。**demo 场景不涉及该机制，无功能影响**——属行为分歧的"场景外"项。
@@ -128,8 +128,8 @@
 
 > **⚠️未修复（约 15 行 destroy() 未补；controller 由 OplusAnimManager 单例持有、无 per-activity 销毁入口；demo 单次进出无实际泄漏触发——低优先）**
 1. **【必补】`AnimationController` 加 `destroy()/release()` 集中清理方法**：遍历三种 `TaskStateChangeTimeOutListener` 全部 `dispose()` + 清 `animStateChangeListeners` + `reset()`。与原厂 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 的语义对齐，是 demo 反复进出场次"干净退出"的最低保障。对应 C-5，约 15 行。
-> **⚠️未修复（同 ③-1：2 行 shutdown() 抛 UOE；纯 API 形式契约）**
-2. **【必补】`LooperExecutor` 加 `shutdown() throws UnsupportedOperationException`**（+ `@Deprecated`）：硬保 ANIM_EXECUTOR never-quit 契约，调用方按 AOSP 习惯写 `shutdown()` 时得到明确异常而非 `AbstractMethodError`。对应 C-1，2 行。
+> **✅已修复（`thread/LooperExecutor.kt:57-69`：shutdown/shutdownNow/awaitTermination 抛 UOE + `@Deprecated`，isShutdown/isTerminated 恒 false）**
+2. ~~**【必补】`LooperExecutor` 加 `shutdown() throws UnsupportedOperationException`**~~ **已落地**：ANIM_EXECUTOR never-quit 契约已硬保。对应 C-1。
 > **⚠️未修复（demo 基类未加 onDestroy 集中 cancel；Demo6/10/11 局部覆盖）**
 3. **【必补】`DemoBaseActivity` 重写 `onDestroy()`**：调 `AnimationController.reset()` + 显式 cancel 所有 AsyncValueAnimator + `AsyncAnimCallbacks.clearListeners()`。对应 C-6 / C-4，~10 行。这是 demo "Activity 销毁安全"的可观测证据，不补则 lib 的"安全 cancel 所有动画"宣传无 demo 验证。
 > **✔️保持简化（暴露 quitSafely 反引误用；永不 quit 即契约）**
@@ -158,7 +158,7 @@
 > **✔️保持简化**
 6. **MultiDynamicAnimation 的 `mEndListeners` / `mUpdateListeners` 在 end 后 clear**：等真正回移 MultiDynamicAnimation 链路时再补，目前 lib 无对应实现。
 > **✔️保持简化**
-7. **`AsyncAnimCallbacks.clearListeners` 增加"压缩 null 槽"语义**：当前 `getListeners()` 已在派发前压缩（`AsyncAnimCallbacks.kt:56-59`），重复优化收益小。
+7. **`AsyncAnimCallbacks.clearListeners` 增加"压缩 null 槽"语义**：当前 `getListeners()` 已在派发前压缩（`anim/AsyncAnimCallbacks.kt:76-79`），重复优化收益小。
 
 ---
 
@@ -203,3 +203,49 @@
 - **§④-4.1 表** — 1/2/3/7 ⚠️未修复，4/5/6/8 ✔️保持简化（见正文）
 - **§④-4.2 表** — 全部 ✔️保持简化（清单即保持简化）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+---
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+- **复核方法**：逐条读取文档声称 → Python 读取 lib 源码 → 对照 OPPO 原厂证据 → 修正标记
+- **复核条目总数**：25（§③ 十条 + §④-4.1 八条 + §④-4.2 七条）
+- **修正数**：0 条（前次 v2 标记全部正确，本次独立验证确认）
+
+### 逐条验证结果
+
+**§③ 行为差异风险点（10 条）**：
+
+| # | 条目 | 标记 | 验证证据 |
+|---|---|---|---|
+| ③-1 | ANIM_EXECUTOR never-quit 契约 | ✅已修复 | `thread/LooperExecutor.kt:57-69` shutdown/shutdownNow/awaitTermination 抛 UOE + isShutdown/isTerminated 恒 false |
+| ③-2 | TaskStateChangeTimeOutListener 无主孤儿 | ✔️保持简化 | `control/TaskStateChangeTimeOutListener.kt` 无全局注册/事件源；demo 手工 onTimeOut |
+| ③-3 | removeAllListener 集中清理缺失 | ⚠️未修复 | `control/AnimationController.kt:134-148` reset() 不 dispose 三个 timeout listener |
+| ③-4 | Launcher.onStop/onDestroy 多类 cancel 缺失 | ⚠️未修复 | DemoBaseActivity.kt 无 onDestroy；Demo6:222-225/Demo10:91-94/Demo11:194-197 各自局部收尾 |
+| ③-5 | listener 强引用 View 泄漏形态 | ✔️保持简化 | `anim/AsyncAnimCallbacks.kt:33-46` 强引用 mutableList + null 槽懒删 |
+| ③-6 | cancel 下一帧生效语义 | ⚠️未修复 | lib 无 MultiDynamicAnimation 链路；cancel 单帧生效（`core/AnimationHandler.kt:64-71, 92-109`） |
+| ③-7 | ThreadLocal 隐式生命周期 | ✔️保持简化 | `core/AnimationHandler.kt:133-171` ThreadLocal 只装不拆；未暴露 quitSafely |
+| ③-8 | AnimationRecord 缺失 | ✔️保持简化 | lib 全树无 AnimationRecord |
+| ③-9 | option 引用未清 | ✔️保持简化 | `control/TaskStateChangeTimeOutListener.kt:41-43` dispose 不清 option |
+| ③-10 | MultiDynamicAnimation endAnimationInternal | ⚠️未修复 | 无 MultiDynamicAnimation 可回移对象 |
+
+**§④-4.1 值得补进 lib（8 条）**：
+
+| # | 条目 | 标记 | 验证证据 |
+|---|---|---|---|
+| 1 | AnimationController destroy() | ⚠️未修复 | `control/AnimationController.kt` 无 destroy()/release() |
+| 2 | LooperExecutor shutdown() | ✅已修复 | `thread/LooperExecutor.kt:57-69` |
+| 3 | DemoBaseActivity onDestroy | ⚠️未修复 | DemoBaseActivity.kt 无 onDestroy |
+| 4 | quitSafely 暴露 | ✔️保持简化 | 未暴露 quitSafely（有意设计） |
+| 5 | dispose() 复合方法 | ✔️保持简化 | clearListeners 已存在 |
+| 6 | option/type 置 null | ✔️保持简化 | 与原厂一致 |
+| 7 | Activity 生命周期契约文档 | ⚠️未修复 | docs/USAGE.md 无该节（已 grep 验证） |
+| 8 | AsyncValueAnimator dispose() | ✔️保持简化 | 无调用方需求 |
+
+**§④-4.2 建议保持简化（7 条）**：全部 ✔️ 维持（globalListeners 总线、AnimationRecord、launcher 业务回调、getLooper/getHandler、executeBlockWait、MultiDynamicAnimation 未回移、clearListeners 压缩语义均无变化）。
+
+### 路径/行号勘误（与前次 v2 一致）
+
+包重组（e62dbff）+ scheduler 合并删除（215ecb5）后路径已全部更新：
+- `async/` → `anim/`；`animthread/` → `thread/`；`controller/` → `control/`；`core/anim/` → `core/`
+- ScheduledTickScheduler/HandlerTickScheduler → ChoreographerTickScheduler（215ecb5 合并删除）
+- 本文档主文已在前次 v2 中更新为正确路径，本次验证确认无误

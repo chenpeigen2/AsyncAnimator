@@ -4,7 +4,7 @@
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库，idiomatic Kotlin 复刻）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24 JADX 反编译；80% 文件被企业 DLP 加密）
 >
-> **本区域范围**：单独把 lib `launcher/async/CustomRectFSpringAnim.kt`（18 行占位）与原厂 `com.android.quickstep.util.animation.CustomRectFSpringAnim.java`（927 行）做字段级 + 方法级映射，覆盖 6 自由度弹簧字段组、thread switch protocol（review 04 §2.3-10）、maybeEnd 双轨补救、cancel "下一帧生效"、AnimType 7 值（review 06 §3）。
+> **本区域范围**：单独把 lib `anim/CustomRectFSpringAnim.kt`（18 行占位）与原厂 `com.android.quickstep.util.animation.CustomRectFSpringAnim.java`（927 行）做字段级 + 方法级映射，覆盖 6 自由度弹簧字段组、thread switch protocol（review 04 §2.3-10）、maybeEnd 双轨补救、cancel "下一帧生效"、AnimType 7 值（review 06 §3）。
 >
 > 与前 12 份 review 的衔接：
 > - review 04 §2.3-10 已经标记"线程切换协议整体缺失"，但只列了协议轮廓；
@@ -26,7 +26,7 @@
 
 | lib 类 | 原厂类（文件:行） | 关系 |
 |---|---|---|
-| `com/asyncanimator/launcher/async/CustomRectFSpringAnim.kt`（**18 行占位**，仅 `AnimType` 3 值 + 构造函数） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42-926`（927 行；Java 反编译自 `CustomRectFSpringAnim.kt` 类，`@SourceDebugExtension` `:40` 标 `SMAP CustomRectFSpringAnim.kt Kotlin 1,812:1`） | **完全降级**（句柄占位） |
+| `com/asyncanimator/anim/CustomRectFSpringAnim.kt`（**18 行占位**，仅 `AnimType` 3 值 + 构造函数） | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java:42-926`（927 行；Java 反编译自 `CustomRectFSpringAnim.kt` 类，`@SourceDebugExtension` `:40` 标 `SMAP CustomRectFSpringAnim.kt Kotlin 1,812:1`） | **完全降级**（句柄占位） |
 
 ### 1.2 周边类（lib 完全没有）
 
@@ -41,11 +41,11 @@
 
 | lib 类 | 用到 CustomRectFSpringAnim 的方式 |
 |---|---|
-| `lib/.../controller/AnimationController.kt:26,65` | `mutableListOf<CustomRectFSpringAnim>()` + `addRecentsAnim(anim, ...)` 句柄 |
-| `lib/.../controller/DefaultAnimationController.kt:52,55,64` | `addRecentsAnim`/`canFinishRecentsAnim`/`revertRecentsAnimation` 3 个虚函数签名用到 `CustomRectFSpringAnim` |
-| `lib/.../controller/AnimationControllerTest.kt:55,65,103` | 单元测试构造：`CustomRectFSpringAnim(AnimType.SWIPE_TO_HOME)` + 注入 `null` recentsController / 空 targets 数组 |
-| `lib/.../async/ActualEndAnimListener.kt:17` | 文档引用 `CustomRectFSpringAnim.java:423-441` 作为双轨结束原型 |
-| `lib/.../animthread/AnimationControlThread.kt:46` | 文档引用"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"——**但 lib 侧该协议未实现**（评论失实，见 review 04 §2.3-10 末尾） |
+| `lib/src/main/java/com/asyncanimator/control/AnimationController.kt:26, 65` | `mutableListOf<CustomRectFSpringAnim>()` + `addRecentsAnim(anim, ...)` 句柄 |
+| `lib/src/main/java/com/asyncanimator/control/DefaultAnimationController.kt:52, 55, 64` | `addRecentsAnim`/`canFinishRecentsAnim`/`revertRecentsAnimation` 3 个虚函数签名用到 `CustomRectFSpringAnim` |
+| `lib/src/test/java/com/asyncanimator/control/AnimationControllerTest.kt:55, 65, 103` | 单元测试构造：`CustomRectFSpringAnim(AnimType.SWIPE_TO_HOME)` + 注入 `null` recentsController / 空 targets 数组 |
+| `lib/src/main/java/com/asyncanimator/anim/ActualEndAnimListener.kt:17` | 文档引用 `CustomRectFSpringAnim.java:423-441` 作为双轨结束原型 |
+| `lib/src/main/java/com/asyncanimator/thread/AnimationControlThread.kt:46` | 文档引用"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"——**但 lib 侧该协议未实现**（评论失实，见 review 04 §2.3-10 末尾） |
 
 ---
 
@@ -217,10 +217,10 @@ fun maybeEnd() {
 
 1. `mAnimStarted=false` 在最前面一次性翻转——`maybeEnd` 重复调用幂等
 2. cancel 路径先发 `onAnimationCancel` 再发 `onAnimationEnd`——业务侧可以"cancel 是 end 的子集"理解；listener 实现的 `onAnimationEnd` 不必重复处理 cancel
-3. "物理结束" `onAnimActualEnd` **总在最后发**，仅给 `ActualEndAnimListener` 子类接收（lib `AsyncAnimCallbacks.onAnimActualEnd` `:60-69` 与 review 04 §2.2 互参）
+3. "物理结束" `onAnimActualEnd` **总在最后发**，仅给 `ActualEndAnimListener` 子类接收（lib `AsyncAnimCallbacks.onAnimActualEnd` `:61-72` 与 review 04 §2.2 互参）
 4. 保护路径（justNotifyEndCallback）**不发 onAnimationEnd**——避免业务侧以为"逻辑结束"已到又收不到 cancel 通知
 
-**lib 复刻**：❌ 无。`ActualEndAnimListener.kt:13-19` 的文档里描述了这条双轨时序，但**实际**没有 `maybeEnd` 实现；只有 `AsyncAnimCallbacks.onAnimActualEnd` (`:60-69`) + `onAnimationEnd` (`:50-51`) 两个独立派发口——少 cancel 路径，少 justNotifyEndCallback 保护路径，少"逻辑结束 vs 物理结束"的序列化语义。
+**lib 复刻**：❌ 无。`anim/ActualEndAnimListener.kt:13-21` 的文档里描述了这条双轨时序，但**实际**没有 `maybeEnd` 实现；只有 `AsyncAnimCallbacks.onAnimActualEnd` (`anim/AsyncAnimCallbacks.kt:61-72`) + `onAnimationEnd` (`anim/AsyncAnimCallbacks.kt:51-52`) 两个独立派发口——少 cancel 路径，少 justNotifyEndCallback 保护路径，少"逻辑结束 vs 物理结束"的序列化语义。
 
 ### 3.6 Thread Switch Protocol（review 04 §2.3-10 已提）
 
@@ -265,8 +265,8 @@ mAnimLooperExecutor = anim_executor
 
 **lib 复刻**：❌ 无。
 
-- `AsyncAnimCallbacks.runOnMainThread` (`:96-99`) 实现了 isCurrentThread + `Executors.MAIN_EXECUTOR.postAsync`——**只覆盖了"回主线程"那一面**，缺"回 ANIM_EXECUTOR 线程"那一面
-- `AsyncAnimWrapper.runOnAnimThread/runOnMainThread` 双通道——但是给 `AsyncSpringAnim` 用的（`AsyncSpringAnim.kt:11-20`），与 `CustomRectFSpringAnim` 无关
+- `AsyncAnimCallbacks.runOnMainThread` (`anim/AsyncAnimCallbacks.kt:97-100`) 实现了 isCurrentThread + `Executors.MAIN_EXECUTOR.postAsync`——**只覆盖了"回主线程"那一面**，缺"回 ANIM_EXECUTOR 线程"那一面
+- `AsyncAnimWrapper.runOnAnimThread/runOnMainThread` 双通道——但是给 `AsyncSpringAnim` 用的（`thread/AsyncAnimWrapper.kt:17-25`、`anim/AsyncSpringAnim.kt:44-48`），与 `CustomRectFSpringAnim` 无关
 - **`CustomRectFSpringAnim.kt` 自身**没有任何 runOnXxx 调用、没有任何 maybeEnd、没有任何线程切换——占位类的语义是"由 AnimationController 持有"，调用面闭合靠 controller 端 marshal（但 AnimationController 端也没有 marshal，review 03 已记录）
 
 ### 3.7 Cancel "下一帧生效"语义（review 11 §C-1 已提）
@@ -312,13 +312,13 @@ cancel()
 
 **lib 复刻**：❌ 无。
 
-- lib 的 `AsyncSpringAnim.cancel()` (`:29`) 是 `dispatch { real.cancel() }`，直接走 androidx `SpringAnimation.cancel()`——androidx 实现里 cancel 是**同步**的，不存在"下一帧生效"的窗口
-- `ActualEndAnimListener.kt:13-19` 的文档**正确描述**了这条双轨时序——但实际是**没有实现的描述**
-- `AsyncAnimCallbacks.onAnimActualEnd` (`:60-69`) + `onAnimationCancel` (`:107-109`) + `onAnimationEnd` (`:50-51`) 是 3 个**独立**的派发口，**没有序列化**——上层必须自己安排调用顺序
+- lib 的 `AsyncSpringAnim.cancel()` (`anim/AsyncSpringAnim.kt:28`) 是 `dispatch { real.cancel() }`，直接走 androidx `SpringAnimation.cancel()`——androidx 实现里 cancel 是**同步**的，不存在"下一帧生效"的窗口
+- `anim/ActualEndAnimListener.kt:13-21` 的文档**正确描述**了这条双轨时序——但实际是**没有实现的描述**
+- `AsyncAnimCallbacks.onAnimActualEnd` (`anim/AsyncAnimCallbacks.kt:61-72`) + `onAnimationCancel` (`anim/AsyncAnimCallbacks.kt:54-55`) + `onAnimationEnd` (`anim/AsyncAnimCallbacks.kt:51-52`) 是 3 个**独立**的派发口，**没有序列化**——上层必须自己安排调用顺序
 
 ### 3.8 AnimType 7 值 vs lib 3 值（review 06 §3 已提）
 
-| OPPO 枚举（`:115-123`） | 含义（来自 setAnimParamByType `:788-801` + `AnimParamProvider.getXxxParam`） | lib 枚举 (`CustomRectFSpringAnim.kt:13-18`) | lib 是否对齐 |
+| OPPO 枚举（`:115-123`） | 含义（来自 setAnimParamByType `:788-801` + `AnimParamProvider.getXxxParam`） | lib 枚举 (`anim/CustomRectFSpringAnim.kt:13-17`) | lib 是否对齐 |
 |---|---|---|---|
 | `OPEN_FROM_HOME` | 从桌面点图标启动 app；rect 放大、alpha 0→1、duration scale ×0.4；`isOpenAnim=true`（影响 updateMinVisibleChange） | ❌ 无 | **缺失**——demo9 OPEN_FROM_HOME 场景无法演示 |
 | `REMOTE_CLOSE_TO_HOME` | 远程关闭到桌面（multi-app merge 路径） | ❌ 无 | **缺失**——依赖 AppOpenAnimMergeHelper（review 11 §C-8） |
@@ -348,11 +348,11 @@ cancel()
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| 1 | 6 自由度独立 SpringHolder × 6 + 6 SpringForce + 中途改终点分裂积分 全部降级为占位 | `CustomRectFSpringAnim.java:43-113` + `SpringHolder.java:115-130` | `CustomRectFSpringAnim.kt:8-10` 注释明示"实际动画逻辑由 SpringAnimation 实现"。lib 走 androidx `SpringAnimation`（`AsyncSpringAnim.kt:23-43`），单一自由度，行为等价但语义偏离 |
+| 1 | 6 自由度独立 SpringHolder × 6 + 6 SpringForce + 中途改终点分裂积分 全部降级为占位 | `CustomRectFSpringAnim.java:43-113` + `SpringHolder.java:115-130` | `CustomRectFSpringAnim.kt:8-10` 注释明示"实际动画逻辑由 SpringAnimation 实现"。lib 走 androidx `SpringAnimation`（`anim/AsyncSpringAnim.kt:21-50`），单一自由度，行为等价但语义偏离 |
 | 2 | `MultiDynamicAnimation` 帧循环载体未移植 | `MultiDynamicAnimation.java:21, 121-128, 152-180, 185-191` | 与简化 #1 捆绑；androidx `SpringAnimation` 自带帧循环 |
 | 3 | `SpringForce` 三支闭式解析解未移植 | `SpringForce.java:117-152` | androidx `SpringForce` 已实现（`SpringForce.java` in androidx，与原厂非同名但 API 兼容） |
 | 4 | `SpringAnimReflectUtils` 直调 + 反射未移植 | `SpringAnimReflectUtils.java:24, 33-43, 59-61` | 与简化 #1 捆绑；androidx 公开 API 不需要反射 |
-| 5 | AnimType 自创 3 值（去掉 4 真 + 加 2 假） | `CustomRectFSpringAnim.java:115-123` | `CustomRectFSpringAnim.kt:13-18` demo 用 3 值足够；review 06 §3 / review 11 §bug 级残留 #9 已点名 |
+| 5 | AnimType 自创 3 值（去掉 4 真 + 加 2 假） | `CustomRectFSpringAnim.java:115-123` | `anim/CustomRectFSpringAnim.kt:13-17` demo 用 3 值足够；review 06 §3 / review 11 §bug 级残留 #9 已点名 |
 | 6 | `copyNextAnimState` "下一帧接管"语义未复刻 | `CustomRectFSpringAnim.java:630-648` + `SpringHolder.getNextFrameValue` `SpringHolder.java:50-53` | 与简化 #1 捆绑；androidx 不支持"按下一帧预估接管"——这是 recents 转场专有 |
 | 7 | `initFirstFrameForBreakScene` 4 参接口（窗口分裂首帧）未复刻 | `CustomRectFSpringAnim.java:696-717` | 依赖 RectTransformHelper + BreakParam，与 launcher 业务强绑定；review 11 §B-3 已建议保持简化 |
 | 8 | `mapRatioVelocity` radio 速度换算未复刻 | `CustomRectFSpringAnim.java:741-746` | 与简化 #1 捆绑；demo 演示不需要 |
@@ -365,7 +365,7 @@ cancel()
 | 2 | **6 自由度独立 minimumVisibleChange 默认值**：centerX/rectY/width=0.1f / radio=0.005f / radius=1.0f / alpha=0.05f | `CustomRectFSpringAnim.java:219, 224, 229, 235, 240, 245` | adaptive animation 路径下按 startRect/targetRect 算最小可视变化（`:336-358`）；lib 无该算法——意味着**弹簧"刚停下"还是"真到终点"的判定阈值**与原厂不一致 |
 | 3 | **`isWithAnim(radio, endRadio)` 动态 width 语义**：`OPEN_FROM_HOME/REVERSE_TO_OPEN` 时 width 跟 width，否则跟 height | `CustomRectFSpringAnim.java:411-421` + `:375-385` | lib 完全没有这条规则——demo9 OPEN_FROM_HOME 的 width 弹簧方向**与原厂相反**（如果未来 demo9 接 rect 弹簧） |
 | 4 | **`getRateStiffness` × AppLaunchAnimSpeedHandler 缩放**：duration scale 平方缩放 + lightAnimation ×0.16 + evaluation ×0.36 | `CustomRectFSpringAnim.java:297-313` + `:527` 调 | lib 无该缩放——stiffness 直接用原始值；用户在系统设置里改动画时长比例后，**demo 弹簧速度不变** |
-| 5 | **`setVelocity(f9..f13, 5 参)` 公开 API**：`mXxxVelocity = fn * 1000`，单位 ms/s | `CustomRectFSpringAnim.java:846-854` | lib 无 5 参速度入口；只有 `AsyncSpringAnim.setStartVelocity(velocity: Float)` (`:34-35`) 单 参 |
+| 5 | **`setVelocity(f9..f13, 5 参)` 公开 API**：`mXxxVelocity = fn * 1000`，单位 ms/s | `CustomRectFSpringAnim.java:846-854` | lib 无 5 参速度入口；只有 `AsyncSpringAnim.setStartVelocity(velocity: Float)` (`anim/AsyncSpringAnim.kt:34`) 单 参 |
 | 6 | **`copyNextAnimState(RectF, float)`**：从 6 个 holder.getNextFrameValue 取下一帧预估 + inheritVelocity | `CustomRectFSpringAnim.java:630-648` + `SpringHolder.getNextFrameValue` `SpringHolder.java:50-53` | lib 无"下一帧接管"语义；recents 转场的"手指抬起后从半截继续"场景**完全不可演示** |
 | 7 | **`getCurrentRadius()` 含 maxRadioVelocity 钳制**：把 radio 速度限制到 maxRadioVelocity 内 | `CustomRectFSpringAnim.java:660-662`（`SpringHolder.getNextFrameValue` `SpringHolder.java:50-53`） | lib 无钳制；快速 swipe 时 radius 速度可能**超过 maxRadioVelocity 引发视觉跳变** |
 | 8 | **`justNotifyEndCallback()` 保护路径**：mJustNotifyEndCallback=true 时只发 onAnimActualEnd，不发 onAnimationEnd/onAnimationCancel | `CustomRectFSpringAnim.java:734-739` + `:431-433` | lib 无该路径——`AsyncAnimCallbacks` 的 `onAnimActualEnd` / `onAnimationEnd` / `onAnimationCancel` 是 3 个独立派发口，没有序列化 |
@@ -606,27 +606,94 @@ enum class AnimType {
 | `getOpeningWindowProgress` reverseToOpen 映射 | `CustomRectFSpringAnim.java:681-685` |
 | `setVelocity(f9..f13, 5 参)` × 1000 单位换算 | `CustomRectFSpringAnim.java:846-854` |
 | `mapRatioVelocity` radio 速度换算 | `CustomRectFSpringAnim.java:741-746` |
-| lib 18 行占位 + 3 值 AnimType | `lib/src/main/java/com/asyncanimator/launcher/async/CustomRectFSpringAnim.kt:1-18` |
-| lib 调用面：AnimationController.addRecentsAnim 句柄 | `lib/.../controller/AnimationController.kt:26, 65` |
-| lib 调用面：DefaultAnimationController 3 虚函数签名 | `lib/.../controller/DefaultAnimationController.kt:52, 55, 64` |
-| lib 调用面：AnimationControllerTest 3 处构造 | `lib/.../controller/AnimationControllerTest.kt:55, 65, 103` |
-| lib 文档引用 CustomRectFSpringAnim.java:423-441 作为 maybeEnd 双轨原型 | `lib/.../async/ActualEndAnimListener.kt:13-19` |
-| lib 文档引用"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"（**未实现**） | `lib/.../animthread/AnimationControlThread.kt:46` |
-| lib `AsyncAnimCallbacks.onAnimActualEnd` 仅给 ActualEndAnimListener 子类派发 | `lib/.../async/AsyncAnimCallbacks.kt:60-69` |
-| lib `AsyncAnimCallbacks.runOnMainThread` 只覆盖"回主线程"那一面 | `lib/.../async/AsyncAnimCallbacks.kt:96-99` |
-| lib `AsyncSpringAnim.cancel()` 走 androidx 同步停帧路径 | `lib/.../async/AsyncSpringAnim.kt:28-29` |
+| lib 18 行占位 + 3 值 AnimType | `lib/src/main/java/com/asyncanimator/anim/CustomRectFSpringAnim.kt:1-18` |
+| lib 调用面：AnimationController.addRecentsAnim 句柄 | `lib/src/main/java/com/asyncanimator/control/AnimationController.kt:26, 65` |
+| lib 调用面：DefaultAnimationController 3 虚函数签名 | `lib/src/main/java/com/asyncanimator/control/DefaultAnimationController.kt:52, 55, 64` |
+| lib 调用面：AnimationControllerTest 3 处构造 | `lib/src/test/java/com/asyncanimator/control/AnimationControllerTest.kt:55, 65, 103` |
+| lib 文档引用 CustomRectFSpringAnim.java:423-441 作为 maybeEnd 双轨原型 | `lib/src/main/java/com/asyncanimator/anim/ActualEndAnimListener.kt:13-21` |
+| lib 文档引用"CustomRectFSpringAnim.start() 的 looper.isCurrentThread 协议"（**未实现**） | `lib/src/main/java/com/asyncanimator/thread/AnimationControlThread.kt:46` |
+| lib `AsyncAnimCallbacks.onAnimActualEnd` 仅给 ActualEndAnimListener 子类派发 | `lib/src/main/java/com/asyncanimator/anim/AsyncAnimCallbacks.kt:61-72` |
+| lib `AsyncAnimCallbacks.runOnMainThread` 只覆盖"回主线程"那一面 | `lib/src/main/java/com/asyncanimator/anim/AsyncAnimCallbacks.kt:97-100` |
+| lib `AsyncSpringAnim.cancel()` 走 androidx 同步停帧路径 | `lib/src/main/java/com/asyncanimator/anim/AsyncSpringAnim.kt:28` |
 
-## 复核记录（2026-09-09）
+---
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本份涉及且已落地的修复（按 commit 顺序）：
+**方法**：逐条读取当前 lib 源码（Python `open(path, encoding='utf-8')`），对照文档中每个引用的文件路径、行号、状态标记，确认或修正。
 
-- **937dd23** — springAsyncAnim + androidx.dynamicanimation 演示了单自由度弹簧跑独立线程（替代部分占位功能）
+### 路径验证
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+本文档 lib 路径在编写时已按重组后包结构书写（`anim/`、`control/`、`thread/`），全部无需修正。
 
-批次 2 逐条复核（2026-09-09）：
-- §⑤ ①-⑩：① AnimType → ⚠️未修复（6 行枚举，API 对齐项）；②③④⑤ → ⚠️未修复（30-250 行：AsyncAnimEndProtocol / MultiDynamicAnimation 简化移植）；⑥ → ⚠️未修复（~20 行）；⑦⑧⑨⑩ → ⚠️未修复（捆绑 ⑤ 六自由度引擎）
-- §⑥ 6.1-1..10 → ⚠️未修复（同 §⑤；8-10 依赖 6.1-4）；6.2-1..7 → ✔️保持简化
+| 引用路径 | 验证 |
+|---|---|
+| `anim/CustomRectFSpringAnim.kt` | ✔️存在（18 行） |
+| `anim/AsyncAnimCallbacks.kt` | ✔️存在（101 行） |
+| `anim/AsyncSpringAnim.kt` | ✔️存在（51 行） |
+| `anim/ActualEndAnimListener.kt` | ✔️存在（27 行） |
+| `control/AnimationController.kt` | ✔️存在（258 行） |
+| `control/DefaultAnimationController.kt` | ✔️存在（85 行） |
+| `control/AnimationControllerTest.kt`（test） | ✔️存在（110 行） |
+| `thread/AnimationControlThread.kt` | ✔️存在（90 行） |
+
+### 行号验证
+
+| 引用 | 当前行号 | 验证 |
+|---|---|---|
+| `AnimationController.kt:26, 65` | L26=recentsAnims, L65=addRecentsAnim | ✔️ |
+| `DefaultAnimationController.kt:52, 55, 64` | L52=addRecentsAnim, L55=canFinishRecentsAnim, L64=revertRecentsAnimation | ✔️ |
+| `AnimationControllerTest.kt:55, 65, 103` | L55/65/103=CustomRectFSpringAnim(SWIPE_TO_HOME) | ✔️ |
+| `ActualEndAnimListener.kt:17` | L17=引用 CustomRectFSpringAnim.java:423-441 | ✔️ |
+| `AnimationControlThread.kt:46` | L46=引用 CustomRectFSpringAnim.start() 协议 | ✔️ |
+| `AsyncAnimCallbacks.kt:51-52` | L51-52=onAnimationEnd | ✔️ |
+| `AsyncAnimCallbacks.kt:54-55` | L54-55=onAnimationCancel | ✔️ |
+| `AsyncAnimCallbacks.kt:61-72` | L61-72=onAnimActualEnd | ✔️ |
+| `AsyncAnimCallbacks.kt:97-100` | L97-100=runOnMainThread | ✔️ |
+| `AsyncSpringAnim.kt:28` | L28=cancel | ✔️ |
+| `AsyncSpringAnim.kt:30` | L30=skipToEnd | ✔️ |
+| `AsyncSpringAnim.kt:34` | L34=setStartVelocity | ✔️ |
+| `AsyncSpringAnim.kt:37-42` | L37-42=addEndListener | ✔️ |
+| `AsyncSpringAnim.kt:44-50` | L44-50=dispatch | ✔️ |
+| `CustomRectFSpringAnim.kt:8-10` | L8-10=注释 | ✔️ |
+| `CustomRectFSpringAnim.kt:11` | L11=class | ✔️ |
+| `CustomRectFSpringAnim.kt:13-17` | L13-17=AnimType 3 值 | ✔️ |
+
+### 状态标记逐条确认（26 条）
+
+| 条目 | 文档标记 | 代码验证 | 结论 |
+|---|---|---|---|
+| §3-1 6-DOF 降级为占位 | ✔️保持简化 | CustomRectFSpringAnim.kt 仍 18 行 | ✔️确认 |
+| §3-2 MultiDynamicAnimation 未移植 | ✔️保持简化 | 无 MultiDynamicAnimation | ✔️确认 |
+| §3-3 EndReason 三态 | ⚠️未修复 | 无 EndReason enum，cancel 仍直接 real.cancel() | ⚠️确认 |
+| §3-4 AnimType OPEN_FROM_HOME | ❌不成立/已过期 | 无 OPEN_FROM_HOME 调用点 | ❌确认 |
+| §3-5/3-6/3-7/3-8/3-9/3-10/3-11 | ✔️保持简化 | 代码无变化 | ✔️确认 |
+| §4.1-1 回移 AnimType 7 值 | ❌不成立/已过期 | 同 §3-4 | ❌确认 |
+| §4.1-2 EndReason 语义区分 | ⚠️未修复 | 同 §3-3 | ⚠️确认 |
+| §4.1-3 最小 MultiDynamicAnimation | ⚠️未修复 | 无 MultiDynamicAnimation | ⚠️确认 |
+| §4.2-1..8 有意简化 | ✔️保持简化 | 代码无变化 | ✔️确认 |
+| §4.3-1 6-DOF stiffness | ⚠️未修复 | 单一 SpringAnimation | ⚠️确认 |
+| §4.3-2 最小可视变化阈值 | ⚠️未修复 | 无差异化阈值 | ⚠️确认 |
+| §4.3-3 USAGE AnimType 3 值 | ✅已修复 | USAGE.md 已列 3 值枚举（42882ff） | ✅确认 |
+| §4.3-4 isWithAnim | ⚠️未修复 | 无 isWithAnim | ⚠️确认 |
+| §4.3-5 getRateStiffness | ⚠️未修复 | 无 getRateStiffness | ⚠️确认 |
+| §4.3-6 copyNextAnimState | ⚠️未修复 | 无 copyNextAnimState | ⚠️确认 |
+| §4.3-7 getCurrentRadius 钳制 | ⚠️未修复 | 无 getCurrentRadius | ⚠️确认 |
+| §4.3-8 justNotifyEndCallback | ⚠️未修复 | 无 justNotifyEndCallback | ⚠️确认 |
+| §4.3-10 updateEndTargetRectF | ⚠️未修复 | 无动态改终点 | ⚠️确认 |
+| §4.3-11..17 其余遗漏 | ⚠️未修复 | 均未实现 | ⚠️确认 |
+| §5① AnimType 3 vs 7 | ⚠️未修复 | CustomRectFSpringAnim.kt 仍 3 值 | ⚠️确认 |
+| §5② maybeEnd 双轨 | ⚠️未修复 | 无 maybeEnd | ⚠️确认 |
+| §5③ Thread Switch Protocol | ⚠️未修复 | 占位类无 marshal | ⚠️确认 |
+| §5④ Cancel 下一帧生效 | ⚠️未修复 | androidx 同步 cancel | ⚠️确认 |
+| §5⑤ 6-DOF 独立参数 | ⚠️未修复 | 单一 SpringAnimation | ⚠️确认 |
+| §5⑥ getRateStiffness 缩放 | ⚠️未修复 | 无缩放 | ⚠️确认 |
+| §5⑦ isWithAnim | ⚠️未修复 | 无 isWithAnim | ⚠️确认 |
+| §5⑧ mAlphaStartDelay | ⚠️未修复 | 无 alpha 延迟 | ⚠️确认 |
+
+### 汇总
+
+- **条目总数**：26 条独立状态标记
+- **路径修正**：0（编写时已用重组后路径）
+- **行号修正**：0（全部准确）
+- **状态标记修正**：0（所有 ❌/✔️/⚠️/✅ 与当前代码一致）

@@ -1,7 +1,7 @@
 # Review 15 vs-oppo：TaskStateHelper 7 回调与全局派发
 
 > 对比双方：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/TaskStateChangeTimeOutListener.kt`（47 行）+ `AnimationController.kt`（248 行）+ `Demo6StateMachineActivity.kt`（319 行）
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/TaskStateChangeTimeOutListener.kt`（47 行）+ `AnimationController.kt`（258 行）+ `Demo6StateMachineActivity.kt`（319 行）
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/oplus/quickstep/taskviewremoteanim/TaskStateHelper.java`（319 行）+ `TaskStateHelper$taskListener$1.java`（182 行）+ `OplusTaskListener.java`（25 行）
 >
 > 取证方法：原厂 100% 经 Grep（ripgrep 明文通道穿透企业 DLP 加密）取证，行号为 JADX 反编译文本行号。
@@ -83,7 +83,7 @@ lib 全树 **0 命中** `addGlobalTaskStateChangeListener` / `removeGlobalTaskSt
 
 | # | 设计点 | lib 证据 | 原厂证据 |
 |---|---|---|---|
-| 1 | 构造即 `handler.postDelayed(timeOutOption, duration)`；超时 / 事件任一先到都 dispose + option.run() | `TaskStateChangeTimeOutListener.kt:25, 30-31, 41-42`（事件匹配由 `onTimeOut(type, duration)` 走 `dispose() + option()`，见 `:35-37`） | `TaskStateHelper.java:130, 136, 144, 181-183, 191-193, 201-203`（事件走 callback，超时走 `timeOutOption$lambda$0`） |
+| 1 | 构造即 `handler.postDelayed(timeOutOption, duration)`；超时 / 事件任一先到都 dispose + option.run() | `TaskStateChangeTimeOutListener.kt:26-31, 41-43`（事件匹配由 `onTimeOut(type, duration)` 走 `dispose() + option()`，见 `:34-39`） | `TaskStateHelper.java:130, 136, 144, 181-183, 191-193, 201-203`（事件走 callback，超时走 `timeOutOption$lambda$0`） |
 | 2 | dispose 必须 removeCallbacks（防止 handler 仍持有 this） | `TaskStateChangeTimeOutListener.kt:42` `handler?.removeCallbacks(timeOutOption)` | `TaskStateHelper.java:151-152` `handler.removeCallbacks(this.timeOutOption)` |
 | 3 | 三种 type + 单 option 入参的设计形态 | `TaskStateChangeTimeOutListener.kt:12-16, 18-22`（ctor 接收 `type` + `duration` + `option: () -> Unit`） | `TaskStateHelper.java:124-127`（ctor 接收 `type` + `j8` + `option`） |
 
@@ -135,7 +135,7 @@ lib 全树 **0 命中** `addGlobalTaskStateChangeListener` / `removeGlobalTaskSt
 6. 命中 `TaskStateChangeTimeOutListener` 的某个 override 回调 → `type` 匹配 → `dispose() + option.run()`（`TaskStateHelper.java:177-203`）
 
 lib 调用链（1 步，只有超时兜底）：
-1. `AnimationController.kt:170-192` 三个 `register*` 构造 `TaskStateChangeTimeOutListener(...)` 后**只**赋值到字段（`:172-173, 182-183, 190-191`）
+1. `AnimationController.kt:180-202` 三个 `register*` 构造 `TaskStateChangeTimeOutListener(...)` 后**只**赋值到字段（`:182-183, 192-193, 200-201`）
 2. listener 内部的 `handler.postDelayed(timeOutOption, duration)` 是唯一触发路径
 3. **没有任何代码路径把"事件到达"映射到 listener 的 option**——`onTimeOut(type, duration)` 是 fun interface，外部从未调
 
@@ -155,11 +155,11 @@ lib 调用链（1 步，只有超时兜底）：
 | `onTaskListenerReleased()` | `ON_TO_HOME_TRANSITION_FINISH` | — | 任意 |
 | `onTransitionFinish(boolean)` | `ON_TRANSITION_FINISH` OR `ON_TO_HOME_TRANSITION_FINISH` | `z8 == true` | true 才触发 |
 
-lib 合并成 `fun onTimeOut(type: Type, duration: Long)`（`TaskStateChangeTimeOutListener.kt:34-39`），且**只有当外部手工传入匹配 type 才执行 option**。**没有 `dispose()` 调用**——review 12 §2-C7 已点出。
+lib 合并成 `fun onTimeOut(type: Type, duration: Long)`（`TaskStateChangeTimeOutListener.kt:34-39`），且**只有当外部手工传入匹配 type 才执行 option**；命中时走 `dispose() + option()`（`:36-38`。review 12 §2-C7 所述"事件命中不调 dispose"在当前代码已不成立）。
 
 **实际后果**：即使将来补 §3-A1 的事件总线，listener 内部的"事件匹配 + dispose + option"逻辑仍是空架子：
-- 缺 `handler.removeCallbacks(timeOutOption)`（dispose 未调，postDelayed 仍会超时触发 option 二次执行）
-- 缺 `handler = null`（handler 强引用 listener，listener 强引用 option 闭包，形成进程级引用链）
+- `dispose()` 已含 `handler.removeCallbacks(timeOutOption)`（`:41-43`，不会出现超时二次触发）；但 `handler` 是 `val` 无法置 null——原厂 dispose 三步中的 `handler = null` 未对齐
+- handler 强引用 listener、listener 强引用 option 闭包，引用链保留到实例 GC（见 §3-C1）
 - 缺 `z8 == true` 过滤（原厂 transition finish 时若 `isRecent == false` 不触发，lib 一律触发）
 
 > **状态：⚠️未修复（成本高：TaskStateHelper 主体缺失；11 个调用点均 launcher/system_server 集成，demo 无对应业务）**
@@ -246,7 +246,7 @@ lib 无派发逻辑，自然无日志。
 #### D1. **`getTimeOutOption()` / `getOption()` / `getTimeOutDuration()` / `getType()` 4 个 getter 公开**
 
 原厂 `TaskStateHelper.java:156-173` 4 个 public final getter，外部可读 listener 内部态（测试 / 调试用）。
-lib 无对应 getter——字段都是 `private val`（`TaskStateChangeTimeOutListener.kt:24, 27, 13`）。
+lib 无对应 getter——字段都是 `private val`（`TaskStateChangeTimeOutListener.kt:14, 24, 26`）。
 
 > **状态：✔️保持简化（demo 可观测由 Trace 承担；review 08 trace 维度已覆盖）**
 #### D2. **`TAG` + `Log.d("TaskStateHelper[...] : init / Time Out / z8 / z8")` 全套日志缺失**
@@ -270,7 +270,7 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 1. **【必补 P0】`TaskStateHelper` 主体类（Kotlin object singleton）+ `TaskStateChangeTimeOutListener` 改造成 `class extends BaseTaskStateChangeListener`**（对应 §3-A1/A2/A3、§2.3-1/2/3/4/5/7/13/15）。
 
    至少以下 7 件事（约 80-120 行）：
-   - 新建 `lib/.../launcher/taskstate/TaskStateHelper.kt`（Kotlin object 单例），含 `globalListeners: CopyOnWriteArrayList<TaskStateChangeListener>` + `pendingLaunchCookieListeners` + `taskIdListeners` + `addGlobalTaskStateChangeListener` + `removeGlobalTaskStateChangeListener` + `removeAllListener`；
+   - 新建 `lib/.../control/TaskStateHelper.kt`（Kotlin object 单例），含 `globalListeners: CopyOnWriteArrayList<TaskStateChangeListener>` + `pendingLaunchCookieListeners` + `taskIdListeners` + `addGlobalTaskStateChangeListener` + `removeGlobalTaskStateChangeListener` + `removeAllListener`；
    - 新建 `BaseTaskStateChangeListener` 抽象类（7 default no-op）+ `TaskStateChangeListener` 接口（7 抽象方法）+ `DefaultImpls` 静态嵌套类；
    - `TaskStateChangeTimeOutListener` 改回 `class extends BaseTaskStateChangeListener`，**实现 3 个 override**：`onLandScapeSceneExit` / `onTaskListenerReleased` / `onTransitionFinish`，各自按 `type` 匹配 → `dispose() + option.run()`（含 z8==true 过滤）；
    - `dispose()` 内补 `TaskStateHelper.removeGlobalTaskStateChangeListener(this)` + `handler.removeCallbacks(timeOutOption)` + `handler = null` 三步；
@@ -361,11 +361,11 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 | OPPO `TaskStateHelper.removeAllListener` 由 `Launcher.onDestroy` 调 | `com/android/launcher/Launcher.java:3846` |
 | OPPO `AnimationController` 三 register helper 全调 `addGlobalTaskStateChangeListener` | `com/oplus/quickstep/utils/AnimationController.java:304, 340, 378` |
 | OPPO 13 个调用点调 `addGlobalTaskStateChangeListener` | 见 §① 表（11 个文件 + Launcher.java:667,1387） |
-| lib `TaskStateChangeTimeOutListener` 3 type enum | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/TaskStateChangeTimeOutListener.kt:18-22` |
-| lib 用 `Looper.getMainLooper()` 作 handler | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/TaskStateChangeTimeOutListener.kt:24` |
-| lib `dispose` 不调 `removeGlobalTaskStateChangeListener` | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/TaskStateChangeTimeOutListener.kt:41-43` |
+| lib `TaskStateChangeTimeOutListener` 3 type enum | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/TaskStateChangeTimeOutListener.kt:18-22` |
+| lib 用 `Looper.getMainLooper()` 作 handler | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/TaskStateChangeTimeOutListener.kt:24` |
+| lib `dispose` 不调 `removeGlobalTaskStateChangeListener` | `D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/TaskStateChangeTimeOutListener.kt:41-43` |
 | lib 全树无 `addGlobalTaskStateChangeListener` / `globalListeners` / `BaseTaskStateChangeListener` | grep 0 命中（仅 docs/review/*.md 引用） |
-| lib Demo6 手调 `onTimeOut(...)` 模拟事件 | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:271-282` |
+| lib Demo6 手调 `onTimeOut(...)` 模拟事件 | `D:/AsyncAnimator/demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:269-285` |
 | 用户列出的 4 个回调名 (`onAllAppExitTransitionFinish` / `onTaskViewDestroyed` / `onTaskViewAppeared` / `onUnfoldAnimationStart`) 在 OPPO 全树 0 命中 | 见 §0 |
 
 ---
@@ -420,3 +420,40 @@ lib 无注册逻辑自然无此问题；但若补 §3-A1 事件总线时，**必
 - 4.2-6 → ✔️保持简化（marshal 不实做）
 - 4.2-7 → ✔️保持简化（removeListenerAllOfList 不引入）
 
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+本次独立逐条复核，逐条对照当前 lib 代码（`control/TaskStateChangeTimeOutListener.kt` 47 行 + `control/AnimationController.kt` 258 行）+ OPPO 只读源码（`TaskStateHelper.java` 319 行 + `TaskStateHelper$taskListener$1.java`）确认。
+
+### 逐条验证结果
+
+**① 类对应关系表**：全部行号与当前代码对照验证。
+- lib 行号全部验证通过：`TaskStateChangeTimeOutListener.kt:12-47`（类）、`:18-22`（Type enum 3 值）、`:24`（Handler = mainLooper）、`:34-39`（onTimeOut）、`:41-43`（dispose）。
+- `AnimationController.kt:40-45`（三 listener 字段）、`:171-178`（timeoutListener）、`:180-202`（三 register 方法）全部验证通过。
+- OPPO 行号全部验证通过：`TaskStateHelper.java:36-72`（BaseTaskStateChangeListener，实际36为@Metadata、37为class声明）、`:75-114`（TaskStateChangeListener 接口）、`:77-99`（DefaultImpls）、`:117-209`（TaskStateChangeTimeOutListener）、`:212-217`（TaskStateChangeType 4值）、`:31`（globalListeners）、`:222-231`（addGlobal）、`:269-277`（removeAll）、`:128,130`（URGENT_TRANSACTION_EXECUTOR handler）、`:147-154`（dispose 三步）、`:177-203`（三 override callback）。
+- **修正 0 处**：所有行号和描述与当前代码一致。
+
+**② 保真度评估**：
+- 2.1（精确复刻 3 条）：全部验证通过。handler.postDelayed + dispose removeCallbacks + 三 type + 单 option。
+- 2.2（有意简化 3 条）：全部验证通过。Type 3值（缺 ON_TO_HOME_TRANSITION_FINISH）、BaseTaskStateChangeListener 缺失、DefaultImpls 缺失。
+- 2.3（遗漏 15 条）：全部验证通过。TaskStateHelper 主体类、三个容器、taskListener$1 binder、addGlobal/removeGlobal/removeAllListener、pendingLaunchCookieListeners、taskIdListeners、init/release、isTaskListenerRegistered——均 grep 确认 lib 全树无命中。
+
+**③ 行为差异风险点**：
+- A1（缺全局事件总线）→ ⚠️未修复：lib 仍无 TaskStateHelper，事件触发路径仅超时兜底。
+- A2（三 callback 错配单 onTimeOut）→ ⚠️未修复：当前 `:34-39` 仍为单方法。
+- A3（TaskStateHelper 主体缺失 11 调用点）→ ⚠️未修复。
+- B1（漏 ON_TO_HOME_TRANSITION_FINISH）→ ⚠️未修复：Type enum `:18-22` 仍 3 值。
+- B2（Handler 线程替换：主线程 vs URGENT_TRANSACTION_EXECUTOR）→ ⚠️未修复：`:24` 仍 `mainLooper`。
+- C1（dispose 不清 option）→ ✔️ 保持简化：`:41-43` 同 OPPO 不清 option。
+- C2（无 setHandler 入口）→ ✔️ 保持简化：`:24` handler 是 `val`。
+- C3（无日志）→ ⚠️未修复。
+- D1-D3 → ✔️ 保持简化。
+
+**④ 回移建议**：
+- 4.1-1~8 → 按原标记（全部 ⚠️未修复 或 ✔️保持简化）。
+- 4.2-1~7 → ✔️ 保持简化。
+
+### 修正明细
+无修正。全部条目与当前代码一致。
+
+**条目总数**：3（②2.1）+ 3（②2.2）+ 15（②2.3）+ 3（③A）+ 2（③B）+ 3（③C）+ 3（③D）+ 8（④4.1）+ 7（④4.2）= **47 条**
+**修正数**：**0 条**（所有标记和描述与当前代码一致）

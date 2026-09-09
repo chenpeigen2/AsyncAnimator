@@ -1,7 +1,7 @@
 # vs-oppo-14 — `delayStartActivityIfNeed` 三层决策树 11 谓词逐项对照
 
 > 范围：
-> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/controller/AnimationController.kt:175-201` `override fun delayStartActivityIfNeed(...)`
+> - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/control/AnimationController.kt:220-251` `override fun delayStartActivityIfNeed(...)`
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/oplus/quickstep/utils/AnimationController.java:601-671` `public boolean delayStartActivityIfNeed(Context, Intent, Supplier<Boolean>, Runnable)`（声明 `:598`，方法体 `:601-671`，用户指定的 `:608-669` 是三层 + 清场段的精确范围）
 >
 > 取证方法：lib 侧用 Python 读 UTF-8（Kotlin 文件含中文字符，Read 工具拒 UTF-8 时绕道）；sources 侧 100% 经 Python 直接读（OPPO `AnimationController.java` 实际是明文，63.7 KB，285 行 JADX 反编译文本 + Kotlin metadata 头；只是 Read 工具按 size/字符集策略拒读）。
@@ -26,15 +26,15 @@ OPPO `delayStartActivityIfNeed` 三层决策结构（行号 = `AnimationControll
 | **第三层** `else if mOverviewContinuationTimeOutListener != null` | `:645-651` | app→overview 续行动画运行期间挂起 |
 | **清理段** | `:653-670` | 清两个 Between 标志 + 逐个 dispose 三个 listener + return false |
 
-lib 对应区段（`AnimationController.kt:175-201`）：
+lib 对应区段（`AnimationController.kt:220-251`）：
 
 | 区段 | lib 行 | 行为 |
 |---|---|---|
-| `startActivityAction = null` 重置 | `:176` | 与 OPPO `:604` 等价 |
-| **第一层** `specialSceneExitTimeOutListener != null` | `:178-183` | 横屏 / 分屏 / nav 模式退出挂起 |
-| **第二层** `else if transitionFinishTimeOutListener != null` | `:184-188` | 分屏 / 业务回调挂起 |
-| **第三层** `else if overviewContinuationTimeOutListener != null` | `:189-196` | **时间窗**挂起 |
-| **清理段** | `:197-201` | 清两个 Between 标志 + 三个 listener dispose + return false |
+| `startActivityAction = null` 重置 | `:222` | 与 OPPO `:604` 等价 |
+| **第一层** `specialSceneExitTimeOutListener != null` | `:224-230` | 横屏 / 分屏 / nav 模式退出挂起 |
+| **第二层** `else if transitionFinishTimeOutListener != null` | `:231-235` | 分屏 / 业务回调挂起 |
+| **第三层** `else if overviewContinuationTimeOutListener != null` | `:236-240` | **时间窗**挂起 |
+| **清理段** | `:242-250` | 清两个 Between 标志 + 三个 listener dispose + return false |
 
 ---
 
@@ -42,15 +42,15 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 | lib 元素（文件:行） | 原厂对应（文件:行） | 关系 |
 |---|---|---|
-| `AnimationController.delayStartActivityIfNeed(...)` 声明 `AnimationController.kt:175` | `AnimationController.java:598` 方法签名 `public boolean delayStartActivityIfNeed(Context context, Intent intent, Supplier<Boolean> call, Runnable runnable)` | 形状等价；参数 `Context`→`Any?`、`Intent`→`Intent?`、`Supplier<Boolean>`→`(() -> Boolean)?`、`Runnable`→`(() -> Unit)?` |
-| `AnimationController.kt:177-201` 27 行方法体 | `AnimationController.java:601-671` 71 行方法体（包含 LogUtils + StringBuilder 拼接，**逻辑行 ≈ 25**） | 行数压缩 0.36×，删除所有 LogUtils / StringBuilder（demo 不需要） |
-| `AnimationController.kt:43-47` `specialSceneExitTimeOutMaxTime` 字段 | `AnimationController.java:84` `private long mSpecialSceneExitTimeOutMaxTime = -1` | 精确对应 |
-| `AnimationController.kt:46` `overviewContinuationTimeOutMaxTime` 字段 | `AnimationController.java:85` `private long mOverviewContinuationTimeOutMaxTime = -1` | 精确对应 |
-| `AnimationController.kt:30` `isLandScapeGesture` | `AnimationController.java:71` `mIsLandScapeGesture` | 精确对应（去 `m` 前缀） |
-| `AnimationController.kt:31` `isSplitScreenGesture` | `AnimationController.java:74` `mIsSplitScreenGesture` | 精确对应 |
-| `AnimationController.kt:32` `isNavModeLandScapeOnAppExit` | `AnimationController.java:75` `mIsNavModeLandScapeOnAppExit` | 精确对应 |
-| `AnimationController.kt:33` `isBetweenAppExitTransitionEndAndFinish` | `AnimationController.java:68` `mIsBetweenAppExitTransitionEndAndFinish` | 精确对应 |
-| `AnimationController.kt:34` `isBetweenTransitionEndAndFinish` | `AnimationController.java:69` `mIsBetweenTransitionEndAndFinish` | 精确对应 |
+| `AnimationController.delayStartActivityIfNeed(...)` 声明 `AnimationController.kt:220` | `AnimationController.java:598` 方法签名 `public boolean delayStartActivityIfNeed(Context context, Intent intent, Supplier<Boolean> call, Runnable runnable)` | 形状等价；参数 `Context`→`Any?`、`Intent`→`Intent?`、`Supplier<Boolean>`→`(() -> Boolean)?`、`Runnable`→`(() -> Unit)?` |
+| `AnimationController.kt:222-251` 30 行方法体 | `AnimationController.java:601-671` 71 行方法体（包含 LogUtils + StringBuilder 拼接，**逻辑行 ≈ 25**） | 行数压缩 0.36×，删除所有 LogUtils / StringBuilder（demo 不需要） |
+| `AnimationController.kt:47-48` `specialSceneExitTimeOutMaxTime` 字段 | `AnimationController.java:84` `private long mSpecialSceneExitTimeOutMaxTime = -1` | 精确对应 |
+| `AnimationController.kt:48` `overviewContinuationTimeOutMaxTime` 字段 | `AnimationController.java:85` `private long mOverviewContinuationTimeOutMaxTime = -1` | 精确对应 |
+| `AnimationController.kt:33` `isLandScapeGesture` | `AnimationController.java:71` `mIsLandScapeGesture` | 精确对应（去 `m` 前缀） |
+| `AnimationController.kt:34` `isSplitScreenGesture` | `AnimationController.java:74` `mIsSplitScreenGesture` | 精确对应 |
+| `AnimationController.kt:35` `isNavModeLandScapeOnAppExit` | `AnimationController.java:75` `mIsNavModeLandScapeOnAppExit` | 精确对应 |
+| `AnimationController.kt:36` `isBetweenAppExitTransitionEndAndFinish` | `AnimationController.java:68` `mIsBetweenAppExitTransitionEndAndFinish` | 精确对应 |
+| `AnimationController.kt:37` `isBetweenTransitionEndAndFinish` | `AnimationController.java:69` `mIsBetweenTransitionEndAndFinish` | 精确对应 |
 | 无对应（lib 完全未定义） | `AnimationController.java:283-290` `private final boolean isSpecialAppScene(Intent)` | **遗漏** —— OPPO 在第二层调用的谓词函数，lib 没有 |
 | 无对应 | `com/oplus/launcher3/util/ScreenUtils.isTablet()` `AnimationController.java:620` | **遗漏** —— OPPO 在第一层调用的谓词函数，lib 没有引入 |
 | 无对应 | `com/oplus/quickstep/utils/AppSwipeToRecentContinuationHelper.INSTANCE.isAppSwipeToRecentContinuationRunning()` `AnimationController.java:646` | **替换为时间窗** —— OPPO 是单例静态布尔字段，lib 是 `SystemClock.uptimeMillis() < maxTime` |
@@ -72,12 +72,12 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 | # | OPPO 谓词（原厂行号） | 表达式 | lib 对应（lib 行号） | 标记 | 证据 |
 |---|---|---|---|---|---|
-| L1.1 | `mIsLandScapeGesture` （`AnimationController.java:610, 620`，变量 `z9` + 复合到 `z13`） | 横屏手势标志 | `isLandScapeGesture` （`AnimationController.kt:30, 180`） | ⚠️ 部分复刻 | OPPO 在 `z13 = mIsLandScapeGesture && !ScreenUtils.isTablet()` 中 conj `!isTablet`；lib `:180` `isLandScapeGesture` 单独参与 OR |
-| L1.2 | `mIsSplitScreenGesture` （`:611, 621`，变量 `z10` + 复合到 `z14`） | 分屏手势标志 | `isSplitScreenGesture` （`AnimationController.kt:31, 180`） | ✅ 精确复刻 | OPPO `z14 = mIsSplitScreenGesture` 单独参与第一层 OR；lib 完全一致 |
-| L1.3 | `mIsNavModeLandScapeOnAppExit` （`:612, 622`） | nav-mode 横屏退出标志 | `isNavModeLandScapeOnAppExit` （`AnimationController.kt:32, 181`） | ✅ 精确复刻 | OPPO 与 `mIsBetweenAppExitTransitionEndAndFinish` conj；lib `:181` `(isNavModeLandScapeOnAppExit && isBetweenAppExitTransitionEndAndFinish)` 同样 conj |
-| L1.4 | `mIsBetweenAppExitTransitionEndAndFinish` （`:613, 622`） | 应用退出 transition 终态与 finish 之间的窗口 | `isBetweenAppExitTransitionEndAndFinish` （`AnimationController.kt:33, 181`） | ✅ 精确复刻 | OPPO 与 `mIsNavModeLandScapeOnAppExit` conj；lib 完全一致 |
+| L1.1 | `mIsLandScapeGesture` （`AnimationController.java:610, 620`，变量 `z9` + 复合到 `z13`） | 横屏手势标志 | `isLandScapeGesture` （`AnimationController.kt:33, 226`） | ⚠️ 部分复刻 | OPPO 在 `z13 = mIsLandScapeGesture && !ScreenUtils.isTablet()` 中 conj `!isTablet`；lib `:180` `isLandScapeGesture` 单独参与 OR |
+| L1.2 | `mIsSplitScreenGesture` （`:611, 621`，变量 `z10` + 复合到 `z14`） | 分屏手势标志 | `isSplitScreenGesture` （`AnimationController.kt:34, 226`） | ✅ 精确复刻 | OPPO `z14 = mIsSplitScreenGesture` 单独参与第一层 OR；lib 完全一致 |
+| L1.3 | `mIsNavModeLandScapeOnAppExit` （`:612, 622`） | nav-mode 横屏退出标志 | `isNavModeLandScapeOnAppExit` （`AnimationController.kt:35, 227`） | ✅ 精确复刻 | OPPO 与 `mIsBetweenAppExitTransitionEndAndFinish` conj；lib `:181` `(isNavModeLandScapeOnAppExit && isBetweenAppExitTransitionEndAndFinish)` 同样 conj |
+| L1.4 | `mIsBetweenAppExitTransitionEndAndFinish` （`:613, 622`） | 应用退出 transition 终态与 finish 之间的窗口 | `isBetweenAppExitTransitionEndAndFinish` （`AnimationController.kt:36, 227`） | ✅ 精确复刻 | OPPO 与 `mIsNavModeLandScapeOnAppExit` conj；lib 完全一致 |
 | L1.5 | `!ScreenUtils.isTablet()` （`:620`，复合到 `z13`） | **非平板限定** | ❌ 无对应 | ❌ **遗漏** | lib 没引入 `ScreenUtils`；`isLandScapeGesture` 走 OR 时不区分手机/平板 |
-| L1.6 | `!isTimeOut` ≡ `SystemClock.uptimeMillis() ≤ mSpecialSceneExitTimeOutMaxTime` （`:609, 617-618`） | 第一层 listener 还没超时 | `SystemClock.uptimeMillis() > specialSceneExitTimeOutMaxTime` 反向 （`:179`） | ✅ 精确复刻 | OPPO：`boolean z8 = uptimeMillis > maxTime; if (z8) return false`；lib `:179` `if (SystemClock.uptimeMillis() > specialSceneExitTimeOutMaxTime) return false` 同结构 |
+| L1.6 | `!isTimeOut` ≡ `SystemClock.uptimeMillis() ≤ mSpecialSceneExitTimeOutMaxTime` （`:609, 617-618`） | 第一层 listener 还没超时 | `SystemClock.uptimeMillis() > specialSceneExitTimeOutMaxTime` 反向 （`:179`） | ✅ 精确复刻 | OPPO：`boolean z8 = uptimeMillis > maxTime; if (z8) return false`；lib `:225` `if (SystemClock.uptimeMillis() > specialSceneExitTimeOutMaxTime) return false` 同结构 |
 
 **第一层小结**：6 谓词中 lib 精确复刻 4 个（L1.2/L1.3/L1.4/L1.6），部分复刻 1 个（L1.1 缺 `!isTablet` conj），完全遗漏 1 个（L1.5 `!ScreenUtils.isTablet()`）。
 
@@ -85,11 +85,11 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 | # | OPPO 谓词（原厂行号） | 表达式 | lib 对应（lib 行号） | 标记 | 证据 |
 |---|---|---|---|---|---|
-| L2.1 | `mTransitionFinishTimeOutListener != null`（entry，仅作层选择，不属"11 逻辑谓词"） | — | `transitionFinishTimeOutListener != null`（`:184`） | ✅ 精确复刻 | lib 与 OPPO 均为 `else if (... != null)` 互斥层选择 |
+| L2.1 | `mTransitionFinishTimeOutListener != null`（entry，仅作层选择，不属"11 逻辑谓词"） | — | `transitionFinishTimeOutListener != null`（`:231`） | ✅ 精确复刻 | lib 与 OPPO 均为 `else if (... != null)` 互斥层选择 |
 | L2.2 | `isSpecialAppScene(intent)`（`:628, 640`） | Intent action == `ACTION_EXP_SEARCH_APP` / `ACTION_DOMESTIC_SEARCH_APP` 或 extras `source == BranchSearchHelper.SEARCH_INTENT_EXTRAS_SOURCE_VALUE` | ❌ 无对应 | ❌ **遗漏** | lib 没引入 `isSpecialAppScene` 方法，也没引入 `IndicatorEntry`/`BranchSearchHelper` 常量；`intent` 参数在第二层实际是死参数（仅声明、未使用） |
 | L2.3 | `mIsBetweenTransitionEndAndFinish`（`:633`，**只 log，不参与 if**） | transition 终态与 finish 之间的窗口 | ❌ 无 log 也无读 | ❌ **遗漏**（观测性退化） | OPPO `LogUtils.i("Launcher", "startActivitySafely with mTransitionFinishTimeOutListener: ... isBetweenTransitionEndAndFinish = " + z15)`；lib 整个第二层没有任何日志 |
 | L2.4 | `mIsSplitScreenGesture`（`:634, 640`，变量 `z16`） | 分屏手势标志 | `isSplitScreenGesture`（`:185`） | ✅ 精确复刻 | OPPO `if (zIsSpecialAppScene \|\| mIsSplitScreenGesture \|\| zBooleanValue)`；lib `if (isSplitScreenGesture \|\| call?.invoke() == true)` 同样参与 OR |
-| L2.5 | `call.get()`（`:629-632, 640`） | 业务回调返回 true 时挂起 | `call?.invoke() == true`（`:185`） | ✅ 精确复刻 | OPPO `Supplier<Boolean>.get()` → `Boolean.FALSE` fallback；lib `(() -> Boolean)?.invoke() == true` 用 elvis 简化 |
+| L2.5 | `call.get()`（`:629-632, 640`） | 业务回调返回 true 时挂起 | `call?.invoke() == true`（`:232`） | ✅ 精确复刻 | OPPO `Supplier<Boolean>.get()` → `Boolean.FALSE` fallback；lib `(() -> Boolean)?.invoke() == true` 用 elvis 简化 |
 | L2.6 | `mIsSplitScreenGesture`（L1 重用，**L2 仍读**，但不属新谓词） | — | — | — | 仅一处算 |
 
 **第二层小结**：4 逻辑谓词（L2.2-L2.5）中 lib 精确复刻 2 个（L2.4/L2.5），完全遗漏 2 个（L2.2 `isSpecialAppScene`、L2.3 `mIsBetweenTransitionEndAndFinish` 日志）。
@@ -98,7 +98,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 | # | OPPO 谓词（原厂行号） | 表达式 | lib 对应（lib 行号） | 标记 | 证据 |
 |---|---|---|---|---|---|
-| L3.1 | `mOverviewContinuationTimeOutListener != null`（entry，仅作层选择） | — | `overviewContinuationTimeOutListener != null`（`:189`） | ✅ 精确复刻 | lib 与 OPPO 均为 `else if (... != null)` 互斥层选择 |
+| L3.1 | `mOverviewContinuationTimeOutListener != null`（entry，仅作层选择） | — | `overviewContinuationTimeOutListener != null`（`:236`） | ✅ 精确复刻 | lib 与 OPPO 均为 `else if (... != null)` 互斥层选择 |
 | L3.2 | `AppSwipeToRecentContinuationHelper.INSTANCE.isAppSwipeToRecentContinuationRunning()`（`:646, 648`） | **运行态查询**：单例静态布尔字段 `isAppSwipeToRecentContinuationRunning`，由 `setAppSwipeToRecentContinuationState(true)` 设 true、动画 end/cancel 设 false | `SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime`（`:190-191`） | 🔁 **替换**（语义不等价） | lib 用**时间窗**（注册 listener 时 `maxTime = uptimeMillis() + 100`，判 `now < maxTime`）替代 OPPO 的**运行态判定**。两者不等价：① 续行提前结束但窗口未到 → lib 仍挂起（OPPO 不挂）；② 续行启动晚于 100ms → lib 已不挂（OPPO 仍挂） |
 
 **第三层小结**：1 逻辑谓词（L3.2）lib 用时间窗伪判定替换运行态判定，**机制不等价**。
@@ -108,9 +108,9 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 | 区段 | OPPO | lib | 标记 |
 |---|---|---|---|
 | 顶部 `supportInterruption()` guard | `AnimationController.java:601-603` `if (!OplusAnimManager.INSTANCE.supportInterruption()) return false` | 无 | ❌ **遗漏**（OPPO 整个 feature-off 总开关） |
-| 清理段：清 `mIsBetweenAppExitTransitionEndAndFinish` | `:653` | `AnimationController.kt:197` | ✅ 精确复刻 |
-| 清理段：清 `mIsBetweenTransitionEndAndFinish` | `:654` | `AnimationController.kt:198` | ✅ 精确复刻 |
-| 清理段：dispose + null 三个 listener（每个 2 行 if+赋值） | `:655-669` | `AnimationController.kt:199-201`（用 `?.dispose()` 一行一个 + null） | ✅ 精确复刻（`?.` 替 if-null，行数更短） |
+| 清理段：清 `mIsBetweenAppExitTransitionEndAndFinish` | `:653` | `AnimationController.kt:242` | ✅ 精确复刻 |
+| 清理段：清 `mIsBetweenTransitionEndAndFinish` | `:654` | `AnimationController.kt:243` | ✅ 精确复刻 |
+| 清理段：dispose + null 三个 listener（每个 2 行 if+赋值） | `:655-669` | `AnimationController.kt:244-250`（用 `?.dispose()` 一行一个 + null） | ✅ 精确复刻（`?.` 替 if-null，行数更短） |
 
 ---
 
@@ -136,7 +136,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 #### A1. ⚠️未修复（中，~40行）— 第三层运行态被换成时间窗（bug 级）
 
 - **OPPO**：`AnimationController.java:646-650` 调用 `AppSwipeToRecentContinuationHelper.INSTANCE.isAppSwipeToRecentContinuationRunning()` —— 这是个**单例静态布尔字段**（`AppSwipeToRecentContinuationHelper.java:13154` `private static boolean isAppSwipeToRecentContinuationRunning`），由 `setAppSwipeToRecentContinuationState(true)` 设 true、`continuationScrollAnim` end/cancel 设 false。**判定语义是"续行动画此刻是否在跑"**。
-- **lib**：`AnimationController.kt:189-196` 用 `if (SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime)` —— 这是个**时间窗**，由 `setAppToOverviewContinuationState(true)` 触发注册 listener 时 `maxTime = uptimeMillis() + 100`（`AnimationController.kt:147-152`），**判定语义是"注册 listener 后 100ms 内"**。
+- **lib**：`AnimationController.kt:236-240` 用 `if (SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime)` —— 这是个**时间窗**，由 `setAppToOverviewContinuationState(true)` 触发注册 listener 时 `maxTime = uptimeMillis() + 100`（`AnimationController.kt:198-201`），**判定语义是"注册 listener 后 100ms 内"**。
 - **后果**（两种 race-condition）：
   1. **续行提前结束**（如 30ms 完成）但 `delayStartActivityIfNeed` 在第 50ms 才被调 → lib 仍挂起 startActivity（OPPO 不挂）。用户多等 50ms 后才被超时兜底放行。
   2. **续行启动延迟**（如点击到续行触发晚于 100ms）→ lib 不挂起，startActivity 直接跑，可能与续行末段帧竞争（OPPO 仍挂）。
@@ -156,14 +156,14 @@ lib 对应区段（`AnimationController.kt:175-201`）：
               BranchSearchHelper.SEARCH_INTENT_EXTRAS_SOURCE_VALUE);
   }
   ```
-- **lib**：完全无此方法；`intent` 参数在 `delayStartActivityIfNeed` 第二层签名里出现但**实际未被使用**（`AnimationController.kt:175, 184-188`）—— `isSplitScreenGesture || call?.invoke() == true` 不读 `intent`。
+- **lib**：完全无此方法；`intent` 参数在 `delayStartActivityIfNeed` 第二层签名里出现但**实际未被使用**（`AnimationController.kt:220, 231-235`）—— `isSplitScreenGesture || call?.invoke() == true` 不读 `intent`。
 - **后果**：搜索入口（Heytap 搜索 / 桌面搜索）触发的 startActivity 在 lib 上**不被挂起等 transition finish** —— 原厂该场景会等。原厂意图是"防搜索框闪一下再启动 app"。真机表现：搜索→app 转场搜索框短暂残影。
 - **修复成本**：约 **15 行**。在 `AnimationController.kt` 加 `private fun isSpecialAppScene(intent: Intent?): Boolean` demo 化版本（仅匹配一种 intent action stub 即可），并在第二层 if 加入该谓词。`IndicatorEntry` / `BranchSearchHelper` 常量可注入。
 
 #### A3. ⚠️未修复（小，~5行）— 第一层 `isLandScapeGesture` 缺 `!ScreenUtils.isTablet()` conj（语义反转）
 
 - **OPPO**：`AnimationController.java:620` `boolean z13 = this.mIsLandScapeGesture && !ScreenUtils.isTablet()` —— 横屏手势**只在非平板时**触发挂起。
-- **lib**：`AnimationController.kt:180` `isLandScapeGesture` 单独参与第一层 OR —— 横屏手势**无论手机/平板都触发挂起**。
+- **lib**：`AnimationController.kt:226` `isLandScapeGesture` 单独参与第一层 OR —— 横屏手势**无论手机/平板都触发挂起**。
 - **后果**：
   - 手机：行为一致
   - **平板**：原厂不挂起，lib 挂起 —— **平板 landscape activity 退出时 startActivity 被错误挂起**，用户体验为"app→recents 时点击 home 图标延迟一个超时窗口才生效"。
@@ -251,11 +251,11 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 ### 6.1 值得回移（业务影响明确、修复成本可控）
 
-> **⚠️未修复（未实施 ~40 行：AppSwipeToRecentContinuationHelper 桩未建；60bd048 只修了 else-if 互斥/清理段/时钟域，第三层仍时间窗（AnimationController.kt:189-196））**
+> **⚠️未修复（未实施 ~40 行：AppSwipeToRecentContinuationHelper 桩未建；60bd048 只修了 else-if 互斥/清理段/时钟域，第三层仍时间窗（AnimationController.kt:236-240））**
 1. **A1 第三层运行态判定**：续行场景是 OPPO 核心动画路径之一（demo11 弹簧回归）；时间窗伪判定在 demo 上能跑但真机会 race-condition。**强烈建议回移**。
-> **⚠️未修复（未实施 ~15 行：demo 化 intent action stub 未加；第二层仍不读 intent（AnimationController.kt:184-188））**
+> **⚠️未修复（未实施 ~15 行：demo 化 intent action stub 未加；第二层仍不读 intent（AnimationController.kt:231-235））**
 2. **A2 `isSpecialAppScene`**：搜索入口是 OPPO 桌面搜索的核心入口之一；漏了该谓词等于 lib 不能正确处理搜索→app 转场。**建议回移**（demo 化版即可）。
-> **⚠️未修复（未实施 ~5 行：第一层 isLandScapeGesture 仍无 !isTablet conj（AnimationController.kt:180））**
+> **⚠️未修复（未实施 ~5 行：第一层 isLandScapeGesture 仍无 !isTablet conj（AnimationController.kt:226））**
 3. **A3 `!isTablet()` conj**：平板用户群体大；分支反转在平板上必现。**建议回移**（5 行即可）。
 > **⚠️未修复（未补：依赖 A1-A3 修复后行为定型；见 vs-oppo-34）**
 4. **B3 单元测试**：修 A1/A2/A3 后必须有 CI 覆盖，否则未来重构会回归。**强烈建议同步补**。
@@ -316,7 +316,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
 按条目补记：
-- **A1（第三层运行态 vs 时间窗）** — ⚠️未修复：代码仍 `uptimeMillis() < overviewContinuationTimeOutMaxTime`（AnimationController.kt:189-196），运行态 helper 桩未建（~40 行）
+- **A1（第三层运行态 vs 时间窗）** — ⚠️未修复：代码仍 `uptimeMillis() < overviewContinuationTimeOutMaxTime`（AnimationController.kt:236-240），运行态 helper 桩未建（~40 行）
 - **A2（isSpecialAppScene）** — ⚠️未修复：第二层仍 `isSplitScreenGesture || call?.invoke()==true`，intent 未读（~15 行）
 - **A3（!isTablet conj）** — ⚠️未修复：第一层仍 `isLandScapeGesture || ...` 无 !isTablet（~5 行）
 - **B1（顶部 supportInterruption guard）** — 维持 ⚠️未修复（小，~3 行）；doc §6.2-1 论证 factory gate 已等效、建议保持简化，二者可并存（guard 属防御性）
@@ -328,3 +328,27 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **§6.1-1..4** — ⚠️未修复（A1/A2/A3/B3 均未实施）
 - **§6.2-1..4** — ✔️保持简化（doc 自列）
 - **§6.3 协同条目** — 跨 review 引用（review 09/11/12），无独立代码动作
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+- 复核条目总数：15（A1-A3、B1-B3、C1-C2、§4-D、§6.1 4项、§6.2 4项、§6.3）；结论不变：15 条；修正：0 条状态变更
+- 逐条验证结果：
+  - A1 第三层运行态 vs 时间窗：⚠️未修复 成立 —— `AnimationController.kt:236-240` 仍 `uptimeMillis() < overviewContinuationTimeOutMaxTime`，AppSwipeToRecentContinuationHelper 桩未建
+  - A2 isSpecialAppScene：⚠️未修复 成立 —— 第二层 `AnimationController.kt:231-235` 仍 `isSplitScreenGesture || call?.invoke()==true`，intent 参数未被读取
+  - A3 !isTablet conj：⚠️未修复 成立 —— 第一层 `AnimationController.kt:226` 仍 `isLandScapeGesture` 无 `!isTablet` 限定
+  - B1 顶部 supportInterruption guard：⚠️未修复 成立 —— `delayStartActivityIfNeed` 方法体无顶部 guard；doc §6.2-1 论证 factory gate 已等效，维持建议保持简化
+  - B2 第二层日志：✔️保持简化 成立 —— 整个方法无 LogUtils/Trace 调用
+  - B3 无单测：⚠️未修复 成立 —— `AnimationControllerTest.kt`（111 行）无 `delayStartActivityIfNeed` 用例
+  - C1 displayController 懒加载：✔️保持简化 成立 —— lib 无 `displayController` 字段
+  - C2 静态字段 vs maxTime：✔️保持简化 成立 —— 并入 A1，demo 单实例无并发差异
+  - §4-D dispose 全局事件总线：⚠️未修复 成立 —— `TaskStateChangeTimeOutListener.kt:36-38` 仍仅 `handler.removeCallbacks`，无 `removeGlobalTaskStateChangeListener`
+  - §6.1 回移建议 1-4：⚠️未修复 成立（A1/A2/A3/B3 均未实施）
+  - §6.2 保持简化 1-4：✔️保持简化 成立
+  - §6.3 协同条目：跨 review 引用（review 09/11/12），无独立代码动作
+- 路径/行号更正（非状态变更）：
+  - lib 包路径 `com/asyncanimator/launcher/controller/` → `com/asyncanimator/control/`（e62dbff 包重组）
+  - `delayStartActivityIfNeed` 方法 `kt:175-201` → `:220-251`（文件从 201 行增长到 259 行，方法体 +45 行偏移）
+  - 字段：`isLandScapeGesture kt:30` → `:33`；`isSplitScreenGesture kt:31` → `:34`；`isNavModeLandScapeOnAppExit kt:32` → `:35`；`isBetweenAppExitTransitionEndAndFinish kt:33` → `:36`；`isBetweenTransitionEndAndFinish kt:34` → `:37`
+  - timeout 字段：`specialSceneExitTimeOutMaxTime kt:43-47` → `:47-48`；`overviewContinuationTimeOutMaxTime kt:46` → `:48`
+  - 方法体内部：`startActivityAction=null` `:176` → `:222`；第一层条件 `:178-183` → `:224-230`（含 `:179` → `:225` 时间检查）；第二层 `:184-188` → `:231-235`（含 `:185` → `:232`）；第三层 `:189-196` → `:236-240`；清理段 `:197-201` → `:242-250`
+  - 注册方法：`registerOverviewContinuationTimeOutListener kt:147-152` → `:198-201`
+  - 谓词表 lib 列同步更新（L1.1-L1.4、L2.4、L3.2 的行号全部刷新到当前文件）

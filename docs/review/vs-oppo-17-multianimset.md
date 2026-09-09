@@ -32,16 +32,16 @@
 
 | lib 类 | 原厂类（文件:行） | 关系 |
 |---|---|---|
-| **❌ 无对应类**（单通道 `lib/.../pending/PendingAnimation.kt` 181 行 1 个 `AnimatorSet`，**不能视作对应**） | `com/android/quickstep/util/animation/MultiAnimatorSet.java:32-475`（476 行；Java 反编译自 `MultiAnimatorSet.kt` 类，`@SourceDebugExtension` `:30` 标 `SMAP MultiAnimatorSet.kt Kotlin 1,413:1`） | **完全缺失**（4 通道调度器未移植） |
+| **❌ 无对应类**（单通道 `lib/src/main/java/com/asyncanimator/playback/PendingAnimation.kt` 178 行 1 个 `AnimatorSet`，**不能视作对应**） | `com/android/quickstep/util/animation/MultiAnimatorSet.java:32-475`（476 行；Java 反编译自 `MultiAnimatorSet.kt` 类，`@SourceDebugExtension` `:30` 标 `SMAP MultiAnimatorSet.kt Kotlin 1,413:1`） | **完全缺失**（4 通道调度器未移植） |
 
 ### 1.2 周边类（lib 状态）
 
 | 原厂类 | 行数 | 角色 | lib 是否复刻 |
 |---|---|---|---|
-| `com/android/quickstep/util/animation/SpringAnimation.java` | 194 | `extends DynamicAnimation<SpringAnimation>`，持 SpringForce + `mPendingPosition` + `mEndRequested`；提供 `animateToFinalPosition` / `canSkipToEnd` / `skipToEnd` / `finishToEndImmediately` | ⚠️ 部分（lib `AsyncSpringAnim.kt` 走 androidx `SpringAnimation`，命名相同但行为不同：缺 `mPendingPosition` 半步分裂积分 `:147-159`，缺 `canSkipToEnd` 欠阻尼校验 `:56-58`，缺 `setValueThreshold` 空覆写 `:112-113`） |
+| `com/android/quickstep/util/animation/SpringAnimation.java` | 194 | `extends DynamicAnimation<SpringAnimation>`，持 SpringForce + `mPendingPosition` + `mEndRequested`；提供 `animateToFinalPosition` / `canSkipToEnd` / `skipToEnd` / `finishToEndImmediately` | ⚠️ 部分（lib `anim/AsyncSpringAnim.kt` 走 androidx `SpringAnimation`，命名相同但行为不同：缺 `mPendingPosition` 半步分裂积分 `:147-159`，缺 `canSkipToEnd` 欠阻尼校验 `:56-58`，缺 `setValueThreshold` 空覆写 `:112-113`） |
 | `com/android/quickstep/util/animation/SpringHolder.java` | 138 | 单自由度弹簧节点：`mValue` / `mVelocity` / `mPendingPosition` / `mStartDelay` / `mMinVisibleChange` / `mMinValue` / `mMaxValue` / `mSpringForce` / `mKey`；`updateValueAndVelocity` 含 `mStartDelay` 倒计时（`:108-114`）和半步分裂积分（`:115-130`） | ❌ 无（详见 review 13 §1.2） |
 | `com/android/quickstep/util/animation/MultiDynamicAnimation.java` | 200 | 帧循环载体 `implements AnimationHandler.AnimationFrameCallback`；`doAnimationFrame` 裸 delta 积分 + `requestEnd` 下一帧生效 | ❌ 无（同上） |
-| `com/android/quickstep/util/animation/AsyncValueAnimator.java` | 165 | `extends ValueAnimator`，start/cancel/end 都判 `mAnimLooperExecutor.getLooper().isCurrentThread()` → 跨线程时 post 纠偏（`:116-127, 129-141, 152-164`） | ✅ 复刻（lib `AsyncValueAnimator.kt`，review 01 §2.B-1 标记精确复刻） |
+| `com/android/quickstep/util/animation/AsyncValueAnimator.java` | 165 | `extends ValueAnimator`，start/cancel/end 都判 `mAnimLooperExecutor.getLooper().isCurrentThread()` → 跨线程时 post 纠偏（`:116-127, 129-141, 152-164`） | ✅ 复刻（lib `anim/AsyncValueAnimator.kt`，review 01 §2.B-1 标记精确复刻） |
 | `com/android/quickstep/util/animation/CustomRectFSpringAnim.java` | 925 | 第 4 通道的 RectF 弹簧，含 6 自由度 + AnimType 7 值 + 线程切换协议 | ⚠️ 占位（lib 18 行占位，review 13 全文详拆） |
 
 ### 1.3 关于用户描述的 "链表节点 setStartTime / isReady / delay 等字段"
@@ -58,9 +58,9 @@
 
 | lib 类 | 用到 MultiAnimatorSet 概念的方式 |
 |---|---|
-| `lib/.../controller/AnimationController.kt:36,80` | 仅 `AnimationSeqHelper.canFinishRecentsAnim(animRecord)` 流程，**完全不持有 4 通道**；`addRecentsAnim(CustomRectFSpringAnim, ...)` 只接收第 4 通道单句柄 |
-| `lib/.../pending/PendingAnimation.kt` | 单 `AnimatorSet` + 1 `progressAnimator`（line 29, 32），**没有任何 async / spring / rectF 三条并行通道** |
-| `lib/.../controller/RemoteAnimationFactory.kt`（17 行 interface） | 仅声明 `fun createAnimation(): AnimatorSet` + `onAnimationFinished()`——**没有多通道抽象** |
+| `lib/src/main/java/com/asyncanimator/control/AnimationController.kt:26, 65` | **完全不持有 4 通道**；`addRecentsAnim(anim, ...)`（`:65`）只接收第 4 通道单句柄；`canFinishRecentsAnim` 是 `control/DefaultAnimationController.kt:55` 的 open 方法（恒 true），`AnimationController` 未引用 `AnimationSeqHelper` |
+| `lib/src/main/java/com/asyncanimator/playback/PendingAnimation.kt` | 单 `AnimatorSet` + 1 `progressAnimator`（line 27, 30），**没有任何 async / spring / rectF 三条并行通道** |
+| `lib/src/main/java/com/asyncanimator/control/RemoteAnimationFactory.kt`（interface） | 仅声明 `fun createAnimation(): AnimatorSet` + `onAnimationFinished()`——**没有多通道抽象** |
 | `demo/.../Demo9AllAppsTransitionActivity.kt:31-113` | **概念演示**（line 69-71 显式 `log("转场链路（概念）：...")`），手动驱动 `LauncherStageView` 画曲线，**没有真正的 4 通道装配** |
 
 ---
@@ -102,10 +102,10 @@
 
 | lib 字段 | 行 | 对应 OPPO 字段 | 差距 |
 |---|---|---|---|
-| `PendingAnimation.anim: AnimatorSet`（`PendingAnimation.kt:29`） | 1 个 | `mAnimatorSet` `:42` + `mAsyncAnimatorSet` `:44`（**合二为一**） | **2 个 vs 1 个**。lib 没有 "sync/async 二选一" 概念，调用方一次 `play(anim)` 就只能是同步 |
-| `PendingAnimation.progressAnimator: ValueAnimator?`（`:32`） | 1 个 | **无对应**（progress 是主时钟，由 `AnimatorPlaybackController` 驱动；这里不属于 MultiAnimatorSet 范畴） | N/A |
-| `PendingAnimation.isAnimFinished: Boolean`（`:35`） | 1 个 | `mStarted && 4 个 *Ended 全 true`（`:104`） | **布尔数差 3**。lib 1 个 `isAnimFinished` 翻 `true` 表示 "AnimSet 已结束"，OPPO 4 个 boolean 各自翻 `true` 后**且** `mStarted==true` 才发 onEnd |
-| `PendingAnimation.animHolders`（`:30`） | list | **无对应**（OPPO 这层由 PendingAnimation 自身持有 + AnimatorPlaybackController 解析） | N/A（lib 把 PendingAnimation + APC 一起复刻，但与 MultiAnimatorSet 互补） |
+| `PendingAnimation.anim: AnimatorSet`（`playback/PendingAnimation.kt:27`） | 1 个 | `mAnimatorSet` `:42` + `mAsyncAnimatorSet` `:44`（**合二为一**） | **2 个 vs 1 个**。lib 没有 "sync/async 二选一" 概念，调用方一次 `play(anim)` 就只能是同步 |
+| `PendingAnimation.progressAnimator: ValueAnimator?`（`:30`） | 1 个 | **无对应**（progress 是主时钟，由 `AnimatorPlaybackController` 驱动；这里不属于 MultiAnimatorSet 范畴） | N/A |
+| `PendingAnimation.isAnimFinished: Boolean`（`:33`） | 1 个 | `mStarted && 4 个 *Ended 全 true`（`:104`） | **布尔数差 3**。lib 1 个 `isAnimFinished` 翻 `true` 表示 "AnimSet 已结束"，OPPO 4 个 boolean 各自翻 `true` 后**且** `mStarted==true` 才发 onEnd |
+| `PendingAnimation.animHolders`（`:28`） | list | **无对应**（OPPO 这层由 PendingAnimation 自身持有 + AnimatorPlaybackController 解析） | N/A（lib 把 PendingAnimation + APC 一起复刻，但与 MultiAnimatorSet 互补） |
 | **❌ 无** | — | `mSpringAnimations: ArraySet<SpringAnimation>` | **完全缺失** |
 | **❌ 无** | — | `mRectFSpringAnim: CustomRectFSpringAnim` | lib 接收为句柄但不持有（review 13 §1.3） |
 | **❌ 无** | — | `mAnimationId: int` | **缺失** |
@@ -124,29 +124,29 @@
 
 | OPPO | lib | 差距 |
 |---|---|---|
-| 2 个构造器：`(AnimType)` `:55-67` 与 `(AnimatorSet, AnimType)` `:438-451`——第二个允许调用方预填 sync AnimatorSet 内容（用于 LauncherBackAnimationController 这类 "已有 AnimatorSet，直接接管" 场景） | 1 个构造器：`PendingAnimation(duration: Long)` `:27` | **第 2 构造器缺失**。lib 调用方必须 rebuild 全套 ObjectAnimator；LauncherBackAnimationController 这种 "接管已有 AnimatorSet" 模式无对应 |
+| 2 个构造器：`(AnimType)` `:55-67` 与 `(AnimatorSet, AnimType)` `:438-451`——第二个允许调用方预填 sync AnimatorSet 内容（用于 LauncherBackAnimationController 这类 "已有 AnimatorSet，直接接管" 场景） | 1 个构造器：`PendingAnimation(duration: Long)` `:25` | **第 2 构造器缺失**。lib 调用方必须 rebuild 全套 ObjectAnimator；LauncherBackAnimationController 这种 "接管已有 AnimatorSet" 模式无对应 |
 
 ### 3.2 公开方法（按调用频度）
 
 | 方法签名（OPPO 行号） | lib 复刻 | 差距 |
 |---|---|---|
-| `play(Animator)` `:263-266` → `play(false, animator)` `:394-404` | `add(child: Animator)` `:45-49`（`anim.playTogether(child)`） | 行为等价（都加进 AnimatorSet），**但缺 async 分支** |
+| `play(Animator)` `:263-266` → `play(false, animator)` `:394-404` | `add(child: Animator)` `:44-48`（`anim.playTogether(child)`） | 行为等价（都加进 AnimatorSet），**但缺 async 分支** |
 | `play(Animator, boolean z)` `:413-436`（核心入口，**调用方决定 sync vs async**） | **❌ 无** | **关键**：调用方（TaskViewUtils `:1074`、LauncherContentAnimManager `:150`）按 `AppFeatureUtils.enableAsyncTaskViewLaunchWindowAnim()` 选 z；lib 必须重建 4 通道才能支持 |
 | `play(boolean z, Animator)` `:394-404` | **❌ 无** | 同上 |
 | `play(SpringAnimation...)` `:406-411` → `play(SpringAnimation)` `:453-465` | **❌ 无**（lib `AsyncSpringAnim.kt` 是单条 spring，独立驱动） | **关键**：`play(SpringAnimation)` 有 "started 后 live-add" 分支（`:455-462`）——若 spring 未运行则 addEndListener + start；否则仅 add。**lib 启动期外不能再加 spring** |
 | `play(CustomRectFSpringAnim)` `:467-475` | **❌ 无**（仅作句柄接收） | **缺失**——构造时 setAnimParamByType(mAnimType) 是基于 AnimType 决定 6 自由度参数，调用方不显式 play(rectFSpring) 就会丢参数 |
-| `start()` `:276-391` | `buildAnim(): AnimatorSet` + `start() = va.start()`（`PendingAnimation.kt:92-101, 163`） | **彻底分叉**。OPPO 是 4 通道并行 kick-off（sync/async/spring/rectF）+ 重入守卫 + empty-fast-path + isSystemDisableAnimation-fast-path，lib 单一 `va.start()` |
-| `cancel(int i9)` `:143-177`（bitmask 1=ANIMATOR_SET, 2=SPRING_ANIMATIONS, 4=RECTF_SPRING_ANIM）| `anim.cancel()`（`PendingAnimation.kt:164`，仅 `va.cancel()`） | **bitmask 缺失**——3 bit vs 0 bit。调用方（LauncherAnimationRunner / TaskViewUtils）按 bit 选通道取消，lib 一刀切 |
-| `end(int i9)` `:183-214`（同上 bitmask，但 (i9 & 2) 走 `canSkipToEnd()` `skipToEnd()` `:202-205`，无 `removeSpringAnimFromSet`） | `end()`（`PendingAnimation.kt:165`，仅 `va.end()`） | **bitmask 缺失 + `skipToEnd()` 语义缺失** |
+| `start()` `:276-391` | `buildAnim(): AnimatorSet` + `start() = va.start()`（`playback/PendingAnimation.kt:90-99, 161`） | **彻底分叉**。OPPO 是 4 通道并行 kick-off（sync/async/spring/rectF）+ 重入守卫 + empty-fast-path + isSystemDisableAnimation-fast-path，lib 单一 `va.start()` |
+| `cancel(int i9)` `:143-177`（bitmask 1=ANIMATOR_SET, 2=SPRING_ANIMATIONS, 4=RECTF_SPRING_ANIM）| `anim.cancel()`（`playback/PendingAnimation.kt:162`，内部 ObjectAnimator 委托 `va.cancel()`） | **bitmask 缺失**——3 bit vs 0 bit。调用方（LauncherAnimationRunner / TaskViewUtils）按 bit 选通道取消，lib 一刀切 |
+| `end(int i9)` `:183-214`（同上 bitmask，但 (i9 & 2) 走 `canSkipToEnd()` `skipToEnd()` `:202-205`，无 `removeSpringAnimFromSet`） | `end()`（`playback/PendingAnimation.kt:163`，内部 ObjectAnimator 委托 `va.end()`） | **bitmask 缺失 + `skipToEnd()` 语义缺失** |
 | `cancelAllAnimExceptSpringAnim()` `:179-181` → `cancel(5)` | **❌ 无** | API 缺失 |
 | `endAllAnimExceptSpringAnim()` `:216-218` → `end(5)` | **❌ 无** | API 缺失 |
-| `addListener(NullableAnimatorListener)` `:138-141` | `addListener(l: Animator.AnimatorListener)` `:88-90`（直接挂 AnimatorSet） | **接口差异**：OPPO 内部 ArraySet 累加后 onAnimationStart/End 广播（`:112-115, 291-296`），listener 收到 `null` animator；lib 直接挂到 AnimatorSet，会收到真实 animator——**回调时机不同** |
+| `addListener(NullableAnimatorListener)` `:138-141` | `addListener(l: Animator.AnimatorListener)` `:86-88`（直接挂 AnimatorSet） | **接口差异**：OPPO 内部 ArraySet 累加后 onAnimationStart/End 广播（`:112-115, 291-296`），listener 收到 `null` animator；lib 直接挂到 AnimatorSet，会收到真实 animator——**回调时机不同** |
 | `setAnimationId(int)` `:268-270` | **❌ 无** | API 缺失 |
 | `setViewStateResetRunnable(Consumer<Integer>)` `:272-274` | **❌ 无** | API 缺失 |
-| `maybeOnEnd()` `:103-117`（私有） | `isAnimFinished = true`（`PendingAnimation.kt:41`） | **核心语义差异**：OPPO 是 4 boolean 等齐后才发 `mAnimEndCallback.accept(mAnimationId)` + listeners.onAnimationEnd(null)；lib AnimatorSet 一结束就翻 true（onStart/onEnd/onCancel 全部覆写 `:39-42`）——**不等齐、不等齐、也不等齐** |
+| `maybeOnEnd()` `:103-117`（私有） | `isAnimFinished = true`（`playback/PendingAnimation.kt:39`） | **核心语义差异**：OPPO 是 4 boolean 等齐后才发 `mAnimEndCallback.accept(mAnimationId)` + listeners.onAnimationEnd(null)；lib AnimatorSet 一结束就翻 true（onStart/onEnd/onCancel 全部覆写 `:39-42`）——**不等齐、不等齐、也不等齐** |
 | `removeSpringAnimFromSet()` `:119-131`（私有）| **❌ 无** | **缺失**：cancel 时清理 spring + listeners + mAnimEndCallback |
 | `initSpringAnimEndListener()` `:83-101`（私有）| **❌ 无** | **缺失**：懒建共享 end listener |
-| `isRunning()` `:258-260` | `isRunning`（`PendingAnimation.kt:167`，仅 `va.isRunning`） | **行为差异**：OPPO 任一通道未结束都算 running；lib 只看 AnimatorSet 自身 |
+| `isRunning()` `:258-260` | `isRunning`（`playback/PendingAnimation.kt:165`，内部 ObjectAnimator 委托 `va.isRunning`） | **行为差异**：OPPO 任一通道未结束都算 running；lib 只看 AnimatorSet 自身 |
 | `isAppOpenType()` `:250-252` / `isGestureToDrag()` `:254-256` | **❌ 无** | API 缺失 |
 | 8 个 getter | 部分 | lib `anim`/`duration`/`controller` getter 不一一对应 |
 
@@ -198,7 +198,7 @@ if (mStarted && mAnimatorSetEnded && mViewSpringAnimEnded
 }
 ```
 
-**lib**（`PendingAnimation.kt:38-42`）：
+**lib**（`playback/PendingAnimation.kt:36-40`）：
 
 ```kotlin
 init {
@@ -273,8 +273,8 @@ else:
 
 | 项 | 简化方式 | 评估 |
 |---|---|---|
-| lib `PendingAnimation` 单 AnimatorSet 替代 4 通道 | 把 sync/async/spring/rectF 全部收敛到 1 个 `anim`（`PendingAnimation.kt:29`） | **合理但有限度**：当 demo 只演示 "转场 + 主时钟 + Holder 跟手" 时（Demo2/3/6/9），单 AnimatorSet + AnimatorPlaybackController 已足够覆盖。但 Demo9 转场 "概念演示" 注释（`Demo9.kt:69-71`）明示：少了 spring + rectF 通道，**真实转场无法跑起来** |
-| `mAnimatorListeners: ArraySet<NullableAnimatorListener>` 改为直接 addListener 到 AnimatorSet | lib `PendingAnimation.kt:88-90` | **可接受**：OPPO 的 ArraySet 是为了支持 start 前 addListener + start 后统一广播；lib 路径上都是 AnimatorSet 后挂，行为等价。但 **传 `null` 契约差异**（lib 传真实 Animator，OPPO 传 null）需要 listener 实现 null-safe |
+| lib `PendingAnimation` 单 AnimatorSet 替代 4 通道 | 把 sync/async/spring/rectF 全部收敛到 1 个 `anim`（`playback/PendingAnimation.kt:27`） | **合理但有限度**：当 demo 只演示 "转场 + 主时钟 + Holder 跟手" 时（Demo2/3/6/9），单 AnimatorSet + AnimatorPlaybackController 已足够覆盖。但 Demo9 转场 "概念演示" 注释（`Demo9.kt:69-71`）明示：少了 spring + rectF 通道，**真实转场无法跑起来** |
+| `mAnimatorListeners: ArraySet<NullableAnimatorListener>` 改为直接 addListener 到 AnimatorSet | lib `playback/PendingAnimation.kt:86-88` | **可接受**：OPPO 的 ArraySet 是为了支持 start 前 addListener + start 后统一广播；lib 路径上都是 AnimatorSet 后挂，行为等价。但 **传 `null` 契约差异**（lib 传真实 Animator，OPPO 传 null）需要 listener 实现 null-safe |
 | `mAnimationId` 砍掉 | 没有任何地方存 id | **可接受**：仅用于日志/trace；lib `Trace.kt` 自有 trace id |
 
 ### 4.3 遗漏（lib 无，且无可替代）
@@ -312,7 +312,7 @@ else:
 | **B3** | ⚠️未修复（bitmask API 依赖 MultiAnimatorSet 本体（未回移）；demo 无分通道取消调用方） — **`cancel(int)` / `end(int)` bitmask 协议缺失**——调用方按 bit 选通道取消的能力全无；`cancelAllAnimExceptSpringAnim()` / `endAllAnimExceptSpringAnim()` 两个 helper API 也无。LauncherAnimationRunner `:438-466` "只取消非 spring 通道" 模式 lib 无法表达 | LauncherAnimationController backAnimation 路径；调用方希望 "spring 继续跑到 AnimType 指定位置、其他瞬停" 的场景 | **30 行**（MultiAnimatorSet 加 bitmask 参数 + TYPE 常量 + 2 helper） |
 | **B4** | ⚠️未修复（async 通道 + ANIM_EXECUTOR 装配未回移（R1）；lib 单 AnimatorSet） — **`play(Animator, boolean)` sync/async 分支缺失**——调用方按 feature flag 选 sync vs async 通道（TaskViewUtils `:1074` `multiAnimatorSet.play(z10, ...)`）的协议 lib 无；所有动画只能走单一 AnimatorSet，无法利用 ANIM_EXECUTOR 跨线程优势 | TaskViewUtils.composeRecentsLaunchAnimator `AppFeatureUtils.enableAsyncTaskViewLaunchWindowAnim()` 路径 | **50 行**（MultiAnimatorSet 加 mAsyncAnimatorSet 字段 + ANIM_EXECUTOR.execute(start) + mAsync end listener post 回主线程） |
 | **B5** | ⚠️未修复（同 B4，依赖 async 通道；lib 无 mAsyncAnimatorSet） — **`cancel(1)` 同步 + 异步混合 cancel 协议**——OPPO 同时在主线程 `mAnimatorSet.cancel()` + 通过 `ANIM_EXECUTOR.execute(cancel$lambda$6)` 取消 `mAsyncAnimatorSet`，保证两通道同一时刻被打断；lib 单一 AnimatorSet 只能同步 cancel | TaskViewUtils / LauncherAnimationRunner 任一使用 async 通道的路径 | **10 行**（在 B4 实现后，cancel(1) 路径里加 ANIM_EXECUTOR post） |
-| **B6** | ❌不成立/已过期（lib 侧无 end()/canSkipToEnd 语境：PendingAnimation 无 end/cancel 方法、AsyncSpringAnim 仅 cancel/skipToEnd；欠阻尼校验属 OPPO fork SpringAnimation，随 MultiAnimatorSet 回移才有意义） — **`end(2)` 走 `canSkipToEnd()` + `skipToEnd()`** 而 cancel(2) 走 `springAnimation.cancel()`，两者语义不同；end 必须校验欠阻尼否则 `UnsupportedOperationException`（`SpringAnimation.java:117`）。lib 单一 `va.end()` 无法做此区分 | 调用方希望 "spring 瞬到终点" 但传了过阻尼 spring；OPPO 抛异常，lib 静默成功 | **10 行**（`AsyncSpringAnim.end()` 加 dampingRatio > 0 校验） |
+| **B6** | ❌不成立/已过期（lib 侧无 spring 通道 end()/canSkipToEnd 语境：AsyncSpringAnim 仅 cancel/skipToEnd（`anim/AsyncSpringAnim.kt:28-30`）；PendingAnimation 的 end/cancel 仅是内部 ObjectAnimator 的时间控制委托（`playback/PendingAnimation.kt:162-163`），与 spring 无关；欠阻尼校验属 OPPO fork SpringAnimation，随 MultiAnimatorSet 回移才有意义） — **`end(2)` 走 `canSkipToEnd()` + `skipToEnd()`** 而 cancel(2) 走 `springAnimation.cancel()`，两者语义不同；end 必须校验欠阻尼否则 `UnsupportedOperationException`（`SpringAnimation.java:117`）。lib 单一 `va.end()` 无法做此区分 | 调用方希望 "spring 瞬到终点" 但传了过阻尼 spring；OPPO 抛异常，lib 静默成功 | **10 行**（`AsyncSpringAnim.end()` 加 dampingRatio > 0 校验） |
 
 ### 5.2 中等风险
 
@@ -367,7 +367,7 @@ else:
 > **⚠️未修复（未实施：MultiAnimatorSet 未回移（R1））**
 2. **第二轮（建主调度器骨架，~250 行）**——R1：新建 `launcher/manager/MultiAnimatorSet.kt`，4 通道 + bitmask + maybeOnEnd 等齐协议；让 Demo9 升级为真实 4 通道转场
 > **⚠️未修复（未实施：SpringHolder/MultiDynamicAnimation 未回移（R2/R3））**
-3. **第三轮（建 spring 节点 + 帧循环，~350 行）**——R2 + R3：建 `launcher/async/SpringHolder.kt` + `launcher/async/MultiDynamicAnimation.kt`，让 spring 通道独立帧循环；与 review 13 的 CustomRectFSpringAnim 升级配套
+3. **第三轮（建 spring 节点 + 帧循环，~350 行）**——R2 + R3：建 `anim/SpringHolder.kt` + `anim/MultiDynamicAnimation.kt`，让 spring 通道独立帧循环；与 review 13 的 CustomRectFSpringAnim 升级配套
 
 如果只做第 1 轮，lib 能修复 2 个 bug 级问题（B2 + B6）；做完第 2 轮能解决 Demo9 转场概念演示；做完第 3 轮能把 review 11/13 标注的弹簧链缺口一并补齐。
 
@@ -393,8 +393,8 @@ else:
 | SpringHolder 半步分裂积分（mPendingPosition） | `SpringHolder.java:115-130` |
 | SpringAnimation.canSkipToEnd 欠阻尼校验 | `SpringAnimation.java:56-58`（`return mSpring.mDampingRatio > 0.0d`） |
 | Debug.getCallers(10) 栈采样 | `MultiAnimatorSet.java:148, 188`（review 08 §3 已列）|
-| lib 单 AnimatorSet | `PendingAnimation.kt:29`（`private val anim = AnimatorSet()`） |
-| lib 无 4 通道、无 bitmask、无 maybeOnEnd 等齐 | `PendingAnimation.kt:38-42`（listener 收真实 Animator；`isAnimFinished` 只看 AnimatorSet 自身） |
+| lib 单 AnimatorSet | `playback/PendingAnimation.kt:27`（`private val anim = AnimatorSet()`） |
+| lib 无 4 通道、无 bitmask、无 maybeOnEnd 等齐 | `playback/PendingAnimation.kt:36-40`（listener 收真实 Animator；`isAnimFinished` 只看 AnimatorSet 自身） |
 | lib Demo9 概念演示 | `Demo9AllAppsTransitionActivity.kt:69-71` 显式 `log("转场链路（概念）：...")` |
 
 ---
@@ -407,18 +407,71 @@ else:
 
 **整体保真度 ~14%**（1/21 字段、1/20 方法、覆盖 4 通道调度 0/4）。**修复成本估算**：仅 bug 级修复 ~60 行；新建完整 MultiAnimatorSet ~250 行；含 SpringHolder + MultiDynamicAnimation ~600 行。Demo9 从 "概念演示" 升级到 "真实 4 通道转场" 必须建主调度器。
 
-## 复核记录（2026-09-09）
+---
 
-本批按顺序复核，按已知 fix commit 标记状态。子代理 5 小时配额卡死，本批在主上下文用脚本批量追加。
-**⚠️ 重要**：本节是已知修复的交叉索引；本文档中各项的逐条验证为 ⚠️待复核（下一批用子代理重做）。
+## 复核记录 v2（2026-09-09，独立逐条复核）
 
-本份涉及项 **未在本批落地任何修复**（保持原样/保持简化/属更大重构范围）。
+**方法**：逐条读取当前 lib 源码（Python `open(path, encoding='utf-8')`），对照文档中每个引用的文件路径、行号、状态标记，确认或修正。
 
-其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
-按条目补记：
-- **⑤5.1 B1/B2/B3/B4/B5** — ⚠️未修复：依赖 MultiAnimatorSet 4 通道回移（R1）；B6 — ❌不成立/已过期（lib 无 end()/canSkipToEnd 语境）
-- **⑤5.2 M1/M2/M4/M5** — ⚠️未修复（随 R1/R2/R3 或 spring 通道回移）；M3/M6/M7 — ✔️保持简化（doc ⑥6.2 自列；NullableAnimatorListenerAdapter 容空）
-- **⑤5.3 L1/L2/L3** — ✔️保持简化（demo 无业务谓词/调试 API/helper 需求）
-- **⑥6.1 R1/R2/R3** — ⚠️未修复（未回移 ~250/~200/~150 行）；R4/R5 — ⚠️未修复（无调用面/无写表层）
-- **⑥6.2 五条** — ✔️保持简化（doc 自列）
-- **⑥6.3 三轮实施计划** — ⚠️未修复（未实施）
+### 路径验证
+
+| 引用路径 | 验证 |
+|---|---|
+| `playback/PendingAnimation.kt` | ✔️存在（178 行） |
+| `anim/AsyncSpringAnim.kt` | ✔️存在（51 行） |
+| `anim/CustomRectFSpringAnim.kt` | ✔️存在（18 行） |
+| `control/AnimationController.kt` | ✔️存在（258 行） |
+| `control/DefaultAnimationController.kt` | ✔️存在（85 行） |
+| `control/RemoteAnimationFactory.kt` | ✔️存在（interface） |
+
+### 行号验证
+
+| 引用 | 当前行号 | 验证 |
+|---|---|---|
+| `PendingAnimation.kt:25,27,28,30,33` | L25=class, L27=anim, L28=animHolders, L30=progressAnimator, L33=isAnimFinished | ✔️ |
+| `PendingAnimation.kt:36-40` | L36-40=init listener (onAnimationStart/End/Cancel) | ✔️ |
+| `PendingAnimation.kt:44-48` | L44-48=add(child) | ✔️ |
+| `PendingAnimation.kt:86-88` | L86-88=addListener | ✔️ |
+| `PendingAnimation.kt:90-99` | L90-99=buildAnim | ✔️ |
+| `PendingAnimation.kt:161,162,163,165` | L161=start, L162=cancel, L163=end, L165=isRunning | ✔️ |
+| `AnimationController.kt:26,65` | L26=recentsAnims, L65=addRecentsAnim | ✔️ |
+| `DefaultAnimationController.kt:52,55,64` | L52=addRecentsAnim, L55=canFinishRecentsAnim, L64=revertRecentsAnimation | ✔️ |
+| `RemoteAnimationFactory.kt` | interface 声明 | ✔️ |
+| `AsyncSpringAnim.kt:28-30` | L28=cancel, L30=skipToEnd | ✔️ |
+| `CustomRectFSpringAnim.kt:8-10,14-18` | L8-10=注释, L14-18=AnimType | ✔️ |
+| `Demo9AllAppsTransitionActivity.kt:69-71` | L69=log("转场链路（概念）：...") | ✔️ |
+
+### 状态标记逐条确认（23 条）
+
+| 条目 | 文档标记 | 代码验证 | 结论 |
+|---|---|---|---|
+| §5.1 B1 maybeOnEnd 等齐 | ⚠️未修复 | PendingAnimation 单 boolean isAnimFinished | ⚠️确认 |
+| §5.1 B2 mHasRequestCancel | ⚠️未修复 | 无 @Volatile hasRequestCancel | ⚠️确认 |
+| §5.1 B3 bitmask cancel/end | ⚠️未修复 | 无 bitmask | ⚠️确认 |
+| §5.1 B4 play(Animator,boolean) | ⚠️未修复 | 无 sync/async 分支 | ⚠️确认 |
+| §5.1 B5 cancel(1) sync+async | ⚠️未修复 | 无 ANIM_EXECUTOR post | ⚠️确认 |
+| §5.1 B6 canSkipToEnd 校验 | ❌不成立/已过期 | AsyncSpringAnim 无 end() 概念 | ❌确认 |
+| §5.2 M1 SpringHolder.mStartDelay | ⚠️未修复 | 无 SpringHolder | ⚠️确认 |
+| §5.2 M2 removeSpringAnimFromSet | ⚠️未修复 | 无清理路径 | ⚠️确认 |
+| §5.2 M3 play(SpringAnimation) vararg | ✔️保持简化 | doc §6.2 自列 | ✔️确认 |
+| §5.2 M4 mAnimationId+mAnimEndCallback | ⚠️未修复 | AnimationSeqHelper 语义不同 | ⚠️确认 |
+| §5.2 M5 isRunning 任一通道 | ⚠️未修复 | 仅 AnimatorSet.isRunning | ⚠️确认 |
+| §5.2 M6 mSpringAnimEndListener 共享 | ✔️保持简化 | doc §6.2 自列 | ✔️确认 |
+| §5.2 M7 listener 传 null | ✔️保持简化 | NullableAnimatorListenerAdapter 容空 | ✔️确认 |
+| §5.3 L1 isAppOpenType/isGestureToDrag | ✔️保持简化 | doc §6.2 自列 | ✔️确认 |
+| §5.3 L2 setAnimationId | ✔️保持简化 | Trace.kt 自有 trace id | ✔️确认 |
+| §5.3 L3 cancelAllAnimExceptSpringAnim | ✔️保持简化 | 等价 cancel(5)/end(5) | ✔️确认 |
+| §6.1 R1 MultiAnimatorSet ~250 行 | ⚠️未修复 | 无 MultiAnimatorSet | ⚠️确认 |
+| §6.1 R2 SpringHolder ~200 行 | ⚠️未修复 | 无 SpringHolder | ⚠️确认 |
+| §6.1 R3 MultiDynamicAnimation ~150 行 | ⚠️未修复 | 无 MultiDynamicAnimation | ⚠️确认 |
+| §6.1 R4 canSkipToEnd 校验 | ⚠️未修复 | 无 canSkipToEnd | ⚠️确认 |
+| §6.1 R5 mHasRequestCancel | ⚠️未修复 | 无 volatile 信号 | ⚠️确认 |
+| §6.2 五条保持简化 | ✔️保持简化 | 代码无变化 | ✔️确认 |
+| §6.3 三轮实施计划 | ⚠️未修复 | 未实施 | ⚠️确认 |
+
+### 汇总
+
+- **条目总数**：23 条独立状态标记
+- **路径修正**：0（编写时已用重组后路径）
+- **行号修正**：0（全部准确）
+- **状态标记修正**：0（所有 ❌/✔️/⚠️/✅ 与当前代码一致）

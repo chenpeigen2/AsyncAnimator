@@ -20,16 +20,16 @@
 
 | lib 类 / 字段 | 原厂类 / 字段 | 关键证据 | 关系 |
 |---|---|---|---|
-| `object OplusAnimManager` (`lib/.../manager/OplusAnimManager.kt:21-63`, 63 行) | `public final class OplusAnimManager` 含 `static final INSTANCE` + 6 个 `private static final t4.b $$delegatedProperties` 委托懒加载 (`OplusAnimManager.java:34-45, 60-118`, 269 行) | OPPO 用 `kotlin.Delegates.observable` (`t4.b` = `kotlin.properties.Delegates.observable`)；lib 用裸 `var ... = null` + `init` 块 | 形状等价，**线程语义不同**（见 §2.1-1、§3.1-1） |
-| `init { if (supportInterruption()) { ... } }` (`OplusAnimManager.kt:28-32`) | `static { ... }` 类加载即触发 6 helper 链式 `create*()` (`OplusAnimManager.java:60-118`) | OPPO `static{}` 块在 INSTANCE 赋值时（行 64）立即执行 6 个 `createXxx()` 并填到 `t4.a` 委托；lib `init` 块仅在首次访问 `OplusAnimManager` 类时执行 2 个 `Animation*` helper | **lib 只创建 2 个 helper**（`AnimationController` + `AnimationSeqHelper`），其余 4 个 helper 工厂完全缺失 |
-| `supportInterruption(): Boolean = true` (`OplusAnimManager.kt:42`) | `supportInterruption(): Boolean` = `(!LauncherAnimConfig.isAppTransitionByLightAnim() \|\| LauncherAnimConfig.isAdaptiveAnimation()) && TaskAnimationManager.ENABLE_SHELL_TRANSITIONS && AppFeatureUtils.isSupportBlockableAnimation()` (`OplusAnimManager.java:230-232`) | OPPO 是 3 个条件复合；lib 恒 true | **过度简化**（见 §2.2-1） |
+| `object OplusAnimManager` (`lib/.../manager/OplusAnimManager.kt:17-65`, 65 行) | `public final class OplusAnimManager` 含 `static final INSTANCE` + 6 个 `private static final t4.b $$delegatedProperties` 委托懒加载 (`OplusAnimManager.java:34-45, 60-118`, 269 行) | OPPO 用 `kotlin.Delegates.observable` (`t4.b` = `kotlin.properties.Delegates.observable`)；lib 用裸 `var ... = null` + `init` 块 | 形状等价，**线程语义不同**（见 §2.1-1、§3.1-1） |
+| `init { if (supportInterruption()) { ... } }` (`OplusAnimManager.kt:25-30`) | `static { ... }` 类加载即触发 6 helper 链式 `create*()` (`OplusAnimManager.java:60-118`) | OPPO `static{}` 块在 INSTANCE 赋值时（行 64）立即执行 6 个 `createXxx()` 并填到 `t4.a` 委托；lib `init` 块仅在首次访问 `OplusAnimManager` 类时执行 2 个 `Animation*` helper | **lib 只创建 2 个 helper**（`AnimationController` + `AnimationSeqHelper`），其余 4 个 helper 工厂完全缺失 |
+| `supportInterruption(): Boolean = true` (`OplusAnimManager.kt:37`) | `supportInterruption(): Boolean` = `(!LauncherAnimConfig.isAppTransitionByLightAnim() \|\| LauncherAnimConfig.isAdaptiveAnimation()) && TaskAnimationManager.ENABLE_SHELL_TRANSITIONS && AppFeatureUtils.isSupportBlockableAnimation()` (`OplusAnimManager.java:230-232`) | OPPO 是 3 个条件复合；lib 恒 true | **过度简化**（见 §2.2-1） |
 | `supportInterruption(ItemInfo)` (`OplusAnimManager.kt` 缺失) | `supportInterruption(ItemInfo)` 含 zoomWindowPkg 比对 + SplitScreenUtils.isCombination (`OplusAnimManager.java:240-264`) | 仅原厂有 | **完全缺失**（split-screen 缩放窗口启动场景会走错路径） |
 | `tryFinishOpenRemote(Runnable)` (`OplusAnimManager.kt` 缺失) | `tryFinishOpenRemote(Runnable)` 调 `getMAppOpenAnimMergeHelper().isRecentsMergeOpenRemote()` 决定 `setAppLaunchAnimFinishCallback` 或直接 `runnable.run()` (`OplusAnimManager.java:234-238`) | 仅原厂有 | **完全缺失**（recents→app 远程动画合并场景无法演示） |
 | `recreateAnimHelper()` (`OplusAnimManager.kt` 缺失) | `recreateAnimHelper()` 4 个 helper（merge 三件套 + animationController + animationSeqHelper）全 `setM*(createXxx())` 重置（**注意：只 4 个，不含 `interceptKeyEventHelper` 和 `multiOpenPreStartHelper`**）(`OplusAnimManager.java:198-205`) | 仅原厂有 | **完全缺失**（feature flag 切换时无法重置 helper 状态） |
 | `reset()` (`OplusAnimManager.kt` 缺失) | `reset()` 调 `getMAnimationController().reset()` + `getMAppOpenAnimMergeHelper().cleanUpRecentsAnim()` + `getMMultiAppAnimMergeHelper().reset()` (`OplusAnimManager.java:209-216`) | 仅原厂有 | **完全缺失**（helper 状态在多次转场后可能脏） |
 | `matchAnimationId(int, int)` (`OplusAnimManager.kt` 缺失) | `matchAnimationId` 比对两个 animationId，-1 视作相等并 LogUtils.e (`OplusAnimManager.java:184-190`) | 仅原厂有 | **完全缺失**（cross-Animation-Controller 协作场景） |
 | `cleanUpRecentsAnimation()` (`OplusAnimManager.kt:51-53`) | `cleanUpRecentsAnimation()` 含 `getMAnimationController().cleanUpRecentsAnim()` 返回 true 时 `getMMultiAppAnimMergeHelper().setOnTaskAppearedTarget(null)`，再 `getMAppOpenAnimMergeHelper().cleanUpRecentsAnim()` (`OplusAnimManager.java:171-178`) | OPPO 是 3 helper 链式清理；lib 只调 1 个 | **缩为单 helper**（清理不完整） |
-| `interruptionEnabled: Boolean`（demo 演示降级，`OplusAnimManager.kt:57-63`） | 无对应字段；OPPO 通过 `LauncherAnimConfig`/`TaskAnimationManager.ENABLE_SHELL_TRANSITIONS` 静态门控 | OPPO 是只读门控；lib 是可写开关 | lib **引入新能力**（demo 化降级合理；生产用应改为只读） |
+| `interruptionEnabled: Boolean`（demo 演示降级，`OplusAnimManager.kt:52-64`） | 无对应字段；OPPO 通过 `LauncherAnimConfig`/`TaskAnimationManager.ENABLE_SHELL_TRANSITIONS` 静态门控 | OPPO 是只读门控；lib 是可写开关 | lib **引入新能力**（demo 化降级合理；生产用应改为只读） |
 
 ### 1.2 6 个 helper 逐个对应
 
@@ -51,7 +51,7 @@
 | `class AnimationSeqHelper : DefaultAnimationSeqHelper()` (`lib/.../seq/AnimationSeqHelper.kt`, 100 行) | `final class AnimationSeqHelper extends DefaultAnimationSeqHelper` (`com/oplus/quickstep/utils/AnimationSeqHelper.java`, 130 行) | `addSeqId` / `canFinishRecent` / `canInterceptGesture` / `delayFinishRecents` 形状 1:1 |
 | `DefaultAnimationSeqHelper` (`lib/.../seq/DefaultAnimationSeqHelper.kt`, 22 行) | `DefaultAnimationSeqHelper` | 1:1 |
 | `AnimSeqTimeStamp` 时钟域 | `AnimSeqTimeStamp` 用 `SystemClock.uptimeMillis()` | 1:1（review 03 §3-c 修复后对齐） |
-| 残留：`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair | `AnimationSeqHelper.java:123-127` 仅当 pair 为空或 controller 变更才覆盖 | **bug 级**（review 12 §3-D10） |
+| ✅已修复（60bd048）：`updateNextFinishSeqIdIfNeed` 已改为条件更新 | `AnimationSeqHelper.java:123-127` 仅当 pair 为空或 controller 变更才覆盖 → lib `AnimationSeqHelper.kt:90-96` 已对齐 | **已修复** |
 | 残留：`delayFinishRecents` handler 是主线程而非 `URGENT_TRANSACTION_EXECUTOR` | `AnimationSeqHelper.java:97-99` 用 `URGENT_TRANSACTION_EXECUTOR.getHandler()` | 简化（review 01 已记） |
 
 #### Helper C：`mAppOpenAnimMergeHelper` (缺失)
@@ -256,12 +256,12 @@
 
 | # | 简化内容 | 原厂对应 | lib 取舍理由 |
 |---|---|---|---|
-| 1 | `supportInterruption()` 恒 true | `OplusAnimManager.java:230-232` 是 3 条件复合（`!isAppTransitionByLightAnim() \|\| isAdaptiveAnimation()` + `ENABLE_SHELL_TRANSITIONS` + `isSupportBlockableAnimation()`） | 三个条件都依赖 `LauncherAnimConfig` / `TaskAnimationManager` / `AppFeatureUtils` 三个 launcher/ROM 私有配置类；lib 无 launcher 上下文，简化为 true（`OplusAnimManager.kt:42` 注释自承）|
-| 2 | `interruptionEnabled: Boolean` 演示降级开关 | 原厂无此字段，feature 切换通过静态门控 | demo 化合理（`OplusAnimManager.kt:57-63`）；生产用建议改为只读 + 私 setter |
+| 1 | `supportInterruption()` 恒 true（`:37`） | `OplusAnimManager.java:230-232` 是 3 条件复合（`!isAppTransitionByLightAnim() \|\| isAdaptiveAnimation()` + `ENABLE_SHELL_TRANSITIONS` + `isSupportBlockableAnimation()`） | 三个条件都依赖 `LauncherAnimConfig` / `TaskAnimationManager` / `AppFeatureUtils` 三个 launcher/ROM 私有配置类；lib 无 launcher 上下文，简化为 true（`OplusAnimManager.kt:42` 注释自承）|
+| 2 | `interruptionEnabled: Boolean` 演示降级开关 | 原厂无此字段，feature 切换通过静态门控 | demo 化合理（`OplusAnimManager.kt:52-64`）；生产用建议改为只读 + 私 setter |
 | 3 | Default 基类用 `open class` 而非 `factory pattern` | `DefaultAnimationController.java` 实际是 abstract+factory 模式，lib 直接当 `open class` 用 | 形状等价；lib 更 idiomatic（Kotlin 不需要 factory pattern）|
 | 4 | `MultiOpenPreStartHelper` 工厂受 `AppFeatureUtils.isSupportPreStart()` 二次门控 | `OplusAnimManager.java:120-122` 显式 `&& AppFeatureUtils.isSupportPreStart()` | lib 直接 return `MultiOpenPreStartHelper()`（**未实现**，仅指"简化"——若回移需保留该门控）|
-| 5 | `OplusAnimManager` 的 `INSTANCE + static{}` 块在 lib 用 `init {}` 块 | `OplusAnimManager.java:60-118` | Kotlin `object` 单例 + `init` 块语义上等价，但**线程语义不同**：OPPO `static{}` 块在类加载线程（一般主线程）执行；lib `init` 块在首次访问类时执行——并发首访 race-condition 可能让 2 个 helper 同时初始化（**bug 级**见 §3.1-1）|
-| 6 | `cleanUpRecentsAnimation()` 只调 1 个 helper（`animationControllerImpl`），原厂调 3 个 | `OplusAnimManager.java:171-178` 调 3 个 | 简化，**清理不完整**（见 §1.1 行）|
+| 5 | `OplusAnimManager` 的 `INSTANCE + static{}` 块在 lib 用 `init {}` 块（`:25-30`） | `OplusAnimManager.java:60-118` | Kotlin `object` 单例 + `init` 块语义上等价，但**线程语义不同**：OPPO `static{}` 块在类加载线程（一般主线程）执行；lib `init` 块在首次访问类时执行——并发首访 race-condition 可能让 2 个 helper 同时初始化（**bug 级**见 §3.1-1）|
+| 6 | `cleanUpRecentsAnimation()` 只调 1 个 helper（`animationControllerImpl`，`:48-50`），原厂调 3 个 | `OplusAnimManager.java:171-178` 调 3 个 | 简化，**清理不完整**（见 §1.1 行）|
 
 ### 2.3 遗漏（原厂有、lib 没有、且影响语义或运行时行为）
 
@@ -305,7 +305,7 @@
 | 5 | 状态：⚠️未修复（MultiOpenPreStartHelper ~200 行 + SurfaceControl/SystemUiProxy 依赖，成本最高；demo 无多 app pre-start 场景） — **（bug）`MultiOpenPreStartHelper` 缺失**：`OplusAnimManager.getMultiOpenPreStartHelper()` NPE → `Launcher.onResume`/`onStop` 调 `resetRecentsFinishToHomeFlag` 即崩；多 app 启动 pre-start SurfaceControl 事务合并完全不可用 | multi-app 启动；Launcher 生命周期 | ~200 行（13 个 public 方法 + 5 并发原语 + 2 Transaction 字段）|
 | 6 | 状态：⚠️未修复（MESSAGE_RELEASE_TOUCH 101 + 600ms 闸门属手势/输入层——沿用 doc03-f 判定；forbidTouch 恒 false 有意） — **（bug）`appLaunchAnimStartOrEnd` 缺 `MESSAGE_RELEASE_TOUCH(101)` + 600ms 闸门**（review 12 §3-B6 重提）：原厂通过 `mOpenWindowAnimRunning` 在打开动画期间禁止触摸；lib 完全没这层，`forbidTouch()` 恒 false | OPEN_FROM_HOME 的 600ms 内 onClick 触发 startActivity | ~30 行（`mHandler` + 101 消息 + `mOpenWindowAnimRunning` 字段）|
 | 7 | 状态：⚠️未修复（默认值 1/0 未改 -1——沿用 doc03-g；无 RUS 消费者） — **（bug）`AnimationFeatureHelper` 默认值 1/0 而非 -1**（review 03 §3-g 重提）：业务侧对 -1 应走独立分支（`isAdaptiveAnimation` 钳制）——lib 直接生效会破坏业务默认行为 | demo 中所有 RUS 配置读取点 | 7 行 |
-| 8 | 状态：✅已修复（60bd048：仅当 pair 为空或 controller 变更才更新；getNextFinishSeqId 用 == 判等） — **（bug）`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair**（review 12 §3-D10）：lib 每次 `++seqId` 并覆盖；原厂仅当 pair 为空或 controller 变更才更新。**seqId 单调性语义不一致** | D7 `Demo7SeqIdDedupActivity` 重复调用时 lib 会误判为新一轮 | 5 行 |
+| 8 | 状态：✅已修复（60bd048：仅当 pair 为空或 controller 变更才更新（`AnimationSeqHelper.kt:90-96`）；getNextFinishSeqId 用 == 判等（`:101`）） — **（bug）`updateNextFinishSeqIdIfNeed` 无条件覆盖 pair**（review 12 §3-D10）：lib 每次 `++seqId` 并覆盖；原厂仅当 pair 为空或 controller 变更才更新。**seqId 单调性语义不一致** | D7 `Demo7SeqIdDedupActivity` 重复调用时 lib 会误判为新一轮 | 5 行 |
 | 9 | 状态：✔️保持简化（行为已对齐 else→UNKNOWN；缺 "Error animation state" 日志仅可观测性，非语义差异） — **（高）`addRecentsAnim` 状态转移无 "Error animation state" 日志**（review 12 §3-D11）：lib `else → UNKNOWN` 无日志，**状态机异常路径静默** | 任何 else 分支命中 | 1 行 |
 | 10 | 状态：✔️保持简化（60bd048 已重构 listener 自管超时 + runCatching；URGENT_TRANSACTION_EXECUTOR 为平台线程无可移植等价，demo 主线程满载场景不存在） — **（高）`TaskStateChangeTimeOutListener` 绑到主线程 Handler 而非 `URGENT_TRANSACTION_EXECUTOR`**（review 12 §3-A2）：主线程满载时 timeout 推迟 | 真机主线程满载时原厂超时更早发生 | 5 行（换 Handler 来源）|
 | 11 | 状态：⚠️未修复（缺 TaskStateHelper 全局事件总线 + type-specific callback——沿用 doc03-d；demo 无任务状态源） — **（高）`TaskStateChangeTimeOutListener` 缺全局事件总线 + type-specific callback**（review 12 §3-A1）：原厂 `TaskStateHelper.globalListeners` 集中 dispatch + 3 个独立 callback；lib 合并成 `onTimeOut(type, duration)` 且无人调用 | "事件触发"路径全废 | ~60 行（单例总线 + 3 callback 拆分）|
@@ -335,9 +335,9 @@
 | 8 | 状态：⚠️未修复（依赖 AppOpenAnimMergeHelper，同 3.2-1） — **补 `OplusAnimManager.tryFinishOpenRemote(Runnable)` 桩**：调 `getAppOpenAnimMergeHelper().isRecentsMergeOpenRemote()` 决定 `setAppLaunchAnimFinishCallback` 或 `runnable.run()` | ~10 行 | **中**——remote-merge 完成回调语义 | 远程动画合并完成回调无人调 |
 | 9 | 状态：⚠️未修复（同 3.2-17） — **补 `OplusAnimManager.supportInterruption(ItemInfo)` 桩**：demo 化 zoomWindowPkg + SplitScreen 复合判定 | ~15 行 | **中**——split-screen 启动场景 | split-screen 缩放窗口启动走错路径 |
 | 10 | 状态：⚠️未修复（同 3.2-6） — **补 `appLaunchAnimStartOrEnd` 101 消息闸门**：加 `mHandler` (URGENT_TRANSACTION_EXECUTOR) + `mOpenWindowAnimRunning` + 101 消息 + `forbidTouch()` override | ~30 行 | **中**——可移植性 | OPEN_FROM_HOME 600ms 内触摸不被压制 |
-| 11 | 状态：⚠️未修复（同 3.2-18） — **修正 `cleanUpRecentsAnimation` 链路**：在 `OplusAnimManager.kt:51-53` 调 `getMultiAppAnimMergeHelper()?.setOnTaskAppearedTarget(null)` + `getAppOpenAnimMergeHelper()?.cleanUpRecentsAnim()` | 2 行 | **中**——清理完整性 | 多次转场后 merge helper 状态脏 |
+| 11 | 状态：⚠️未修复（同 3.2-18） — **修正 `cleanUpRecentsAnimation` 链路**：在 `OplusAnimManager.kt:48-50` 调 `getMultiAppAnimMergeHelper()?.setOnTaskAppearedTarget(null)` + `getAppOpenAnimMergeHelper()?.cleanUpRecentsAnim()` | 2 行 | **中**——清理完整性 | 多次转场后 merge helper 状态脏 |
 | 12 | 状态：⚠️未修复（同 3.2-7 + doc27 风险 1/6：-1 初值与 adaptive 钳制未做） — **`AnimationFeatureHelper` 默认值改 -1** + 补 `getRadiusAnimationEnable()` + `setInterruptThreshold` 内 `isAdaptiveAnimation` 钳制 | ~10 行 | **中**——"未配置"三态 | 业务对 -1 走独立分支的代码路径失效 |
-| 13 | 状态：✅已修复（60bd048：updateNextFinishSeqIdIfNeed 条件更新） — **修 `updateNextFinishSeqIdIfNeed` 语义**：仅当 pair 为空或 controller 变更时更新 | 5 行 | **低**——seqId 单调性 | 消费方按"seqId 单调递增"做去重的场景误判 |
+| 13 | 状态：✅已修复（60bd048：`AnimationSeqHelper.kt:90-96` 条件更新） — **修 `updateNextFinishSeqIdIfNeed` 语义**：仅当 pair 为空或 controller 变更时更新 | 已完成 | **低**——seqId 单调性 | 消费方按"seqId 单调递增"做去重的场景误判 |
 | 14 | 状态：✔️保持简化（同 3.2-9：缺日志仅可观测性） — **补 `addRecentsAnim` else 日志** | 1 行 | **低**——可观测性 | 状态机异常路径静默 |
 | 15 | 状态：⚠️未修复（同 3.2-12：缺 !isTablet()） — **修 `delayStartActivityIfNeed` 第一层加 `!isTablet()`** | 1 行 | **中**——平板反转 | 平板 landscape 场景错挂起 |
 | 16 | 状态：⚠️未修复（同 3.2-13：缺 isSpecialAppScene） — **修 `delayStartActivityIfNeed` 第二层加 `isSpecialAppScene(intent)` 桩** | ~10 行 | **中**——搜索入口 | 搜索框可能闪一下 |
@@ -399,10 +399,10 @@ lib 当前 `OplusAnimManager.kt`（63 行）只覆盖原厂 `OplusAnimManager.ja
 
 | 论断 | 证据 |
 |---|---|
-| `OplusAnimManager` 工厂本体 1:1 但 6 helper 只 2 实现 | `OplusAnimManager.java:60-118` (static{} 块) vs `OplusAnimManager.kt:28-32` (init 块) |
-| `supportInterruption()` 3 条件复合 vs 恒 true | `OplusAnimManager.java:230-232` vs `OplusAnimManager.kt:42` |
+| `OplusAnimManager` 工厂本体 1:1 但 6 helper 只 2 实现 | `OplusAnimManager.java:60-118` (static{} 块) vs `OplusAnimManager.kt:25-30` (init 块) |
+| `supportInterruption()` 3 条件复合 vs 恒 true | `OplusAnimManager.java:230-232` vs `OplusAnimManager.kt:37` |
 | `tryFinishOpenRemote` 委托 `getMAppOpenAnimMergeHelper().isRecentsMergeOpenRemote()` | `OplusAnimManager.java:234-238` |
-| `cleanUpRecentsAnimation` 调 3 helper 链式 | `OplusAnimManager.java:171-178` |
+| `cleanUpRecentsAnimation` 调 3 helper 链式 | `OplusAnimManager.java:171-178` vs `OplusAnimManager.kt:48-50` (仅1个) |
 | `AppOpenAnimMergeHelper` 8 方法 + 150 行 onRemoteAnimationMerged JADX 反编译错误 | `AppOpenAnimMergeHelper.java:104, 109, 120, 124, 132, 137, 151 (decompiled incorrectly), 283, 295` |
 | `MultiAppAnimMergeHelper` 6 方法 (CAS + synchronized) | `MultiAppAnimMergeHelper.java:23, 36, 50, 58, 64, 83` |
 | `InterceptKeyEventHelper` 反射 `OplusWindowManager.setInterceptKeyEventEnabled` (新/旧两套 API) | `InterceptKeyEventHelper.java:131-149` + 反射懒加载委托 L48-100 |
@@ -450,3 +450,77 @@ lib 当前 `OplusAnimManager.kt`（63 行）只覆盖原厂 `OplusAnimManager.ja
 - §4.1-7 — ✔️保持简化；§4.1-13 — ✅已修复（60bd048）；§4.1-14,17 — ✔️保持简化
 - §4.2-1..8 — ✔️保持简化（与在行标记一致）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+**方法**：逐条读取当前代码（`manager/OplusAnimManager.kt` 65 行、`control/AnimationController.kt` 约 300 行、`seq/AnimationSeqHelper.kt` 104 行）+ OPPO 只读对比树 Grep 交叉验证，不信任已有标记。
+
+**条目总数**：§3.1 工厂层 2 条 + §3.2 helper 级 18 条 + §4.1 回移 17 条 + §4.2 保持简化 8 条 = **45 条**
+
+**修正数**：**4 处**
+
+### §3.1 工厂层
+
+| 项 | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|
+| 3.1-1 | ❌不成立/已过期 | ❌不成立/已过期 | **修正1**：确认 Kotlin `object` 的 `init` 编译为 JVM `<clinit>`，类初始化互斥，无并发 race。标记正确。 |
+| 3.1-2 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+
+### §3.2 helper 级逐条
+
+| 项 | 标题 | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|---|
+| 3.2-1 | AppOpenAnimMergeHelper 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-2 | MultiAppAnimMergeHelper 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-3 | AppSwipeToRecentContinuationHelper 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-4 | InterceptKeyEventHelper 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-5 | MultiOpenPreStartHelper 缺失 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-6 | 101 消息 + 600ms 闸门 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-7 | AnimationFeatureHelper 默认值 -1 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-8 | updateNextFinishSeqIdIfNeed | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正2**：Helper B "残留"标签已改为"✅已修复"。代码确认 `AnimationSeqHelper.kt:90-96` 条件更新。 |
+| 3.2-9 | addRecentsAnim else 日志 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 3.2-10 | TaskStateChangeTimeOutListener Handler | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 3.2-11 | TaskStateHelper 事件总线 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-12 | delayStartActivityIfNeed !isTablet | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-13 | 缺 isSpecialAppScene | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-14 | recreateAnimHelper | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 3.2-15 | manager reset | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 3.2-16 | matchAnimationId | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 3.2-17 | supportInterruption(ItemInfo) | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3.2-18 | cleanUpRecentsAnimation 漏 2 helper | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+
+### §4.1 逐条
+
+| # | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|
+| 1 | ❌不成立 | ❌不成立 | 无变化。 |
+| 2 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 4 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 5 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 6 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 7 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 8 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 9 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 10 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 11 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 12 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 13 | ✅已修复（60bd048） | ✅已修复（60bd048） | **修正3**：行号确认 `AnimationSeqHelper.kt:90-96`。 |
+| 14 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 15 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 16 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 17 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+
+### §4.2 全部确认
+
+8 条全部 ✔️保持简化，与原文一致。
+
+### 行号总修正
+
+**修正4**：§① 表 OplusAnimManager.kt 行号全面刷新：
+- object 声明: `:21-63` (63行) → `:17-65` (65行)
+- init 块: `:28-32` → `:25-30`
+- supportInterruption(): `:42` → `:37`
+- interruptionEnabled: `:57-63` → `:52-64`
+- cleanUpRecentsAnimation: `:51-53` → `:48-50`
+

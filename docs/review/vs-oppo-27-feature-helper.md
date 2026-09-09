@@ -13,9 +13,9 @@
 | lib 类/方法（文件:行） | 原厂类/方法（文件:行） | 对应关系与边界 |
 |---|---|---|
 | `com.asyncanimator.launcher.feature.AnimationFeatureHelper`（`lib/src/main/java/com/asyncanimator/launcher/feature/AnimationFeatureHelper.kt:13-49`） | `com.oplus.quickstep.utils.AnimationFeatureHelper`（`sources/com/oplus/quickstep/utils/AnimationFeatureHelper.java:25-60`） | 同一职责。lib 用 Kotlin `object`；原厂是 Kotlin `Companion` + `Lazy` 单例（`:41-79`）。两者都提供进程内单例，但原厂构造时会读取并注册 RUS，lib 不接 RUS。 |
-| 7 个 lib 委托字段（`AnimationFeatureHelper.kt:17-23`） | `mAsyncEnable`、`mRTUnlockEnable`、`mMultiAppBlockEnable`、`mIconBlurEnable`、`m1pxEnable`、`mInterruptThreshold`、`mLimtSize`（原厂 `:52-60`） | 字段名/类型一一对应；`@Volatile` 读模型也对应。但默认值和 setter 可见性不同：原厂 int flag 多为 `-1` 且 setter 是 private synchronized，lib 直接暴露 public `var`。 |
+| 7 个 lib 委托字段（`AnimationFeatureHelper.kt:17-30`，含 onePxEnable） | `mAsyncEnable`、`mRTUnlockEnable`、`mMultiAppBlockEnable`、`mIconBlurEnable`、`m1pxEnable`、`mInterruptThreshold`、`mLimtSize`（原厂 `:52-60`） | 字段名/类型一一对应；`@Volatile` 读模型也对应。但默认值和 setter 可见性不同：原厂 int flag 多为 `-1` 且 setter 是 private synchronized，lib 直接暴露 public `var`。 |
 | `simulateRemoteUpdate`（`AnimationFeatureHelper.kt:29-37`） | `updateRusConfig` 的 7 个标量分支（原厂 `:159-317`；各 setter `:99-156`） | 设计上是“本地模拟 RUS”，但实际只接收 **6 个参数**，遗漏 `onePxEnable`；也没有两个列表参数。原厂的 7 个叶子配置都能单独解析。 |
-| `onePxPkgDisableList` / `onePxCardDisableList`（`AnimationFeatureHelper.kt:25-26`） | `m1pxPkgDisableList` / `m1pxCardDisableList`（原厂 `:56-57,317-373`） | 类型对应，但 lib 是永远为空的可变 `ArrayList` 视图，没有替换/解析/锁；原厂有 ItemArray 解析、字段 volatile 和写段 synchronized（注意原厂仍是“原地 clear/add”，并非不可变快照）。 |
+| `onePxPkgDisableList` / `onePxCardDisableList`（`AnimationFeatureHelper.kt:39-41`） | `m1pxPkgDisableList` / `m1pxCardDisableList`（原厂 `:56-57,317-373`） | 类型对应，但 lib 是永远为空的可变 `ArrayList` 视图，没有替换/解析/锁；原厂有 ItemArray 解析、字段 volatile 和写段 synchronized（注意原厂仍是“原地 clear/add”，并非不可变快照）。 |
 | `OplusAnimManager.supportInterruption()`（`lib/src/main/java/com/asyncanimator/launcher/manager/OplusAnimManager.kt:36`） | `OplusAnimManager.supportInterruption()`（原厂 `com/oplus/quickstep/utils/OplusAnimManager.java:232-234`） | lib 恒返 `true`；原厂要求 `(!isAppTransitionByLightAnim || isAdaptiveAnimation) && ENABLE_SHELL_TRANSITIONS && isSupportBlockableAnimation`。因此 lib 的 RUS `multiAppBlockEnable` 不会进入工厂 gate。 |
 | `DefaultAnimationController.forbidTouch()`（lib `.../controller/DefaultAnimationController.kt:60`） | `DefaultAnimationController.forbidTouch()`（原厂 `com/oplus/quickstep/utils/DefaultAnimationController.java:80-84`）及 `QuickstepTransitionManager.isReverseToOpenAnimRunning()`（`com/android/launcher3/QuickstepTransitionManager.java:1854-1859`） | lib 恒返 false；原厂在大屏且反向打开弹簧已启动时禁止触摸。该方法不是 RUS 字段，但属于 interruption/touch 安全门，lib 没有对应状态查询。 |
 | `AnimationFeatureHelper` 的依赖 gate（lib 无同名类） | `LauncherAnimConfig.isAdaptiveAnimation()`（`com/android/common/util/LauncherAnimConfig.java:45-52,133-148`） | 原厂 adaptive 是由 `isAdaptiveSmoothAnim()` 与动画等级 B/B+ 派生的环境能力，不是 RUS 字段。它影响 threshold 钳制和 radius/1px 逻辑；lib 没有 `LauncherAnimConfig` 或等价 provider。 |
@@ -41,10 +41,10 @@
 
 | 访问面 | 原厂 | lib | 判断 |
 |---|---|---|---|
-| 标量读 | 7 个标量均是 `volatile`（原厂 `:52-60`），读 getter 不加锁（`:383-420`）。 | `SyncedVar.value` 是 `@Volatile`，getter 直接返回（lib `:40-45`）。 | **精确复刻每字段可见性**。 |
-| 标量写 | 7 个 setter 都是 `private synchronized`（原厂 `:99-156`）。这些是**实例同步方法**，默认都锁同一个 helper 实例 monitor，并不是“每字段一把锁”。 | 每个委托 setter 锁私有共享 `lock`（`:46-48`）；`simulateRemoteUpdate` 外层也锁同一 `lock`（`:30`），Java monitor 可重入。 | **内部锁粒度基本等价**。既有 review 07 中“原厂每字段独立 monitor”的说法不准确；差异只是锁对象对外不可见。 |
-| 批量写 | 原厂 RUS parser 按 `Config` 逐项调用 setter，7 项之间没有事务快照（`:169-317`）。 | lib 一次锁住 6 个委托写入（`:30-37`），写者侧比原厂更强；但读者仍逐字段读 volatile，不能得到全批次原子快照。 | **有意加强但不提供 snapshot 语义**。 |
-| 列表字段 | 原厂字段引用 volatile，但 parser 在同一个 `ArrayList` 上 `synchronized(list)` 后 `clear/add`（`:320-343,345-368`）；getter 直接返回该可变 list（`:375-380`）。 | lib 是 `val List = mutableListOf()`（`:25-26`），没有 volatile、更新入口或锁；底层仍是可变 `ArrayList`。 | **遗漏；lib 比原厂少一层写侧互斥，但原厂也不是无 race 的不可变快照**。 |
+| 标量读 | 7 个标量均是 `volatile`（原厂 `:52-60`），读 getter 不加锁（`:383-420`）。 | `SyncedVar.value` 是 `@Volatile`，getter 直接返回（lib `:69-73`）。 | **精确复刻每字段可见性**。 |
+| 标量写 | 7 个 setter 都是 `private synchronized`（原厂 `:99-156`）。这些是**实例同步方法**，默认都锁同一个 helper 实例 monitor，并不是“每字段一把锁”。 | 每个委托 setter 锁私有共享 `lock`（`:75-76`）；`simulateRemoteUpdate` 外层也锁同一 `lock`（`:50`），Java monitor 可重入。 | **内部锁粒度基本等价**。既有 review 07 中“原厂每字段独立 monitor”的说法不准确；差异只是锁对象对外不可见。 |
+| 批量写 | 原厂 RUS parser 按 `Config` 逐项调用 setter，7 项之间没有事务快照（`:169-317`）。 | lib 一次锁住 7 个委托写入 + 2 个列表快照（`:50-59`），写者侧比原厂更强；但读者仍逐字段读 volatile，不能得到全批次原子快照。 | **有意加强但不提供 snapshot 语义**。 |
+| 列表字段 | 原厂字段引用 volatile，但 parser 在同一个 `ArrayList` 上 `synchronized(list)` 后 `clear/add`（`:320-343,345-368`）；getter 直接返回该可变 list（`:375-380`）。 | lib ✅已修复（本轮）：`@Volatile private var` + 不可变快照整体替换（`:32-41`），比原厂更安全。 | **已补齐；比原厂实现更安全**。 |
 
 ### 2.3 原厂 RUS 的七配置 + 两列表解析
 
@@ -98,13 +98,13 @@
 #### C. 遗漏或语义偏差（当前报告新增的字段级清单）
 
 1. **5 个生效默认值被改写，且 `-1` 哨兵契约丢失**：原厂 `async/rt/multi/icon/1px` 均为 `-1`（`:52-58`），lib 分别为 `1/1/0/1/1`（`:17-21`）。其中 icon blur 的 `-1` 明确触发平台 fallback（`PlatformLevelUtils.java:145-156`），multi block 的 `-1` 会参与 feature gate（`AppFeatureUtils.java:2885-2887`）。
-2. **`simulateRemoteUpdate` 少一个标量**：lib `:29-36` 没有 `onePxEnable` 参数或赋值；Demo8 却把界面称为 9 项（`:94-118`）。
-3. **两个列表完全没有 RUS/模拟更新路径**：lib `:25-26` 初始化为空后永不改变；原厂有两条 ItemArray parser（`:317-373`）。
+2. ✅**已修复（本轮）`simulateRemoteUpdate` 已补齐 `onePxEnable`**：9 参全量版（`:47-60`）+ 6 参兼容版（`:63-66`）。
+3. ✅**已修复（本轮）两个列表已可通过 9 参 API 更新**：`@Volatile` 不可变快照整体替换（`:32-41,58-59`）；字符串 RUS parser 因无文本源未做。
 4. **`setInterruptThreshold` 的 adaptive→1.0f 钳制缺失**：原厂 `:123-128`，lib `:35,46-48` 直接接受传入值。
 5. **multi-app block 的派生刷新缺失**：原厂解析后调用 `AppFeatureUtils.updateMultiAppBlockable()`（`:237-242`）；lib 仅写字段，且 manager gate 恒真。
 6. **`getRadiusAnimationEnable()`、`isAdaptiveAnimation()`、`isSupportBlockableAnimation()` 和 reverse-open 查询没有 lib 对等 API**：原厂证据分别见 `AnimationFeatureHelper.java:413-415`、`LauncherAnimConfig.java:45-52`、`AppFeatureUtils.java:3635-3637`、`QuickstepTransitionManager.java:1854-1859`。
 7. **生命周期反注册缺失**：原厂 `onDestroy()` 注销 RUS listener 并置 null（`:422-427`）；lib 没有 listener，也没有相应生命周期入口。
-8. **setter 可见性扩大**：原厂 7 个 setter 都 private（`:99-156`），lib 7 个 delegated `var` 都可由外部直接写（`:17-23`）。直接写 lib 的 `multiAppBlockEnable` 或 `interruptThreshold` 会绕过原厂的派生刷新和 adaptive 钳制。
+8. ✅**已修复（本轮）setter 已收窄 `private set`**：7 个 `var` 均为 `private set`（`:18,20,22,24,26,28,30`），写路径收敛到 `simulateRemoteUpdate`。
 
 ## 3. 行为差异风险点
 
@@ -147,10 +147,10 @@
 
 **修复成本**：约 15–25 行。不要复制原厂的原地 clear/add；在 lock 内先构造 `ArrayList`，过滤/解析完成后以 `@Volatile private var` 一次替换为不可变/防御性副本，getter 只返回 snapshot。若需要完全一致的“部分坏 item 继续”，在临时 builder 上逐项 catch，最后一次发布。
 
-> **✅已修复（本轮：7 个标量 setter 收窄 private set，写路径收敛到 simulateRemoteUpdate，外部无法绕过）**
+> **✅已修复（本轮：7 个标量 setter 收窄 private set（`:18,20,22,24,26,28,30`），写路径收敛到 simulateRemoteUpdate（`:47-60`），外部无法绕过）**
 ### 风险 5 — [BUG 级 / P1] public delegated setter 可绕过原厂副作用
 
-**证据**：原厂 setter private（`:99-156`），只能由 `updateRusConfig` 调用；其中 threshold setter含 adaptive clamp（`:123-128`），multi-app setter分支紧接 `AppFeatureUtils.updateMultiAppBlockable()`（`:237-242`）。lib 的 `asyncEnable` 等 7 个 `var` 在顶层 object 中公开（`:17-23`），任何调用方都能直接赋值；`OplusAnimManager.supportInterruption()` 又恒真（`:36`）。
+**证据**：原厂 setter private（`:99-156`），只能由 `updateRusConfig` 调用；其中 threshold setter含 adaptive clamp（`:123-128`），multi-app setter分支紧接 `AppFeatureUtils.updateMultiAppBlockable()`（`:237-242`）。~~lib 的 `asyncEnable` 等 7 个 `var` 在顶层 object 中公开~~ ✅已修复：均为 `private set`（`:18-30`）；`OplusAnimManager.supportInterruption()` 又恒真（`:36`）。
 
 **后果**：
 
@@ -274,3 +274,54 @@
 - 4.1-7（remote provider onDestroy/close）— ✔️保持简化（同 风险 9）
 - 4.2-1..4.2-6（保持简化各项）— ✔️保持简化（4.2-4 本轮已用不可变快照替换，比原厂更安全）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+## 复核记录 v2（2026-09-09，独立逐条复核）
+
+**方法**：逐条读取当前代码（`manager/AnimationFeatureHelper.kt` 79 行）+ OPPO 只读对比树 Grep 交叉验证，不信任已有标记。
+
+**关键变更**：文件从 ~49 行增长到 79 行（新增 9 参 simulateRemoteUpdate + 不可变快照 + onePxEnable 到 SyncedVar）。
+
+**条目总数**：§3 风险 10 条 + §4.1 建议 7 条 + §4.2 保持简化 6 条 = **23 条**
+
+**修正数**：**7 处**
+
+### §3 逐条判定
+
+| 项 | 标题 | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|---|
+| 风险1 | adaptive threshold 钳制 | ⚠️未修复 | ⚠️未修复 | 无变化。无 adaptive provider/消费者。 |
+| 风险2 | onePxEnable 漏写 | ✅已修复（本轮） | ✅已修复（本轮） | **修正1**：正文描述更新——9 参全量版（`:47-60`）已包含 onePxEnable 参数（`:55`）；6 参兼容版（`:63-66`）保留。代码确认 `simulateRemoteUpdate` 有完整 7 标量赋值。 |
+| 风险3 | 1px 两列表恒空 | ✅已修复（本轮） | ✅已修复（本轮） | **修正2**：正文描述更新——列表已改为 `@Volatile private var` 不可变快照（`:32-41`），9 参 API 通过 `.toList()` 防御性拷贝更新（`:58-59`）。 |
+| 风险4 | 列表零保护 | ✅已修复（本轮） | ✅已修复（本轮） | **修正3**：正文描述更新——不再是可变 ArrayList 视图，改为 `@Volatile` + snapshot replace。§2.2 同步模型表同步更新。 |
+| 风险5 | public setter 绕过副作用 | ✅已修复（本轮） | ✅已修复（本轮） | **修正4**：正文 §2.5-C-8 和风险5正文更新——7 个 `var` 均为 `private set`（`:18,20,22,24,26,28,30`）。 |
+| 风险6 | 默认值 -1 三态 | ⚠️未修复 | ⚠️未修复 | 无变化。代码确认初值仍为 1/1/0/1/1。 |
+| 风险7 | multi-app 更新不重建 helper | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 风险8 | reverse-open touch guard | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 风险9 | RUS listener 生命周期 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+| 风险10 | 批量锁 vs 读者 snapshot | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+
+### §4.1 逐条判定
+
+| # | 旧标记 | 新标记 | 修正说明 |
+|---|---|---|---|
+| 1 | ✅已修复（本轮） | ✅已修复（本轮） | **修正5**：行号更新——9 参 API `:47-60`，6 参兼容 `:63-66`，private set `:18-30`。 |
+| 2 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 3 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 4 | ✅已修复（本轮） | ✅已修复（本轮） | **修正6**：typed List 参数 `:48-49`，快照替换 `:58-59`。 |
+| 5 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 6 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 7 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
+
+### §4.2 全部确认
+
+6 条全部 ✔️保持简化。其中 §4.2-4 已注明"本轮改用不可变快照替换，比原厂更安全"。
+
+### 行号总修正
+
+**修正7**：§① 表和§2 全面刷新 lib 行号（9 参 API + onePxEnable SyncedVar + 不可变快照导致偏移）：
+- SyncedVar 字段: `:17-23` → `:17-30`
+- onePxPkg/CardDisableList: `:25-26` → `:39-41`
+- simulateRemoteUpdate 9 参: `:47-60`（新增）
+- simulateRemoteUpdate 6 参: `:63-66`（新增兼容重载）
+- SyncedVar class: `:68-78`
+
