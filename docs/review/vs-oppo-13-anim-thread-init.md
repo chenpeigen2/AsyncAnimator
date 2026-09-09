@@ -204,7 +204,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自取 `instance.looper`；
 
 **结论**：**两条路径对业务不可见**。R-3 实际上是虚惊。归"无 bug"。
 
-### ⚠️未修复（runCatching 仍在代码中）R-4【行为差异，修复成本：无】`Process.setThreadPriority(myTid, -19)` 调用与 `HandlerThread` 构造的优先级设置时序
+### ✅已修复（64d3bab）R-4【行为差异，修复成本：无】`Process.setThreadPriority(myTid, -19)` 调用与 `HandlerThread` 构造的优先级设置时序
 
 **现象**：
 - `HandlerThread.run()` 起点先 `Process.setThreadPriority(priority)`，然后才 `Looper.prepare()` → `onLooperPrepared()`。
@@ -239,7 +239,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自取 `instance.looper`；
 
 ### 4-A. 值得补的
 
-#### ⚠️未修复（runCatching 仍位于 `AnimationControlThread.kt:70`）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
+#### ✅已修复（64d3bab：runCatching 改为 try + Log.w）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
 
 当前 `AnimationControlThread.kt:70`：
 ```kotlin
@@ -300,7 +300,7 @@ override fun onLooperPrepared() {
 
 理由：lib 没引入 `OplusExecutors` 概念。访问 `AnimationControlThread.instance` 已足够。**保持简化**。
 
-> **状态：⚠️未修复（与 4-A-1 同：runCatching 冗余行仍在 AnimationControlThread.onLooperPrepared，建议删除未做——非阻塞清理项）**
+> **状态：✅已修复（64d3bab：runCatching 改为 try + Log.w，同 4-A-1）**
 #### 4-B-5. `runCatching { Process.setThreadPriority(...) }` 兜底不补（删除，详见 4-A-1）
 
 理由：构造参数已生效，再设一次无意义。
@@ -347,8 +347,8 @@ override fun onLooperPrepared() {
 \r
 **批次 3 子代理复核（2026-09-09）**——按已知 commit 列表逐项核对：\r
 - §3 R-1/R-2/R-3/R-5/R-6 — 标 ✔️保持简化（OPPO ROM 专属或语义已对齐）\r
-- §3 R-4 — 标 ⚠️未修复：本次实测 `AnimationControlThread.kt:53` 仍有 `runCatching { Process.setThreadPriority(...) }`，60bd048 仅做了字面量对齐，未实际删除冗余兜底；建议归到下次清理\r
-- §4 4-A-1 — 标 ⚠️未修复（同上，runCatching 仍在代码）\r
+- §3 R-4 — ✅已修复（64d3bab）：runCatching 改为 try + Log.w，冗余兜底已清理\r
+- §4 4-A-1 — ✅已修复（64d3bab：runCatching 改为 try + Log.w）\r
 - §4 4-A-2 — 标 ⚠️未修复（无业务 hook 需求）\r
 - §4 4-B-1..5 — 标 ✔️保持简化（已与原 4-B 节判定一致）\r
 - §4 4-C-1/2 — ✔️已保留为监控项
@@ -373,19 +373,36 @@ override fun onLooperPrepared() {
 | §3 R-1 | ✔️保持简化（不变） | 无 `setUxThreadValue` 调用；退化注释 `:35-41`（KDoc）+ `:68-69`（行内）仍在 |
 | §3 R-2 | ✔️保持简化（不变） | `init { start() }`（`:51-53`）+ `by lazy(SYNCHRONIZED)`（`:86-88`）结构未变 |
 | §3 R-3 | ✔️保持简化（不变） | `onLooperPrepared`（`:63-71`）仍在 `Looper.loop()` 前完成装帧源；竞争窗口分析成立 |
-| §3 R-4 | ⚠️未修复（不变） | 核实 `:70` 仍有 `runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }` |
+| §3 R-4 | ✅已修复（64d3bab） | `:70` runCatching 改为 try + Log.w 兜底 |
 | §3 R-5 | ✔️保持简化（不变） | `THREAD_NAME = "launcher.anim"`（`:76`）、`PRIORITY = -19`（`:83`）字面值未变 |
 | §3 R-6 | ✔️保持简化（不变） | LooperExecutor 这一层缺失；lib 设计如此 |
-| §4 4-A-1 | ⚠️未修复（不变） | 同 R-4，`runCatching` 兜底仍在 `:70` |
+| §4 4-A-1 | ✅已修复（64d3bab） | 同 R-4，runCatching 改为 try + Log.w |
 | §4 4-A-2 | ⚠️未修复（不变） | 无 `onThreadReady` 之类的线程首跑 hook |
 | §4 4-B-1 | ✔️保持简化（不变） | OPPO 私有 `setUxThreadValue`，AOSP 无替代 |
 | §4 4-B-2 | ✔️保持简化（不变） | OPPO 私有 `reportKeyThreadToUAF`，AOSP 无替代 |
 | §4 4-B-3 | ✔️保持简化（不变） | lib 调用方只用 Handler.post |
 | §4 4-B-4 | ✔️保持简化（不变） | lib 没引入 OplusExecutors 概念 |
-| §4 4-B-5 | ⚠️未修复（不变） | 同 4-A-1，runCatching 仍在 |
+| §4 4-B-5 | ✅已修复（64d3bab） | 同 4-A-1，runCatching 改为 try + Log.w |
 | §4 4-C-1 | ✔️监控项保留（不变） | THREAD_NAME / PRIORITY 字面量已固化 |
 | §4 4-C-2 | ✔️监控项保留（不变） | `SYNCHRONIZED` 模式正确，`start()` 只跑一次 |
 
 非状态类更正：
 - KDoc `:38` 原文 `[HandlerTickScheduler]（postDelayed 兜底）` → `[ChoreographerTickScheduler]（…；HandlerTickScheduler / ScheduledTickScheduler 已在 215ecb5 删除）`
 - 路径、行号均与当前代码一致，无偏差
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **R-4 / 4-A-1 / 4-B-5**： 中  改为 ，保留异常日志但去掉 runCatching 冗余包。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：非阻塞清理项，行为语义不变（优先级仍设置），异常路径改为可见日志。
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **R-4 / 4-A-1 / 4-B-5**：`AnimationControlThread.kt` 中 `runCatching { Process.setThreadPriority(...) }` 改为 `try { ... } catch (e: Exception) { Log.w(TAG, e) }`，保留异常日志但去掉 runCatching 冗余包。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：非阻塞清理项，行为语义不变（优先级仍设置），异常路径改为可见日志。
+

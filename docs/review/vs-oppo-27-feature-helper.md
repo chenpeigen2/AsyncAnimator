@@ -162,7 +162,7 @@
 
 **修复成本**：约 10–20 行。改为 `private set`/`internal set`，所有变更汇聚到一个 `applyRemoteSnapshot`；保留 public `simulateRemoteUpdate` 作为 demo façade，并在文档中明确它不是逐字段 setter。
 
-> **⚠️未修复（默认值 1/1/0/1/1 未改 -1：无 RUS 消费者且 supportInterruption() 恒真，-1 哨兵目前无行为差异——沿用 doc03-g 判定，接入真实消费者时对齐）**
+> **✅已修复（64d3bab：默认值全部改为 -1，对齐 OPPO 未配置三态语义）**
 ### 风险 6 — [高 / P1] 默认值丢失 `-1` 三态，icon blur 与 multi block 会实质改变
 
 **证据与差异**：原厂六个整数类字段（async/rt/multi/icon/1px/limt）初始化为 `-1`（`AnimationFeatureHelper.java:52-58,60`）；lib 为 `1/1/0/1/1/-1`（`AnimationFeatureHelper.kt:17-23`）。
@@ -214,7 +214,7 @@
 | 建议 | 理由 | 估算成本 |
 |---|---|---:|
 | 状态：✅已修复（本轮：onePxEnable + 两列表入 API；7 setter 收窄 private set） — **补齐 7 标量的统一更新 API**：新增带 `onePxEnable` 的 overload，保留旧 6 参数方法作兼容；把 7 个 property setter 收窄为 `private set`/`internal set`。 | 消除 Demo8 “9 项/实际只改 6 项”的假阳性，并防止调用方绕过 clamp/派生副作用。 | 8–20 行 |
-| 状态：⚠️未修复（同 风险 6：无消费者，接入时对齐） — **恢复原厂 `-1` 初值**，在 demo 初始化处显式下发 0/1。 | 保留 RUS 未下发哨兵；尤其修复 icon blur fallback 与 multi block 的默认差异。 | 5–10 行 |
+| 状态：✅已修复（64d3bab） — **恢复原厂 `-1` 初值**，在 demo 初始化处显式下发 0/1。 | 保留 RUS 未下发哨兵；尤其修复 icon blur fallback 与 multi block 的默认差异。 | 5–10 行 |
 | 状态：⚠️未修复（同 风险 1） — **将 threshold 的 adaptive 规则抽象成 provider**：`effectiveThreshold = if (adaptive()) 1f else input`，单次发布。 | 这是最小、低成本的原厂关键语义；不需要搬完整 `LauncherAnimConfig`。 | 5–10 行 |
 | 状态：✅已修复（本轮：typed List 参数 + 快照替换已做；字符串 RUS parser 因无文本源未做） — **实现两个列表的 typed parser + snapshot replacement**，不要原地 `clear/add`。 | 同时补齐 1px 黑名单功能并修复 lib 的零保护 race；比原厂实现更安全。保留“坏 item 跳过、旧值/新值策略”需要明确文档。 | 25–40 行 |
 | 状态：⚠️未修复（同 风险 7） — **为 multi-app block 增加可注入 derived gate**，更新后通知 `OplusAnimManager` 重建/刷新。 | 让 Demo8 的数值变化真正影响 `supportInterruption`，而不引入 OEM ContentResolver。 | 15–25 行 |
@@ -260,13 +260,13 @@
 - 风险 3（1px 两列表恒空）— ✅已修复（本轮：列表经 9 参 API 整体快照下发）
 - 风险 4（列表零保护/原地 clear-add）— ✅已修复（本轮：@Volatile 不可变快照替换）
 - 风险 5（public setter 绕过副作用）— ✅已修复（本轮：7 标量 private set，写路径收敛 simulateRemoteUpdate）
-- 风险 6（默认值 -1 三态）— ⚠️未修复（沿用 doc03-g：无消费者/supportInterruption 恒真）
+- 风险 6（默认值 -1 三态）— ✅已修复（64d3bab：默认值全部改为 -1）
 - 风险 7（multi-app 更新不重建 helper）— ⚠️未修复（需 AppFeatureUtils 等价 derived gate）
 - 风险 8（reverse-open touch guard）— ⚠️未修复（沿用 doc03-f：demo 无输入层）
 - 风险 9（RUS listener 生命周期）— ✔️保持简化（无真实 provider 即无泄漏面）
 - 风险 10（批量锁 vs 读者 snapshot）— ✔️保持简化（display/单 flag 场景）
 - 4.1-1（统一更新 API + private set）— ✅已修复（本轮）
-- 4.1-2（恢复 -1 初值）— ⚠️未修复（同 风险 6）
+- 4.1-2（恢复 -1 初值）— ✅已修复（64d3bab：默认值全部改为 -1）
 - 4.1-3（threshold adaptive provider）— ⚠️未修复（同 风险 1）
 - 4.1-4（两列表 typed parser + snapshot）— ✅已修复（本轮：typed 参数 + 快照；字符串 parser 未做）
 - 4.1-5（multi-app derived gate）— ⚠️未修复（同 风险 7）
@@ -294,7 +294,7 @@
 | 风险3 | 1px 两列表恒空 | ✅已修复（本轮） | ✅已修复（本轮） | **修正2**：正文描述更新——列表已改为 `@Volatile private var` 不可变快照（`:32-41`），9 参 API 通过 `.toList()` 防御性拷贝更新（`:58-59`）。 |
 | 风险4 | 列表零保护 | ✅已修复（本轮） | ✅已修复（本轮） | **修正3**：正文描述更新——不再是可变 ArrayList 视图，改为 `@Volatile` + snapshot replace。§2.2 同步模型表同步更新。 |
 | 风险5 | public setter 绕过副作用 | ✅已修复（本轮） | ✅已修复（本轮） | **修正4**：正文 §2.5-C-8 和风险5正文更新——7 个 `var` 均为 `private set`（`:18,20,22,24,26,28,30`）。 |
-| 风险6 | 默认值 -1 三态 | ⚠️未修复 | ⚠️未修复 | 无变化。代码确认初值仍为 1/1/0/1/1。 |
+| 风险6 | 默认值 -1 三态 | ⚠️未修复 | ✅已修复（64d3bab） | 默认值全部改为 -1，对齐 OPPO 三态语义。 |
 | 风险7 | multi-app 更新不重建 helper | ⚠️未修复 | ⚠️未修复 | 无变化。 |
 | 风险8 | reverse-open touch guard | ⚠️未修复 | ⚠️未修复 | 无变化。 |
 | 风险9 | RUS listener 生命周期 | ✔️保持简化 | ✔️保持简化 | 无变化。 |
@@ -305,7 +305,7 @@
 | # | 旧标记 | 新标记 | 修正说明 |
 |---|---|---|---|
 | 1 | ✅已修复（本轮） | ✅已修复（本轮） | **修正5**：行号更新——9 参 API `:47-60`，6 参兼容 `:63-66`，private set `:18-30`。 |
-| 2 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
+| 2 | ⚠️未修复 | ✅已修复（64d3bab） | 默认值已改为 -1，同 风险6。 |
 | 3 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
 | 4 | ✅已修复（本轮） | ✅已修复（本轮） | **修正6**：typed List 参数 `:48-49`，快照替换 `:58-59`。 |
 | 5 | ⚠️未修复 | ⚠️未修复 | 无变化。 |
@@ -324,4 +324,20 @@
 - simulateRemoteUpdate 9 参: `:47-60`（新增）
 - simulateRemoteUpdate 6 参: `:63-66`（新增兼容重载）
 - SyncedVar class: `:68-78`
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **风险6 / §4.1-2**：AnimationFeatureHelper 5个 int flag 默认值从 1/1/0/1/1 改为 -1/-1/-1/-1/-1（），对齐 OPPO 未配置三态语义。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：icon blur fallback 路径恢复（-1 走平台 feature/animation-level fallback）；multi block 公式正确（-1 != 0 视为允许）。
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **风险6 / §4.1-2**：AnimationFeatureHelper 5个 int flag 默认值从 1/1/0/1/1 改为 -1/-1/-1/-1/-1（`manager/AnimationFeatureHelper.kt`），对齐 OPPO 未配置三态语义。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：icon blur fallback 路径恢复（-1 走平台 feature/animation-level fallback）；multi block 公式正确（-1 != 0 视为允许）。
 

@@ -76,11 +76,11 @@
    - 残余差异（`:158`）：`CURRENT_FRACTION` 是 companion `private val`——原厂公开 static getter 的「外部 `CURRENT_FRACTION.setValue(otherAnim, f)` 写入口」在 lib 不存在（也因此无外部误用面）。
    - 结论：demo 5 的续行演示语义正确（原"bug 级 / 从 0 重启"判定下调为"残余偏差 / 中"）；真实 launcher 若依赖跨 anim 的 CURRENT_FRACTION 写或多 listener 链，lib 无法承载——回移见 §4.1-1。
 
-> **⚠️未修复（getCurrentPlayTime 未委托 timeController）**
+> **✅已修复（64d3bab：`anim/OplusValueAnimator.kt:79-80` override getCurrentPlayTime 委托 timeController?.currentPlayTime）**
 2. **（高）`getCurrentPlayTime` 在 timeController 模式下读到错误值**（§2.3-3）。原厂委托到 timeController，业务在续行动画上读 `getCurrentPlayTime` 拿到"在 timeController 时间轴上的当前位置"；lib 读 super（`this` 自身 ValueAnimator，**从未被 tick**——它的全部"tick"来自 `setCurrentFraction(f)` 外部写入），拿到 0 / 未定义。
    - **业务可观察后果**：`AppSwipeToRecentContinuationHelper.startAlignEliminateAnim`（`:66030` 附近）依赖 `continuationScaleAnim.getDuration() - getCurrentPlayTime()` 算剩余时长。在 lib 上这个差值始终是 `getDuration()` 自身（永远没播过），于是 `jLongValue` 走 `continuationAnimDuration / 2` 兜底分支（`:66350`），**整段时序错位**。
 
-> **⚠️未修复（setDuration 未 override 双写 param）**
+> **✅已修复（64d3bab：`anim/OplusValueAnimator.kt:82-89` override setDuration 双写 timeController.setDuration + param.duration）**
 3. **（中）`setDuration` 未 override + 签名不匹配**（§2.3-4）。Kotlin `override fun setDuration(duration: Long)` 与 platform `ValueAnimator.setDuration(long): ValueAnimator` 在 `override` 关键字下是允许的（Kotlin 编译器对 Java 父类方法返回类型有协变容忍），但在 lib 中压根没写——所以调用方 `anim.setDuration(200L)` 在 timeController != null 模式下**不会写到 timeController**，原厂会。原厂的 3 步：super.setDuration → return animator → param.setDuration（`:323-326`）。lib 中 super.setDuration 会调到这个 OplusValueAnimator 自身的 ValueAnimator（**它未被 tick 也没用**——任何对它的 setDuration 都不影响 timeController 推进），param.setDuration 直接缺。`AnimParam.duration` 字段永久是构造时 `generateAnim` 私有 3 参（lib 没复刻）的初值 `0L`。
    - **业务可观察后果**：原厂"传 `durationMs = 0` → 跳过 setDuration（`:112`），由 param 自带的 duration 兜底"——这个分支在 lib 上跑得通（因为 lib 也不会调 setDuration）；但传 `durationMs > 0` 在 lib 上**无效**，timeController 用 0L 默认时长。
 
@@ -190,11 +190,14 @@
 本批不信任既有 ✅/✔️/⚠️/❌ 标记，逐条对照当前 lib 代码亲自复核（包重组后文件位于 `com/asyncanimator/anim/`、`playback/`、`core/` 等；行号为当前文件行号）。仅改本文档，未改任何代码。
 
 - **复核条目总数**：10（§3 风险 1–10 的状态行）
-- **结论不变**：7 —— 风险 1（⚠️部分修复）、2（⚠️未修复）、3（⚠️未修复）、4（⚠️未修复）、7（✔️保持简化）、8（✔️保持）、9（✔️保持）
+- **结论不变**：7 —— 风险 1（⚠️部分修复）、2（✅已修复 64d3bab）、3（✅已修复 64d3bab）、4（⚠️未修复）、7（✔️保持简化）、8（✔️保持）、9（✔️保持）
 - **状态修正**：3
   1. 风险 5：⚠️待复核 → ✔️已复核（`anim/OplusValueAnimator.kt:34-36` 构造期 addUpdateListener lambda 捕获 this、`ValueApplicator=(Any?)->Unit` ↔ 原厂 `applyValue(Object)`——签名一致，正文「不算语义差异」成立）
   2. 风险 6：⚠️未修复 → ✔️无差异（`anim/OplusValueAnimator.kt:100,113` 强引用与原厂 `objectAnimator.setTarget` 一致，本项仅为确认无额外 leak）
   3. 风险 10：⚠️未修复 → ✔️保持简化（AppSwipeToRecentContinuationHelper / RecentsViewAnimUtil / BaseActivityInterface 业务编排未移植，§2.2-4 与 §4.2-1 判定有意不补；lib 无此类，Demo 5 单路舞台演示已覆盖）
+- **64d3bab 状态修正**：2
+  1. 风险 2：⚠️未修复 → ✅已修复（64d3bab：`anim/OplusValueAnimator.kt:79-80` override getCurrentPlayTime 委托 timeController?.currentPlayTime）
+  2. 风险 3：⚠️未修复 → ✅已修复（64d3bab：`anim/OplusValueAnimator.kt:82-89` override setDuration 双写 timeController.setDuration + param.duration）
 - **描述 / 证据刷新（结论不变，内容随代码更新）**：
   - 风险 1 标题与正文重写：60bd048 后 `setTarget` 直写（`:112-117`）+ `generateContinuationAnim` 末 `setFloatValues(f,1f)`（`:149`）使 va 值域为 [f,1]——「从 0 重启」不再成立，残余项收敛为 `setProperty(CURRENT_FRACTION)` no-op（`:102`）+ CURRENT_FRACTION companion 私有（`:158`），原「高 / bug 级」下调为「中 / 残余偏差」
   - §1 类对应表、§2.1/§2.2/§2.3 全部 lib 路径 `continuation/`→`anim/` 并刷新行号；AnimParam 字段集合更正为 `name/fromValue/toValue/currentFraction/interpolator/applicator/duration`（与原厂 startValue/endValue/typeEvaluator/valueApplicator 命名已分流）

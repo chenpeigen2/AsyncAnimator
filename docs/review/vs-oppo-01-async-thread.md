@@ -269,11 +269,11 @@
 | # | 改动 | 理由 | 风险消除 |
 |---|---|---|---|
 | 1 | ✅已修复（215ecb5：删两个 scheduler，ChoreographerTickScheduler 唯一且空则停） — **统一两个 scheduler 的"空则停"语义**（`ScheduledTickScheduler.kt:56-61` 加空转保护：tick 时 callbacks 为空则自动 stop，下次 `postFrameCallback` 时 restart） | 让两种 scheduler 行为一致；消除 demo 在两种配置下 `frameCount` 增长曲线不一致的问题 | §③-1, §③-14 |
-| 2 | ⚠️未修复（~5 行 ofFloat(isAsync) 工厂，demo 无调用点） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
+| 2 | ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion object ofFloat 工厂） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
 | 3 | ✔️不修（Kotlin 非空安全有意改进） — **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
 | 4 | ⚠️未修复（线程切换协议大改，见 vs-oppo-16） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
 | 5 | ⚠️未修复（~5 行枚举补 7 值） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
-| 6 | ⚠️部分未修复（086844e 已补 shutdown 契约；访问器仍缺） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
+| 6 | ✅已修复（64d3bab：`thread/LooperExecutor.kt` getHandler/getLooper/getTargetThread 访问器） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
 | 7 | ⚠️未修复（demo 无调用方，复刻 MultiDynamicAnimation 时补） — **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
 
 ### 4.2 建议保持简化
@@ -368,6 +368,11 @@
 >   10. §②-C-2：注释引用行号 `AnimationControlThread.kt:44`→`:43-47`（指向 `04-frame-spring-continuation.md` §4.2-2），并注明属注释/代码脱节、不改码。
 >   11. §②-C-3：(b) 旧“`shutdown()` 契约未保留”→新“086844e 已补（`LooperExecutor.kt:57-69`）”；仍缺 `AbstractExecutorService` 继承与 `getHandler/getLooper/getThread/setThreadPriority` 访问器。
 >   12. §③-12：旧“⚠️未修复（缺 shutdown 契约）”→新“⚠️部分修复（086844e：shutdown 永不-quit 契约已补；仍非 ExecutorService、缺访问器）”。
->   13. §④4.1-6：旧“⚠️未修复（~10 行访问器/shutdown 契约）”→新“⚠️部分未修复（shutdown 契约已补，访问器仍缺）”。
+>   13. §④4.1-6：旧“⚠️未修复（~10 行访问器/shutdown 契约）”→新“⚠️部分未修复（shutdown 契约已补，访问器仍缺）”。→新“✅已修复（64d3bab：3 个访问器已补）”。
 >
 > 另：§0、§⑤、§②-B-2、§③-6 等处的失效路径/行号已按当前包结构（`anim/` `thread/` `core/` `playback/`）与 HEAD 行号顺带刷新（不计入修正数）。其余条目（§②-A 全部设计点、§③-1/2/3/4/5/6/7/8/9/10/11/13/14/15、§④ 其余行）经复核与当前代码一致，无状态变化。
+
+> **64d3bab 修复标记**：
+>   14. §④4.1-2（ofFloat 工厂）：⚠️未修复 → ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion object ofFloat 工厂）
+>   15. §④4.1-6（LooperExecutor 访问器）：⚠️部分未修复 → ✅已修复（64d3bab：`thread/LooperExecutor.kt` getHandler/getLooper/getTargetThread 访问器）
+

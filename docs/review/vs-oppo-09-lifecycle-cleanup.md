@@ -94,10 +94,10 @@
 > **✔️保持简化（demo 无 system_server 任务事件源；"超时兜底 + 手工 dispose"已足够演示——§B-8 / 4.2-1 明示保留）**
 2. **【bug 级】`TaskStateChangeTimeOutListener` 是无主孤儿**：原厂该 listener 通过 `addGlobalTaskStateChangeListener` 注册到 `TaskStateHelper.globalListeners`（`CopyOnWriteArrayList`，`:31`），由 system_server 任务事件回调驱动 `onTimeOut`，并由 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 集中 dispose。lib 的 listener 是裸 `class`，构造 postDelayed + dispose 配对但**无人调用构造**——demo 演示的全是手工 `registerSpecialSceneExitTimeOutListener(1500L)` + 手工 `.onTimeOut(...)`。原厂的语义是"事件/超时 OR 触发，Activity onDestroy 兜底 dispose"；lib 是"构造即挂超时、谁 dispose 谁负责"。**两种语义的鸿沟在于"事件先到先发"——lib 完全没有事件源**，demo 演示价值有限。
 
-> **⚠️未修复（集中清理入口缺失：AnimationController 无 destroy()、demo 无 removeAllListener 对应物；各 Activity 自行收尾 + GC——4.1-1 约 15 行可选）**
+> **✅已修复（64d3bab：`control/AnimationController.kt` 新增 destroy() 方法，dispose 3 个 timeout listener + reset；`DemoBaseActivity.kt` 新增 onCleanup() 钩子 + onDestroy()）**
 3. **【高】`TaskStateHelper.removeAllListener()` 集中清理缺失**（C-5）。原厂 `Launcher.onDestroy()` 第 3846 行显式调 `TaskStateHelper.removeAllListener()`：遍历全局监听器，逐个调 `onTaskListenerReleased()`（`TaskStateHelper.java:270-277`）——`TaskStateChangeTimeOutListener.onTaskListenerReleased()` 内部 dispose + 移除全局注册 + removeCallbacks（`:186-193`）。这一行保证进程级所有待清理的 listener 在 Activity 销毁时被强摘。lib `DemoBaseActivity` 不重写 `onDestroy`，`AnimationController` 也不实现集中清理——demo 进出场次时 listener 残留，靠 GC 回收（GC 时机不可预测，且 callback 持有的 Handler 引用链不破坏之前不会 GC `TaskStateChangeTimeOutListener` 本身）。**demo 测试反复进出同一 Activity 时，超时兜底可能被延迟触发**（不影响功能正确性，但断言"超时即触发"会偶发失败）。
 
-> **⚠️未修复（lib/demo 无基类集中 onDestroy 收尾；Demo6/10/11 已各自在 onDestroy cancel 自有 anim/seq——"完全无 onDestroy"表述过期）**
+> **✅已修复（64d3bab：`DemoBaseActivity.kt` 新增 onCleanup() 钩子 + onDestroy()）**
 4. **【高】`Launcher.onStop` / `onDestroy` 多类动画 cancel 缺失**（C-6）。原厂在 `onStop` 里 folder/stack `cancelRunningAnimations()`（`Launcher.java:4410, :4417`），`onDestroy` 里复位 `AnimationRecord.sAnimationId = -1`、调 `removeAllListener`、`RecentsViewAnimUtil.updateRecentsOrRemoteAnimationRunningFlags(3, false)`（`:4454`）、`AnimSeqTimeStamp.resetLastLaunchTaskTime()`（`:4457`）。lib 无对应路径——demo 退场时动画继续 tick 直到 `cancel` 显式调用或自然结束。**演示场景下若 `AsyncValueAnimator.start()` 后用户立即退出 Activity，未 cancel 的 animator 仍在 ANIM 线程跑直到 end**，本身无害（ANIM_EXECUTOR 永远活），但若业务 listener 持有 Activity View，会形成 1~2 帧的"已 detach View 仍收到回调"的幽灵引用窗口——**这是 View 泄漏的间接路径**。
 
 > **✔️保持简化（null 槽 + 快照派发与原厂同构；clearListeners 调用点双方都缺——doc 自认非 lib 独有）**
@@ -126,11 +126,11 @@
 
 ### 4.1 值得补进 lib 的
 
-> **⚠️未修复（约 15 行 destroy() 未补；controller 由 OplusAnimManager 单例持有、无 per-activity 销毁入口；demo 单次进出无实际泄漏触发——低优先）**
+> **✅已修复（64d3bab：`control/AnimationController.kt` 新增 destroy() 方法，dispose 3 个 timeout listener + reset）**
 1. **【必补】`AnimationController` 加 `destroy()/release()` 集中清理方法**：遍历三种 `TaskStateChangeTimeOutListener` 全部 `dispose()` + 清 `animStateChangeListeners` + `reset()`。与原厂 `Launcher.onDestroy → TaskStateHelper.removeAllListener()` 的语义对齐，是 demo 反复进出场次"干净退出"的最低保障。对应 C-5，约 15 行。
 > **✅已修复（`thread/LooperExecutor.kt:57-69`：shutdown/shutdownNow/awaitTermination 抛 UOE + `@Deprecated`，isShutdown/isTerminated 恒 false）**
 2. ~~**【必补】`LooperExecutor` 加 `shutdown() throws UnsupportedOperationException`**~~ **已落地**：ANIM_EXECUTOR never-quit 契约已硬保。对应 C-1。
-> **⚠️未修复（demo 基类未加 onDestroy 集中 cancel；Demo6/10/11 局部覆盖）**
+> **✅已修复（64d3bab：`DemoBaseActivity.kt` 新增 onCleanup() 钩子 + onDestroy()）**
 3. **【必补】`DemoBaseActivity` 重写 `onDestroy()`**：调 `AnimationController.reset()` + 显式 cancel 所有 AsyncValueAnimator + `AsyncAnimCallbacks.clearListeners()`。对应 C-6 / C-4，~10 行。这是 demo "Activity 销毁安全"的可观测证据，不补则 lib 的"安全 cancel 所有动画"宣传无 demo 验证。
 > **✔️保持简化（暴露 quitSafely 反引误用；永不 quit 即契约）**
 4. **【建议补】`AnimationControlThread` 暴露 `quitSafely()` / `quit()`**：明示"进程级单例，永不 quit"是设计而非疏忽。给调用方一个明确的语义锚点，避免误用。对应 §3-7，约 3 行。
@@ -138,7 +138,7 @@
 5. **【建议补】`AsyncAnimCallbacks` 加 `dispose()` 复合方法** = `clearListeners() + animationId = -1`：让业务在"逻辑结束 + 物理结束"双轨时统一摘除 listener 容器，避免 ArrayList 长期增长。对应 §3-5，约 3 行。
 > **✔️保持简化（2 行补强；原厂未做、lib 无独立泄漏窗口——见 ③-9）**
 6. **【建议补】`TaskStateChangeTimeOutListener.dispose()` 时把 `option` / `type` 也置 null**：缩窄引用窗口，让 option 闭包持有的 View/Activity 更早可 GC。原厂未做（`TaskStateHelper.java:147-154`），lib 是补强的好机会。对应 C-11，2 行。
-> **⚠️未修复（文档项：README/USAGE 未补"Activity 生命周期契约"小节）**
+> **✅已修复（64d3bab：`docs/USAGE.md` 新增“Activity 生命周期契约”小节）**
 7. **【可选】文档补一节「Activity 生命周期契约」**：明示 demo 必须重写 `onDestroy` 才能正确收尾，否则 GC 兜底；明示 `AnimationControlThread` 永不 quit；明示 `ANIM_EXECUTOR` 的 shutdown() 抛 UnsupportedOperationException。文档化的契约比代码契约更稳。
 > **✔️保持简化（AsyncValueAnimator.dispose() 无调用方；ValueAnimator 生命周期 + GC 足够）**
 8. **【可选】`AsyncValueAnimator` 暴露 `dispose()`**：一次性 cancel + clearListeners + 切断 executor 引用——给"用完即弃"的 animator 一个明确结束点，避免依赖 ValueAnimator 自身的 GC。对应 §3-4，~5 行。
@@ -249,3 +249,19 @@
 - `async/` → `anim/`；`animthread/` → `thread/`；`controller/` → `control/`；`core/anim/` → `core/`
 - ScheduledTickScheduler/HandlerTickScheduler → ChoreographerTickScheduler（215ecb5 合并删除）
 - 本文档主文已在前次 v2 中更新为正确路径，本次验证确认无误
+
+## 复核记录 v3（2026-09-11，64d3bab 修复标记）
+
+- **复核方法**: 按 commit 64d3bab 修复内容，更新正文对应项的标记
+- **复核条目总数**: 5
+- **修正数**: 5
+
+### 逐条验证结果
+
+| # | 条目 | 标记 | 验证证据 |
+|---|---|---|---|
+| 3-3 | removeAllListener 集中清理缺失 | ✅已修复 | `control/AnimationController.kt` 新增 destroy(), dispose 3 个 timeout listener + reset |
+| 3-4 | DemoBaseActivity 无 onDestroy | ✅已修复 | `DemoBaseActivity.kt` 新增 onCleanup() + onDestroy() |
+| 3-7 / 4.1#7 | Activity 生命周期契约文档缺失 | ✅已修复 | `docs/USAGE.md` 新增“Activity 生命周期契约”小节 |
+| 4.1#1 | AnimationController destroy() | ✅已修复 | `control/AnimationController.kt` 新增 destroy() |
+| 4.1#3 | DemoBaseActivity onDestroy | ✅已修复 | `DemoBaseActivity.kt` 新增 onCleanup() + onDestroy() |

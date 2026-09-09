@@ -96,7 +96,7 @@
 | 8 | ✔️保持简化（OEM 私有反射 + InputManager 注入，跨 ROM 不可移植——4.2-4 一致） — **高** | `InterceptKeyEventHelper` 缺失 → BACK 键在 recents 转场期间不拦截。`InputManager.injectInputEvent` 模拟 BACK 路径也未移植。 | recents 转场中按 BACK | demo 演示中 BACK 键响应 |
 | 9 | ⚠️未修复（requestEnd 下一帧/双轨结束随 MultiDynamicAnimation 链路回移时对齐——同 review 01 §③-5） — **中** | `MultiDynamicAnimation.requestEnd` 下一帧生效语义缺失。lib 的 `AsyncSpringAnim` 走 androidx `SpringAnimation`，cancel/end 后立即停帧；原厂会出现"已通知 end、还有 N 帧在飞"的窗口（`CustomRectFSpringAnim.java:881` 的 `maybeEnd()` 兜底就为此存在）。 | cancel 场景时序断言 | 任何 cancel 时序相关的 demo 断言 |
 | 10 | ⚠️未修复（约 20 行 addRemoteUpdateListener 抽象未补；Demo8 用 interruptionEnabled 已演示行为变更——异步监听属增强） — **中** | RUS 真实通路缺失：`simulateRemoteUpdate` 一次性塞值，无 `RusConfigChangedListener` 异步监听。Demo8（Feature Flag）无法演示"远程灰度推送后立即影响行为"的真实路径。 | Demo8 | 演示"运行时配置变更" |
-| 11 | ⚠️未修复（同 review 03 §3-g：默认 -1"未配置"态未补 + getRadiusAnimationEnable/钳制未补——约 10 行小改；demo 恒走生效值） — **中** | `AnimationFeatureHelper` 默认值错（1/0 而非 -1）+ 缺 `getRadiusAnimationEnable()` + 缺 `setInterruptThreshold` 的 `isAdaptiveAnimation` 钳制。业务侧原本对 -1 走独立分支，lib 直接生效会破坏业务默认行为。 | 任何调用方对"未配置"态的判断 | demo 中所有 RUS 配置读取点 |
+| 11 | ✅已修复（64d3bab：默认值全部改为 -1） — **中** | `AnimationFeatureHelper` 默认值错（1/0 而非 -1）+ 缺 `getRadiusAnimationEnable()` + 缺 `setInterruptThreshold` 的 `isAdaptiveAnimation` 钳制。业务侧原本对 -1 走独立分支，lib 直接生效会破坏业务默认行为。 | 任何调用方对"未配置"态的判断 | demo 中所有 RUS 配置读取点 |
 | 12 | ❌不成立（lib 未注册任何全局 listener——无对象可泄漏；真实 RUS listener 通路缺失本身归风险 10） — **中** | `AnimationFeatureHelper.onDestroy()` 缺失 → lib object 单例永远活着，listener 永不清理；多窗口/进程重启场景会泄漏。 | （仅在真机多窗口切换时会显现） | 多窗口切换 / launcher 进程被 kill 后重启 |
 | 13 | ✔️保持简化（demo 无 -8 事务线程；超时兜底跑主线程在无卡顿场景下无差异） — **低** | `TaskStateChangeTimeOutListener` 走 `URGENT_TRANSACTION_EXECUTOR`（-8） vs lib 走主线程 Handler。原厂超时 option 在事务线程执行可避开主线程卡顿；lib 在主线程执行遇到主线程忙时反而**先误超时**再处理。 | 超时兜底路径 | 演示 1500ms 兜底超时 |
 
@@ -228,3 +228,15 @@
 - §③ 全部 13 条风险标记维持（#1 ⚠️、#2-3 ✔️、#4-6 ⚠️、#7 ⚠️、#8 ✔️、#9-11 ⚠️、#12 ❌、#13 ✔️）
 - §④-4.1 全部 7 条维持（#1-3 ⚠️、#4 ✔️、#5-6 ⚠️、#7 ❌）
 - §④-4.2 全部 7 条 ✔️ 维持
+
+## 复核记录 v3（2026-09-11，64d3bab 修复标记）
+
+- **复核方法**: 按 commit 64d3bab 修复内容，更新正文对应项的标记
+- **复核条目总数**: 1
+- **修正数**: 1
+
+### 逐条验证结果
+
+| # | 条目 | 标记 | 验证证据 |
+|---|---|---|---|
+| risk#11 | AnimationFeatureHelper 默认值错 1/0 | ✅已修复 | 64d3bab：默认值全部改为 -1 |

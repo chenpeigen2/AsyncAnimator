@@ -111,7 +111,7 @@
 > **⚠️未修复（forbidTouch 600ms 闸门属手势层，有意简化）**
 **f.（高）`forbidTouch()` 无 600ms 闸门**（§2.3-5）。原厂 `mOpenWindowAnimRunning || MULTI_WAITING || REVERSE_OPEN || startActivityRunnable != null`（`:685-687`）；lib `control/DefaultAnimationController.kt:60` 恒 false（`AnimationController` 亦未 override）。**含义**：demo 端无法演示"app launch 期间 600ms 内禁止触摸"的关键体验防抖。
 
-> **⚠️未修复（AnimationFeatureHelper 默认 -1，小改）**
+> **✅已修复（64d3bab：`manager/AnimationFeatureHelper.kt` 全部5个特征默认值改为 -1，新增 isAsyncConfigured getter）**
 **g.（中）`AnimationFeatureHelper` 默认值 -1 缺失**（§2.3-17）。原厂 6 个 int flag 默认 **-1** 表示"RUS 未下发"（`AnimationFeatureHelper.java:52-60`），业务侧可对 -1 走独立分支（如 `if (mAsyncEnable == -1 || mAsyncEnable == 1) ...`）；lib 直接给生效值 1/0（`manager/AnimationFeatureHelper.kt:17-29`；仅 `limtSize=-1`（:29）与 `interruptThreshold=1.0f`（:27）与原厂一致）。**含义**：lib 丢失了"未配置"三态语义，业务侧"灰度前是否启用"判断会误判为"已启用"。`setInterruptThreshold` 内原厂 `isAdaptiveAnimation → 强制 1.0f` 钳制（`:126-128`）也无。
 
 > **⚠️未修复（canFinishRecent/canInterceptGesture 双重门控）**
@@ -265,3 +265,15 @@
 >   16. §4.1-1：旧“待补 end 分支 + add + 600ms 闸门”→新“✅部分已落地（end/add 已实现），仅剩 600ms `MESSAGE_RELEASE_TOUCH` 闸门”。
 >
 > 另：§2.2-6/9、§3-e/f/i/j/k/l/m/o、附证据表等失效路径与行号已顺带刷新（`control/` `manager/` `seq/` 包路径与 HEAD 行号），未计入修正数。其余条目（§2.1 全部 10 项、§2.3-4~10/12~19、§3-h/i/j/k/l/m/n/o、§4.1-2~10、§4.2 全部）经复核与当前代码一致。
+
+## 复核记录 v3（2026-09-11，64d3bab 修复标记）
+
+- **复核方法**：按 commit 64d3bab 修复内容，更新正文对应项的标记
+- **复核条目总数**：1
+- **修正数**：1
+
+### 逐条验证结果
+
+| # | 条目 | 标记 | 验证证据 |
+|---|---|---|---|
+| 3-g | AnimationFeatureHelper 默认值 -1 | ✅已修复 | `manager/AnimationFeatureHelper.kt` 全部5个特征默认值改为 -1，新增 isAsyncConfigured getter |

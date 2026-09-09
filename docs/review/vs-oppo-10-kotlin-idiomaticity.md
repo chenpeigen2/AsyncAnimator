@@ -159,7 +159,7 @@
 
 ### 风险 3（高）：Kotlin `var` 公开属性绕过了原厂的 setter 校验
 
-> **⚠️未修复（addAnimatorListener/removeAnimatorListener 兼容 override 约 10 行未补；lib 既定契约 asyncAnimCallbacks.addListener（Demo3 在用）——平台直挂 listener 会绕开 marshal，迁移方需注意）**
+> **✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` addAnimatorListener/removeAnimatorListener 兼容方法）**
 
 **现象**：原厂 `AsyncValueAnimator.setExecutor(LooperExecutor executor)` 包含 `Intrinsics.checkNotNullParameter(executor, "executor")`（`AsyncValueAnimator.java:148`）；lib `var executor: LooperExecutor` 公开属性赋值时同样会做 null 检查（Kotlin 非空类型），但**赋值时机无约束**——start 之后再改 executor 是合法的、原厂如此；start 之后改 listener 是另一回事——listener 在 start 之后改会改变后续派发，行为符合直觉但原厂 setter 不抛异常。
 
@@ -176,7 +176,7 @@
 
 ### 风险 4（中）：companion object 内的工厂方法签名不一致
 
-> **⚠️未修复（同 review 01 §4.1-2：AsyncValueAnimator.Companion.ofFloat 工厂未补约 5 行；lib OplusValueAnimator.ofFloat 已提供等价入口，demo 无调用点）**
+> **✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion ofFloat 工厂）**
 
 **现象**：原厂 `AsyncValueAnimator.Companion.ofFloat(boolean, float...)` 工厂方法返回 `ValueAnimator`（父类），调用方拿到的可能是 `AsyncValueAnimator`（子类）或 `ValueAnimator`（原版）；lib `OplusValueAnimator.ofFloat(isAsync, vararg values)` 是不同类的工厂（`OplusValueAnimator.kt:117-121`），语义不同。
 
@@ -397,14 +397,14 @@
 |---|---|---|---|---|
 | 1 | ✅已修复（60bd048：typealias→fun interface） — **`OnAnimStateChangeListener` 改 `fun interface`**（`fun interface OnAnimStateChangeListener { fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) }`） | 风险 2 | 5 行 | typealias 的 lambda 没有引用相等性 + 无法扩展——`fun interface` 既保留 SAM 转换便利，又支持 `class MyListener : ... OnAnimStateChangeListener` 复用；同时 `removeOnAnimStateChangeListener(listener)` 可靠 |
 | 2 | ✅已修复（60bd048：引用相等性恢复后 remove 可靠命中） — **`DefaultAnimationController.animStateChangeListeners` 改用 `mutableListOf<OnAnimStateChangeListener>()` + 引用相等性** + `removeOnAnimStateChangeListener` 用 `==` 引用比较 | 风险 2 | 5 行 | 配合 #1，让 remove listener 真正能命中 |
-| 3 | ⚠️未修复（同风险3：兼容 override 约 10 行；既定契约 asyncAnimCallbacks.addListener） — **AsyncValueAnimator 加 `@JvmOverloads` + `addAnimatorListener` 兼容方法**：在 lib 加 `fun addAnimatorListener(l: NullableAnimatorListener?) = asyncAnimCallbacks.addListener(l)` 让原厂调用方式直接可用 | 风险 3 | 3 行 | 减少迁移摩擦；同时保留 lib 主流 API `asyncAnimCallbacks.addListener` |
-| 4 | ⚠️未修复（同风险4 / review 01 §4.1-2：5 行 ofFloat 工厂；demo 无调用点） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, vararg values)` 工厂**：照原厂 `AsyncValueAnimator.java:43-49` | 缺失 API | 5 行 | demo 调用方直接 `AsyncValueAnimator.ofFloat(true, 0f, 1f)` 拿到 AsyncValueAnimator 子类（带 setExecutor 能力），无需手动 `AsyncValueAnimator().apply { setFloatValues(0f, 1f) }` |
-| 5 | ⚠️未修复（3 行 getHandler/getLooper 访问器；demo 无外部需求——AnimationSeqHelper 自管理 Handler 已够） — **暴露 `LooperExecutor.getHandler()`/`getLooper()` 访问器**：原厂 `LooperExecutor.java:35-45` | 风险 12 | 3 行 | 业务需要把 AnimatorListenerAdapter 直接挂到目标 Handler 时（demo 中 `AnimationSeqHelper.getOrCreateHandler()` `AnimationSeqHelper.kt:42-46` 就是 lib 自己造的轮子），有原厂 getter 可直接用 |
+| 3 | ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` addAnimatorListener/removeAnimatorListener 兼容方法） — **AsyncValueAnimator 加 `@JvmOverloads` + `addAnimatorListener` 兼容方法**：在 lib 加 `fun addAnimatorListener(l: NullableAnimatorListener?) = asyncAnimCallbacks.addListener(l)` 让原厂调用方式直接可用 | 风险 3 | 3 行 | 减少迁移摩擦；同时保留 lib 主流 API `asyncAnimCallbacks.addListener` |
+| 4 | ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion ofFloat 工厂） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, vararg values)` 工厂**：照原厂 `AsyncValueAnimator.java:43-49` | 缺失 API | 5 行 | demo 调用方直接 `AsyncValueAnimator.ofFloat(true, 0f, 1f)` 拿到 AsyncValueAnimator 子类（带 setExecutor 能力），无需手动 `AsyncValueAnimator().apply { setFloatValues(0f, 1f) }` |
+| 5 | ✅已修复（64d3bab：`thread/LooperExecutor.kt` 3 个访问器） — **暴露 `LooperExecutor.getHandler()`/`getLooper()` 访问器**：原厂 `LooperExecutor.java:35-45` | 风险 12 | 3 行 | 业务需要把 AnimatorListenerAdapter 直接挂到目标 Handler 时（demo 中 `AnimationSeqHelper.getOrCreateHandler()` `AnimationSeqHelper.kt:42-46` 就是 lib 自己造的轮子），有原厂 getter 可直接用 |
 | 6 | ✔️保持简化（同风险10：原厂同为浅拷贝；深拷贝补强无行为收益，注释说明即可） — **`OplusValueAnimator.AnimParam.copy()` 显式深拷贝** lambda 字段（`applicator: ValueApplicator?`） | 风险 10 | 5 行 | 续行动画的"半步接管"对 lambda 共享引用敏感；data class 默认浅拷贝容易让 demo 作者误以为已经隔离 |
 | 7 | ✔️保持简化（demo 不直接构造 PendingAnimation（Demo9 仅概念日志）；internal 边界成立——review 02 §1） — **`PendingAnimation` 改 `public class`**（去掉 `internal`） | 风险 12 | 1 行 | USAGE.md 没列 PendingAnimation 是 public，但 demo 实际需要构造它；要么改 public，要么在 USAGE.md 显明"PendingAnimation 不可外部 new，XxxDemo 用 XxxBuilder 替代" |
 | 8 | ✔️保持简化（AnimationHandler internal 是有意边界；demo 无直接接 tick 实验——需要时走 AnimationControlThread） — **公开 `AnimationHandler.instance` + `installThreadScheduler`** 给 demo 做实验 | 缺失 API | 1 行 | 当前是 `internal`（`AnimationHandler.kt:36`），demo 想直接接 tick 测帧间隔时无入口；review 04 §2.3-9 提到 `installThreadScheduler` 时序约束需要让用户感知 |
 | 9 | ⚠️未修复（约 20 行 awaitCompletion/waitForState 协程扩展；可选现代化，demo 无协程调用方） — **补 `Animator.awaitCompletion()` 协程扩展**（suspend fun） + `AnimationController.waitForState(s: AnimationState)` | 风险 15 / 缺失 API | 20 行 | 给 demo 一个 "用协程 chain 动画" 的展示；也是 lib 现代化的契机（v4 §8 已点出"动画库传统是回调式但现代 Kotlin 倾向协程"） |
-| 10 | ⚠️未修复（5 行注释未补：executeBlockWait 不移植理由可写入 Executors.kt 类注释） — **`OplusLooperExecutor` 的 `executeBlockWait` 移除后保留警告注释**：在 `Executors.kt` 类注释里说明"原厂 ANIM_EXECUTOR 有 executeBlockWait 扩展（`OplusLooperExecutor.java:46-71`），但带 5s 主线程硬等 ANR 风险，lib 不移植" | 文档补强 | 5 行 | review 01 §3-3 已点出 ANR 风险，但 lib 文档没说为什么不移植；补注释防使用者去翻 OplusLooperExecutor 源码 |
+| 10 | ✅已修复（64d3bab：`thread/Executors.kt` executeBlockWait 不移植警告注释） — **`OplusLooperExecutor` 的 `executeBlockWait` 移除后保留警告注释**：在 `Executors.kt` 类注释里说明"原厂 ANIM_EXECUTOR 有 executeBlockWait 扩展（`OplusLooperExecutor.java:46-71`），但带 5s 主线程硬等 ANR 风险，lib 不移植" | 文档补强 | 5 行 | review 01 §3-3 已点出 ANR 风险，但 lib 文档没说为什么不移植；补注释防使用者去翻 OplusLooperExecutor 源码 |
 
 ### B. 建议保持简化（lib 注释中已说明的合理取舍）
 
@@ -487,11 +487,11 @@
 逐条判定（批次 1 逐项状态，标注位置见正文）：
 - **③-风险1（SAM/null animator）** — ✔️有意保留（Kotlin 非空行为改进）
 - **③-风险2 / 风险14（typealias listener）** — ✅已修复（60bd048 fun interface）
-- **③-风险3（var setter / addAnimatorListener 命名）** — ⚠️未修复（兼容 override 约 10 行；既定契约 asyncAnimCallbacks.addListener）
-- **③-风险4（ofFloat 工厂）** — ⚠️未修复（同 review 01 §4.1-2）
+- **③-风险3（var setter / addAnimatorListener 命名）** — ✅已修复（64d3bab：addAnimatorListener/removeAnimatorListener 兼容方法）
+- **③-风险4（ofFloat 工厂）** — ✅已修复（64d3bab：companion ofFloat 工厂）
 - **③-风险5/6/7/8/9/11/12/13/15** — ✔️保持简化（惰性 object/编译期差异/风格差异/回调式——见正文）
 - **③-风险10（data class 浅拷贝）** — ✔️保持简化（原厂同为浅拷贝，影响有限）
-- **④-A 表** — 1/2 ✅（60bd048），3/4/5/9/10 ⚠️未修复，6/7/8 ✔️（见正文）
+- **④-A 表** — 1/2 ✅（60bd048），3/4/5/10 ✅已修复（64d3bab），9 ⚠️未修复，6/7/8 ✔️（见正文）
 - **④-B 表** — 14 ✅已修复（60bd048），其余 ✔️保持简化
 - **④-C 表** — 全部 ✔️保持简化（保留：有意现代化 API）
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
@@ -514,17 +514,25 @@
 ### 逐条维持原判（已亲自对代码验证）
 
 - §③-风险1 ✔️：`anim/AsyncValueAnimator.kt:29-37` 派发非空 animator
-- §③-风险3 ⚠️：`anim/AsyncValueAnimator.kt:19` 仍为 `var executor`，无 `addAnimatorListener` 兼容方法
-- §③-风险4 ⚠️：`AsyncValueAnimator` 无 companion `ofFloat` 工厂
+- §③-风险3 ✅：`anim/AsyncValueAnimator.kt:19` 仍为 `var executor`，✅已修复（64d3bab：`addAnimatorListener/removeAnimatorListener` 兼容方法）
+- §③-风险4 ✅：`AsyncValueAnimator` ✅已修复（64d3bab：`ofFloat` companion 工厂）
 - §③-风险5-9,11-13,15 ✔️：惰性 object / 编译期差异 / 风格差异均维持
 - §③-风险10 ✔️：`AnimParam` data class 浅拷贝（原厂同为浅拷贝）
 - §④-A-1 ✅：fun interface（60bd048）
 - §④-A-2 ✅：引用相等性恢复（60bd048）
-- §④-A-3 ⚠️：无 addAnimatorListener 兼容方法
-- §④-A-4 ⚠️：无 ofFloat 工厂
-- §④-A-5 ⚠️：无 getHandler/getLooper 访问器
+- §④-A-3 ✅：✅已修复（64d3bab：`addAnimatorListener/removeAnimatorListener` 兼容方法）
+- §④-A-4 ✅：✅已修复（64d3bab：`ofFloat` companion 工厂）
+- §④-A-5 ✅：✅已修复（64d3bab：3 个访问器）
 - §④-A-6/7/8 ✔️：保持简化
 - §④-A-9 ⚠️：无 awaitCompletion 协程扩展
-- §④-A-10 ⚠️：无 executeBlockWait 警告注释
+- §④-A-10 ✅：✅已修复（64d3bab：`executeBlockWait` 不移植警告注释）
 - §④-B 全部 14 条 ✔️ 维持
 - §④-C 全部 10 条 ✔️ 维持
+
+**64d3bab 修复标记**：
+- §③-风险3 ⚠️未修复 → ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` addAnimatorListener/removeAnimatorListener 兼容方法）
+- §③-风险4 ⚠️未修复 → ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion ofFloat 工厂）
+- §④-A-3 ⚠️未修复 → ✅已修复（64d3bab：addAnimatorListener 兼容方法）
+- §④-A-4 ⚠️未修复 → ✅已修复（64d3bab：companion ofFloat 工厂）
+- §④-A-5 ⚠️未修复 → ✅已修复（64d3bab：3 个访问器）
+- §④-A-10 ⚠️未修复 → ✅已修复（64d3bab：executeBlockWait 警告注释）

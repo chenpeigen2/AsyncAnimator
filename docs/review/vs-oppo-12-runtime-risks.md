@@ -116,7 +116,7 @@
 5. **`delayStartActivityIfNeed` 第二层漏 `isSpecialAppScene(intent)`**（§2-C3）。搜索入口场景原厂等 transition finish，lib 直接放行——**搜索框可能闪一下再启动 app**。D6/D9 模拟时若用搜索入口 intent 会触发。
 > **状态：⚠️未修复（101/600ms 闸门属手势输入层，demo 手势链路 stub——doc-03 §3-f 判"有意简化"）**
 6. **`appLaunchAnimStartOrEnd` 缺 600ms `MESSAGE_RELEASE_TOUCH` 闸门**（§2-C1）。原厂 `forbidTouch()` 通过 `mOpenWindowAnimRunning` 读这个状态——动画期间禁止输入。lib 完全没有 `forbidTouch()` 的 override（`DefaultAnimationController.forbidTouch` 走 no-op，`DefaultAnimationController.kt:33-49`）。**作为可移植组件时该保护缺失，但库内 demo 因手势链路也是 stub 不触发**。
-> **状态：⚠️未修复（默认值仍 1/0；改 -1 需同步消费逻辑，demo 无 -1 消费方——doc-03 §3-g 同判）**
+> **状态：✅已修复（64d3bab： 全部5个特征默认值改为 -1，OPPO未配置模式）**
 7. **`AnimationFeatureHelper` 默认值 1/0 而非 -1**（§2-C8）。`-1` 是 RUS 未下发态，1/0 是已下发态。lib 把"未配置"和"配置为 1/0"混在一起，**消费方按 -1 走独立分支的代码路径全失效**。`setInterruptThreshold` 在 isAdaptiveAnimation 时的 -1 → 1.0f 钳制（`AnimationFeatureHelper.java:126-128`）也无对应。
 
 ### C. 中等（行为差异但有边界）
@@ -149,7 +149,7 @@
    - `isTablet()` → 注入 `DisplayController` 或读 `Configuration.smallestScreenWidthDp >= 600`；
    - `isSpecialAppScene(intent)` → demo 化判定（intent 是否带搜索 schema、是否含 `BranchSearchHelper` 等），保留 stub 接口供真实业务实现注入；
    - `isAppSwipeToRecentContinuationRunning()` → demo 化单例（一个 `@Volatile var isRunning: Boolean` + 内部状态机），`setAppToOverviewContinuationState(true)` 时设 true、动画结束或 100ms timeout 时设 false。这样 `delayStartActivityIfNeed` 才会按"运行态"而非"时间窗"决策。
-> **状态：⚠️未修复（同 §③-7：改 -1 需同步消费逻辑）**
+> **状态：✅已修复（64d3bab：默认值已改为 -1，同 §③-7）**
 3. **`AnimationFeatureHelper` int flag 默认值改回 -1**（对应 §3-B7）。零成本；保留"未下发"三态语义，业务侧按 -1 走独立分支的代码路径恢复。
 > **状态：⚠️未修复（同 §③-6：手势输入层，demo 无链路）**
 4. **补 `appLaunchAnimStartOrEnd` 的 101 消息闸门**（对应 §3-B6）。补一个 `mOpenWindowAnimRunning` 字段 + 内部 `mHandler` + 101 消息的 `removeMessages/sendEmptyMessage/sendEmptyMessageDelayed(101, 600L)`，并 override `forbidTouch()` 返回 `mOpenWindowAnimRunning`。让组件可移植时输入层能感知"打开动画期间禁止上滑"窗口。
@@ -213,7 +213,7 @@
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
 
 批次 2 逐条复核（2026-09-09）——按条目名与状态：
-- §③-1（TaskStateChangeTimeOutListener 事件总线）→ ⚠️未修复；§③-2（超时绑主线程）→ ⚠️未修复；§③-3（时间窗 vs 运行态）→ ⚠️未修复（cdd125e 已修 else-if 互斥）；§③-4（isTablet）→ ⚠️未修复；§③-5（isSpecialAppScene）→ ⚠️未修复；§③-6（101/600ms 闸门）→ ⚠️未修复；§③-7（AnimationFeatureHelper 默认值）→ ⚠️未修复；§③-8（per-thread 帧语义）→ ✅已修复（215ecb5）；§③-9（sf-vsync）→ ✅已修复（dbde195/215ecb5）；§③-10（seqId 条件更新）→ ✅已修复（60bd048）；§③-11（UNKNOWN 日志）→ ✔️保持简化
+- §③-1（TaskStateChangeTimeOutListener 事件总线）→ ⚠️未修复；§③-2（超时绑主线程）→ ⚠️未修复；§③-3（时间窗 vs 运行态）→ ⚠️未修复（cdd125e 已修 else-if 互斥）；§③-4（isTablet）→ ⚠️未修复；§③-5（isSpecialAppScene）→ ⚠️未修复；§③-6（101/600ms 闸门）→ ⚠️未修复；§③-7（AnimationFeatureHelper 默认值）→ ✅已修复（64d3bab）；§③-8（per-thread 帧语义）→ ✅已修复（215ecb5）；§③-9（sf-vsync）→ ✅已修复（dbde195/215ecb5）；§③-10（seqId 条件更新）→ ✅已修复（60bd048）；§③-11（UNKNOWN 日志）→ ✔️保持简化
 - §④ 值得补进 1-4 → ⚠️未修复；5 → ✅已修复（60bd048）；6 → ✔️保持简化；7 → ❌已过期（215ecb5）
 - §④ 建议保持简化 1-7 → ✔️保持简化
 
@@ -243,11 +243,11 @@
 - §②-C-5 ⚠️：`control/TaskStateChangeTimeOutListener.kt:24` MainLooper ≠ URGENT_TRANSACTION_EXECUTOR
 - §②-C-6 ⚠️：`control/TaskStateChangeTimeOutListener.kt:41-43` dispose 不摘全局事件总线
 - §②-C-7 ⚠️：`control/TaskStateChangeTimeOutListener.kt:34-39` 单一 onTimeOut ≠ 三个独立 callback
-- §②-C-8 ⚠️：`manager/AnimationFeatureHelper.kt:14-22` 默认值 1/0 ≠ -1
+- §②-C-8 ✅已修复（64d3bab）：`manager/AnimationFeatureHelper.kt:14-22` 默认值已改为 -1
 - §②-C-9 ✅→修正：`seq/AnimationSeqHelper.kt:74-79` 已改为条件更新（60bd048）
 - §②-C-10 ✔️：`control/AnimationController.kt:72` else→UNKNOWN 无日志（纯可观测性差异）
 - §③-A1/A2/A3 ⚠️：事件总线 / 主线程 handler / 时间窗运行态——未修复
-- §③-B4/B5/B6/B7 ⚠️：isTablet/isSpecialAppScene/600ms 闸门/默认 -1——未修复
+- §③-B4/B5/B6 ⚠️：isTablet/isSpecialAppScene/600ms 闸门——未修复；§③-B7 ✅已修复（64d3bab）：默认值已改为 -1
 - §③-C8 ✅：per-thread 帧语义已修复（215ecb5）
 - §③-C9 ✅：sf-vsync 已修复（dbde195/215ecb5）
 - §③-D10 ✅：seqId 条件更新已修复（60bd048）
@@ -256,3 +256,20 @@
 - §④-5 ✅：updateNextFinishSeqIdIfNeed（60bd048）
 - §④-6 ✔️：Error animation state 日志保持简化
 - §④-7 ❌：ScheduledTickScheduler 注释已过期（215ecb5 类已删）
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **§③-7 / §④-4.1 #3 / §②-C-8**：AnimationFeatureHelper 5个 int flag 默认值从 1/0/1/0/1 改为 -1/-1/-1/-1/-1（），对齐 OPPO 未配置三态语义。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：消费方按 -1 走独立分支的代码路径恢复；demo 暂无 -1 消费方，接入时可验证。
+
+---
+
+### 复核记录 v3（2026-09-11，commit 64d3bab）
+
+- **§③-7 / §④-4.1 #3 / §②-C-8**：AnimationFeatureHelper 5个 int flag 默认值从 1/0/1/0/1 改为 -1/-1/-1/-1/-1（`manager/AnimationFeatureHelper.kt`），对齐 OPPO 未配置三态语义。
+- **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
+- **影响范围**：消费方按 -1 走独立分支的代码路径恢复；demo 暂无 -1 消费方，接入时可验证。
+
