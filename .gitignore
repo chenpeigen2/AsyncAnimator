@@ -27,3 +27,6 @@ gradle/gradle-daemon-jvm.properties
 docs/review/_marktool.py
 __pycache__/
 *.pyc
+_edit*.py
+_fix*.py
+.tmp-*.py
