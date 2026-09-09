@@ -9,7 +9,7 @@
 ## 整体分层
 
 ```
-core/scheduler (internal)        TickScheduler / ChoreographerTickScheduler ← 帧源（真 VSYNC）
+core (internal)                  TickScheduler / ChoreographerTickScheduler / AnimationHandler / Trace ← 帧调度内核
 core/anim (internal)             AnimationHandler                         ← ThreadLocal 调度中枢
         ↑ installThreadScheduler
 launcher/animthread              AnimationControlThread                 ← "launcher.anim" 独立线程

@@ -11,7 +11,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.asyncanimator.demo.widget.DemoStyle
-import com.asyncanimator.util.Trace
+import com.asyncanimator.core.Trace
 
 /**
  * DemoBaseActivity — 所有 Demo Activity 的基类（美化版）。

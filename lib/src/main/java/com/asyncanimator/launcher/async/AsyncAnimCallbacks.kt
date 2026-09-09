@@ -3,7 +3,7 @@ package com.asyncanimator.launcher.async
 import android.animation.Animator
 import com.asyncanimator.launcher.pending.NullableAnimatorListener
 import com.asyncanimator.launcher.pending.NullableAnimatorListenerAdapter
-import com.asyncanimator.util.Trace
+import com.asyncanimator.core.Trace
 
 /**
  * AsyncAnimCallbacks — listener 容器 + 跨线程派发器。

@@ -1,4 +1,4 @@
-package com.asyncanimator.core.scheduler
+package com.asyncanimator.core
 
 import android.animation.ValueAnimator
 import android.view.Choreographer

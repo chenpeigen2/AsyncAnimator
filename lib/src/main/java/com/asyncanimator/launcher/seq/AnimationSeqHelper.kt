@@ -3,7 +3,7 @@ package com.asyncanimator.launcher.seq
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import com.asyncanimator.util.Trace
+import com.asyncanimator.core.Trace
 
 internal const val MAX_DELAY_TIME = 500L
 internal const val MAX_INTERCEPT_GESTURE_DELAY_TIME = 300L

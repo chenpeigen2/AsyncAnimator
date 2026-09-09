@@ -6,7 +6,7 @@ import android.animation.ValueAnimator
 import android.util.FloatProperty
 import android.view.animation.LinearInterpolator
 import com.asyncanimator.launcher.pending.PendingAnimation
-import com.asyncanimator.util.Trace
+import com.asyncanimator.core.Trace
 
 /** 把当前动画值应用到 target 的回调。 */
 internal typealias ValueApplicator = (value: Any?) -> Unit

@@ -1,4 +1,4 @@
-package com.asyncanimator.core.scheduler
+package com.asyncanimator.core
 
 /**
  * TickScheduler — 仿真 Choreographer 的核心接口。

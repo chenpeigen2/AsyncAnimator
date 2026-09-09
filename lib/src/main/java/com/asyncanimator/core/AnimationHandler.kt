@@ -1,7 +1,5 @@
-package com.asyncanimator.core.anim
+package com.asyncanimator.core
 
-import com.asyncanimator.core.scheduler.ChoreographerTickScheduler
-import com.asyncanimator.core.scheduler.TickScheduler
 
 /**
  * AnimationHandler — 核心动画调度中枢。

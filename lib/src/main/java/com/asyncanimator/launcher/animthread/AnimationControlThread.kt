@@ -2,8 +2,8 @@ package com.asyncanimator.launcher.animthread
 
 import android.os.HandlerThread
 import android.os.Process
-import com.asyncanimator.core.anim.AnimationHandler
-import com.asyncanimator.core.scheduler.ChoreographerTickScheduler
+import com.asyncanimator.core.AnimationHandler
+import com.asyncanimator.core.ChoreographerTickScheduler
 
 /**
  * AnimationControlThread — 独立动画线程（"launcher.anim"）。

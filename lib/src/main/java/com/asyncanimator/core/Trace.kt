@@ -1,4 +1,4 @@
-package com.asyncanimator.util
+package com.asyncanimator.core
 
 /**
  * Trace — 简化的 trace 工具，对应 Android 平台 [android.os.Trace]。
