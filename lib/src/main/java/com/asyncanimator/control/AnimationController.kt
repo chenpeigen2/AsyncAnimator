@@ -152,6 +152,7 @@ class AnimationController : DefaultAnimationController() {
      * Call from Activity/Fragment onDestroy to prevent leaks.
      */
     fun destroy() {
+        clearOnAnimStateChangeListeners()
         specialSceneExitTimeOutListener?.dispose()
         specialSceneExitTimeOutListener = null
         transitionFinishTimeOutListener?.dispose()
@@ -187,15 +188,18 @@ class AnimationController : DefaultAnimationController() {
                                 timeoutMs: Long,
                                 clearState: () -> Unit = {}): TaskStateChangeTimeOutListener =
         TaskStateChangeTimeOutListener(expected, timeoutMs) {
-            startActivityAction?.invoke()
-            clearState()
+            val action = startActivityAction
             startActivityAction = null
+            clearState()
+            action?.invoke()
         }
 
     fun registerSpecialSceneExitTimeOutListener(timeoutMs: Long) {
+        specialSceneExitTimeOutListener?.dispose()
         specialSceneExitTimeOutMaxTime = SystemClock.uptimeMillis() + timeoutMs
         specialSceneExitTimeOutListener =
             timeoutListener(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, timeoutMs) {
+                specialSceneExitTimeOutListener = null
                 isLandScapeGesture = false
                 isSplitScreenGesture = false
                 isNavModeLandScapeOnAppExit = false
@@ -204,16 +208,21 @@ class AnimationController : DefaultAnimationController() {
     }
 
     fun registerTransitionFinishTimeOutListener(timeoutMs: Long) {
+        transitionFinishTimeOutListener?.dispose()
         transitionFinishTimeOutListener =
             timeoutListener(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, timeoutMs) {
+                transitionFinishTimeOutListener = null
                 isBetweenTransitionEndAndFinish = false
             }
     }
 
     fun registerOverviewContinuationTimeOutListener(timeoutMs: Long) {
+        overviewContinuationTimeOutListener?.dispose()
         overviewContinuationTimeOutMaxTime = SystemClock.uptimeMillis() + timeoutMs
         overviewContinuationTimeOutListener =
-            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, timeoutMs)
+            timeoutListener(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, timeoutMs) {
+                overviewContinuationTimeOutListener = null
+            }
     }
 
     override fun setOnAppExit(context: Any?) {

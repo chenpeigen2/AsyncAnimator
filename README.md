@@ -139,17 +139,25 @@ macOS/Linux 使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
 
 ## 测试与验证范围
 
-库使用 JUnit 4（也声明了 AssertJ 依赖），测试启用了 `unitTests.isReturnDefaultValues = true`。当前共有 **3 个测试类、21 个用例声明**：
+库使用 JUnit 4、Robolectric 4.16 / API 36 测试运行时（也声明了 AssertJ 依赖）。`unitTests.isReturnDefaultValues = true` 仍保留，但 Android 行为用例已由 Robolectric 执行，Bundle 用例不再跳过。测试依赖不打入 APK。
+
+当前共有 **9 个测试类、58 个用例**：
 
 | 测试类 | 用例数 | 覆盖内容 |
 |---|---:|---|
-| `AnimationHandlerTest` | 5 | ThreadLocal 实例、帧回调登记/移除和去重等基础逻辑 |
-| `AnimationControllerTest` | 9 | 状态枚举、初始/重置状态、Recents 集合与超时监听登记等 |
-| `AnimationSeqHelperTest` | 7（1 个跳过） | 时间窗口、序列更新、延迟处理等；Bundle 写入用例带 `@Ignore` |
+| `AnimationHandlerTest` | 6 | 手动推进帧、显式移除、空回路退订、同帧增删、ThreadLocal |
+| `AnimationControllerTest` | 12 | 状态、Recents、超时替换及销毁清理 |
+| `AnimationControllerRegressionTest` | 13 | 四组完整状态矩阵、双集合收尾、三层决策及截止边界 |
+| `TaskStateChangeTimeOutListenerTest` | 5 | 匹配事件/定时器一次性消费、dispose 撤销 |
+| `AnimatorPlaybackControllerTest` | 2 | 嵌套动画树递归派发、监听自注销 |
+| `AsyncAnimCallbacksTest` | 2 | 稳定快照、注册幂等、并发增删 |
+| `AsyncAnimatorContractTest` | 5 | Boolean 工厂、释放、旧代次逻辑/物理结束与重入清理 |
+| `AnimationSeqHelperTest` | 7 | Bundle 序列号、时间窗口和基础清理 |
+| `AnimationSeqRegressionTest` | 6 | SeqId 配对、300/500ms 边界、独立 reset、延迟去重及重入 |
 
-**2026-09-09 本地验证**：`:demo:assembleDebug` 成功；使用 `:lib:testDebugUnitTest --rerun-tasks` 重跑后，20 个通过、1 个跳过、0 失败。构建仍有 Kotlin 空安全、实验性选项与 Gradle 弃用警告，不是零警告构建。此次未执行 lint，也未安装或进行设备回归。
+**2026-09-09 本地验证**：Debug 和 Release 单测各 58 个通过、0 跳过、0 失败，Demo Debug APK 构建成功。遇到并行修改和 Kotlin 缓存打包问题后，使用无缓存、串行模式复验；详见 [Review 续轮记录](docs/review/2026-09-09-review-followup.md)。构建仍有已有的 Kotlin 空安全、SDK 工具/实验性选项及 Gradle 弃用警告，不是零警告构建。Lint 尚未完成：并行复核的离线检查缺少 lint 工具依赖，详见[合并复核记录](docs/review/2026-09-09-revalidation-fixes.md)。未安装或进行设备回归。
 
-这些 JVM 测试不验证真实 Looper、VSYNC、View 跨线程访问或系统转场；仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。四个状态矩阵测试合计 48 个组合，已经包含在上述 58 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 

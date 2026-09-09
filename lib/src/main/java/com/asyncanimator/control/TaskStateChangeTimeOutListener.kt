@@ -2,6 +2,7 @@ package com.asyncanimator.control
 
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * TaskStateChangeTimeOutListener - 自管理超时对象（对齐原厂 TaskStateHelper$TaskStateChangeTimeOutListener）。
@@ -12,7 +13,7 @@ import android.os.Looper
 class TaskStateChangeTimeOutListener(
     private val type: Type,
     duration: Long,
-    private val option: () -> Unit
+    option: () -> Unit
 ) {
 
     enum class Type {
@@ -22,9 +23,13 @@ class TaskStateChangeTimeOutListener(
     }
 
     private val handler: Handler? = mainLooper()?.let(::Handler)
-    private val timeOutOption = Runnable {
-        dispose()
-        option()
+    private val pendingAction = AtomicReference<(() -> Unit)?>(option)
+    private val timeOutOption = Runnable { fireOnce() }
+
+    private fun fireOnce() {
+        val action = pendingAction.getAndSet(null) ?: return
+        handler?.removeCallbacks(timeOutOption)
+        action()
     }
 
     init {
@@ -33,12 +38,12 @@ class TaskStateChangeTimeOutListener(
 
     fun onTimeOut(type: Type, duration: Long) {
         if (type == this.type) {
-            dispose()
-            option()
+            fireOnce()
         }
     }
 
     fun dispose() {
+        pendingAction.set(null)
         handler?.removeCallbacks(timeOutOption)
     }
 

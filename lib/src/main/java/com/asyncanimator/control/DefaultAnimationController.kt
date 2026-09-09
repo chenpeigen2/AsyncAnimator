@@ -22,6 +22,8 @@ open class DefaultAnimationController {
         if (listener != null) animStateChangeListeners.remove(listener)
     }
 
+    protected fun clearOnAnimStateChangeListeners() = animStateChangeListeners.clear()
+
     open fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) {
         // 快照遍历：允许回调中增删 listener
         for (l in animStateChangeListeners.toList()) {

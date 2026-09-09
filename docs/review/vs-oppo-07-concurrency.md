@@ -1,5 +1,7 @@
 # 区域 07 对比 Review：并发原语与线程安全
 
+> **2026-09-09 当前复核**：AsyncAnimCallbacks 原厂裸集合不作为本库的线程安全保证：本轮统一加锁保护增删和快照，业务监听在锁外执行。历史“合理行为、不是 bug”不适用于本库的跨线程注册承诺。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库，Kotlin 重实现）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）

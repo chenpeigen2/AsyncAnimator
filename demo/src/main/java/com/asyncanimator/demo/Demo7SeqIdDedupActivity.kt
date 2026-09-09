@@ -97,6 +97,11 @@ class Demo7SeqIdDedupActivity : DemoBaseActivity() {
         log("500ms 防抖窗口内后续请求相互去重：只有最后一个会在 500ms 后补发")
     }
 
+    override fun onCleanup() {
+        seqHelper.clearFinishRecentsRunnable()
+        super.onCleanup()
+    }
+
     private fun resetAll() {
         seqHelper.clearFinishRecentsRunnable()
         capsuleRow.removeAllViews()

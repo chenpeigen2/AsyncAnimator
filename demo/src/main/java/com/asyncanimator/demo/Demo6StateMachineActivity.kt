@@ -219,9 +219,10 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         log("已重置: 舞台 + 状态机 → NONE")
     }
 
-    override fun onDestroy() {
+    override fun onCleanup() {
         seqHandler.removeCallbacksAndMessages(null)
-        super.onDestroy()
+        controller.destroy()
+        super.onCleanup()
     }
 
     // ── 状态迁移 ──────────────────────────────────────────

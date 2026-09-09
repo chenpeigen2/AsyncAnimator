@@ -1,5 +1,7 @@
 # Review 12：Bug 级语义差异与运行时风险
 
+> **2026-09-09 当前复核**：公开 Choreographer 的接入不等于 SF-VSYNC 已修复；本轮处理递归派发、监听并发、超时和页面清理，其他历史风险须逐项复核。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（Kotlin 重实现，11 个 demo 见 `D:/AsyncAnimator/demo/`）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（ColorOS 15 Launcher 15.8.24，JADX 反编译；`com.android.launcher3` / `com.android.quickstep` / `com.oplus.quickstep` / `com.oplus.basecommon` 四大包为主）
@@ -249,7 +251,7 @@
 - §③-A1/A2/A3 ⚠️：事件总线 / 主线程 handler / 时间窗运行态——未修复
 - §③-B4/B5/B6 ⚠️：isTablet/isSpecialAppScene/600ms 闸门——未修复；§③-B7 ✅已修复（64d3bab）：默认值已改为 -1
 - §③-C8 ✅：per-thread 帧语义已修复（215ecb5）
-- §③-C9 ✅：sf-vsync 已修复（dbde195/215ecb5）
+- §③-C9：公开 Choreographer 帧调度已接入（dbde195/215ecb5）；不代表平台 SF-VSYNC provider 已迁移。见 2026-09-09 复核。
 - §③-D10 ✅：seqId 条件更新已修复（60bd048）
 - §③-D11 ✔️：UNKNOWN 日志保持简化
 - §④-1/2/3/4 ⚠️：事件总线/三条件/默认-1/101 闸门——未修复
@@ -259,7 +261,7 @@
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **§③-7 / §④-4.1 #3 / §②-C-8**：AnimationFeatureHelper 5个 int flag 默认值从 1/0/1/0/1 改为 -1/-1/-1/-1/-1（），对齐 OPPO 未配置三态语义。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
@@ -267,7 +269,7 @@
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **§③-7 / §④-4.1 #3 / §②-C-8**：AnimationFeatureHelper 5个 int flag 默认值从 1/0/1/0/1 改为 -1/-1/-1/-1/-1（`manager/AnimationFeatureHelper.kt`），对齐 OPPO 未配置三态语义。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。

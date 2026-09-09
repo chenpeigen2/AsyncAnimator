@@ -64,8 +64,15 @@ class AsyncValueAnimator : ValueAnimator() {
     fun removeAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.removeListener(l) }
 
     companion object {
-        /** 原厂兼容工厂：。 */
+        /** 保留 Kotlin 调用方使用的异步快捷工厂。 */
         fun ofFloat(vararg values: Float): AsyncValueAnimator =
             AsyncValueAnimator().apply { setFloatValues(*values) }
+
+        /** 对齐原厂 ofFloat(isAsync, values)，并提供 Java 静态入口。 */
+        @JvmStatic
+        fun ofFloat(isAsync: Boolean, vararg values: Float): ValueAnimator =
+            (if (isAsync) AsyncValueAnimator() else ValueAnimator()).apply {
+                setFloatValues(*values)
+            }
     }
 }

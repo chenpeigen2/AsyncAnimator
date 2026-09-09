@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Ignore
 import org.junit.Test
 
 /**
@@ -18,14 +17,16 @@ import org.junit.Test
  *  - canInterceptGesture 时间窗口
  *  - delayFinishRecents 防抖
  */
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [36], manifest = org.robolectric.annotation.Config.NONE)
 class AnimationSeqHelperTest {
 
     @Before
     fun resetTimeStamps() {
         // AnimSeqTimeStamp 是全局静态状态，测试间必须复位，否则结果依赖执行顺序
         AnimSeqTimeStamp.resetAllForTest()
-        // JVM stub: SystemClock.uptimeMillis() == 0, use monotonic nanoTime.
-        AnimSeqTimeStamp.clock = { System.nanoTime() / 1_000_000 }
+        // Fixed time keeps window tests deterministic.
+        AnimSeqTimeStamp.clock = { 10_000L }
     }
 
     @Test
@@ -37,7 +38,6 @@ class AnimationSeqHelperTest {
     }
 
     @Test
-    @Ignore("android.os.Bundle 需要 Android 运行时；JVM 单测（returnDefaultValues）无法加载，须在设备上验证")
     fun testAddSeqIdWritesToBundle() {
         val helper = AnimationSeqHelper()
         val bundle = Bundle()

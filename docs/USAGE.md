@@ -343,13 +343,14 @@ lib 内部的动效溯源 trace（输出到 stderr）。demo 不直接调用其�
 ### 最低要求
 
 ```kotlin
+// 页面自己拥有的实例；不要在页面退出时销毁其他页面共享的全局 controller。
+private val controller = AnimationController()
+
 override fun onDestroy() {
-    // 1. 释放 AnimationController（取消超时 listener、清空状态机）
-    OplusAnimManager.animController.destroy()
-
-    // 2. 取消正在运行的动画
-    myAnimator.cancel()
-
+    controller.destroy() // 清除观察者、三类超时和挂起操作
+    seqHelper.clearFinishRecentsRunnable()
+    myAnimator.asyncAnimCallbacks.dispose() // 丢弃旧 owner 的已排队事件
+    myAnimator.cancel() // 仍在目标 Looper 执行
     super.onDestroy()
 }
 ```
@@ -357,11 +358,27 @@ override fun onDestroy() {
 ### 框架自动清理
 
 - `DemoBaseActivity.onDestroy()` 提供 `onCleanup()` 钩子供子类覆写
-- `AnimationController.destroy()` 会 dispose 全部超时 listener + reset 状态到 NONE
-- `AnimationHandler` 的 callback 列表随 GC 自动回收（无全局注册）
+- `AnimationController.destroy()` 清空状态观察者、dispose 全部超时 listener，并 reset 到 NONE（不在销毁时通知旧观察者）
+- 自有 `AnimationHandler` 在最后一个 callback 被显式移除并完成当帧清理后退订 self-pulse；不能依赖 GC 停止帧循环
+- Demo3/6/7 已接入对应清理；`LauncherStageView` detach 停止场景时钟；基类恢复自己安装的日志流
+- Controller 注册/销毁按主线程归属；同类超时重复注册会取消旧监听，事件和定时器只消费一次操作
 
 ### 注意事项
 
 - `LooperExecutor` 遵循永不关闭契约（`shutdown()` 始终抛 `UnsupportedOperationException`），无需在 onDestroy 中关闭
 - `AnimSeqTimeStamp` 是全局静态时间戳单例，生命周期跟随进程，不需要 Activity 级别清理
 - 超时 listener（`TaskStateChangeTimeOutListener`）由 `AnimationController` 持有，`destroy()` 统一释放
+
+### 监听容器复用与工厂兼容
+
+- `AsyncValueAnimator.ofFloat(isAsync, *values)` 对齐原厂布尔开关工厂，也提供 Java 静态入口；`ofFloat(*values)` 保留现有 Kotlin 调用方式。
+- `asyncAnimCallbacks.dispose()` 清空监听及 animationId，并使销毁前排队的事件失效。之后可重新注册监听复用容器；它不取消 animator，也不能撤回已经开始执行的业务回调。
+- `AnimationSeqHelper` 在执行延迟 finish 前先消费旧 action，允许回调中再安排下一次 finish；页面销毁仍须显式 `clearFinishRecentsRunnable()`。
+
+
+### Review 续轮补充：工厂与释放边界
+
+- `AsyncValueAnimator.ofFloat(true, 0f, 1f)` 返回异步包装；`false` 返回平台 `ValueAnimator`。保留 `ofFloat(0f, 1f)` 异步快捷调用，Boolean 重载也可从 Java 静态调用。
+- `asyncAnimCallbacks.dispose()` 释放当前监听/ID，并失效已排队的旧代次事件；重新注册后旧事件不会落到新监听。监听中调用 dispose 会停止本次剩余监听的派发，但无法撤回已经执行的回调。
+- dispose 不取消 animator。只释放自己拥有的容器；多个业务共享时仍用 `removeAnimatorListener()` 精确注销。容器重新注册不等于 `AsyncValueAnimator` 实例支持重复生命周期。
+- `AnimationSeqHelper` 由主线程调用。延迟 finish 先消费当前任务再调用业务，允许业务回调再次提交后继请求；此改进不是任意线程并发保证。

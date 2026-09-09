@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicReference
  *  - 3 种 listener 独立运行
  *  - delayStartActivityIfNeed 三层决策树
  */
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [36], manifest = org.robolectric.annotation.Config.NONE)
 class AnimationControllerTest {
 
     @Test
@@ -106,5 +108,57 @@ class AnimationControllerTest {
         val done = controller.cleanUpRecentsAnim()
         assertFalse(controller.hasRecentsAnim)
         assertTrue(done)
+    }
+
+    @Test
+    fun testReplacingTimeoutDisposesPreviousListener() {
+        val controller = AnimationController()
+        var calls = 0
+        controller.registerTransitionFinishTimeOutListener(100)
+        val old = controller.transitionFinishTimeOutListener!!
+        controller.registerTransitionFinishTimeOutListener(200)
+        controller.delayStartActivityIfNeed(null, null, { true }) { calls++ }
+        old.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
+        assertEquals(0, calls)
+        controller.transitionFinishTimeOutListener!!.onTimeOut(
+            TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 200)
+        assertEquals(1, calls)
+        assertNull(controller.transitionFinishTimeOutListener)
+    }
+
+    @Test
+    fun testDestroyDisposesAllTimeoutsAndStateObservers() {
+        val controller = AnimationController()
+        var stateChanges = 0
+        controller.addOnAnimStateChangeListener { _, _, _ -> stateChanges++ }
+        controller.registerSpecialSceneExitTimeOutListener(100)
+        controller.registerTransitionFinishTimeOutListener(100)
+        controller.registerOverviewContinuationTimeOutListener(100)
+        controller.destroy()
+        assertNull(controller.specialSceneExitTimeOutListener)
+        assertNull(controller.transitionFinishTimeOutListener)
+        assertNull(controller.overviewContinuationTimeOutListener)
+        assertEquals(AnimationState.NONE, controller.animState)
+        controller.reset()
+        assertEquals(0, stateChanges)
+    }
+
+    @Test
+    fun testTimeoutActionCanRegisterAnotherRequest() {
+        val controller = AnimationController()
+        var calls = 0
+        controller.registerTransitionFinishTimeOutListener(100)
+        controller.delayStartActivityIfNeed(null, null, { true }) {
+            calls++
+            controller.registerTransitionFinishTimeOutListener(100)
+            controller.delayStartActivityIfNeed(null, null, { true }) { calls++ }
+        }
+        controller.transitionFinishTimeOutListener!!.onTimeOut(
+            TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
+        assertEquals(1, calls)
+        controller.transitionFinishTimeOutListener!!.onTimeOut(
+            TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
+        assertEquals(2, calls)
+        assertNull(controller.transitionFinishTimeOutListener)
     }
 }

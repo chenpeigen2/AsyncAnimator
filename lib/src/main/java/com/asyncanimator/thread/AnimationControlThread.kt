@@ -35,8 +35,9 @@ import com.asyncanimator.core.ChoreographerTickScheduler
  * 移植取舍（AOSP 无对应公开 API）：
  *
  *  - `SfVsyncFrameCallbackProvider`、`AnimationHandler.setProvider`、`LauncherBooster`
- *    都是 hidden/私有，这里用 [ChoreographerTickScheduler]（公开 Choreographer，真 VSYNC）/ [HandlerTickScheduler]（postDelayed 兜底）
- *    等价替代，并保留 [onLooperPrepared] 作为"线程 init 回调"的落点；
+ *    都是 hidden/私有，这里仅为自有 AnimationHandler 安装
+ *    [ChoreographerTickScheduler]（公开 Choreographer）。它不会替换平台或 AndroidX
+ *    动画的帧源，不等价于 SF-VSYNC；[onLooperPrepared] 保留线程初始化落点；
  *  - 优先级按原厂字面量 -19 直接设置（见 [PRIORITY]；不使用 SDK 常量，
  *    因为没有一个公开常量等于 -19）。
  *
@@ -44,7 +45,7 @@ import com.asyncanimator.core.ChoreographerTickScheduler
  * （AsyncAnimCallbacks）；
  * start/cancel/end 按"当前线程 vs 目标 Looper"自动 marshal
  * （原厂 `CustomRectFSpringAnim.start()` 的模式：先取 executor 再判 `isCurrentThread`；
- * 本 lib 未复刻该协议，见 `docs/review/04-frame-spring-continuation.md` §4.2-2）。
+ * AsyncValueAnimator 已实现生命周期转发；CustomRectFSpringAnim 仍为占位）。
  */
 class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, PRIORITY) {
 
@@ -58,7 +59,7 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
      *
      * 本方法由 HandlerThread 在新线程上、Looper 就绪后调用，
      * 所以此处 `AnimationHandler.instance`（ThreadLocal）拿到的正是本线程那一份，
-     * 与原厂 `setProvider` 的作用域完全一致。
+     * 仅影响自有调度器，不会修改原厂所用的平台 AnimationHandler。
      */
     override fun onLooperPrepared() {
         // 帧源：原厂 setProvider(SfVsyncFrameCallbackProvider)（@hide 不可达），

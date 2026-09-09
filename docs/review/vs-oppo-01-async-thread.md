@@ -1,5 +1,7 @@
 # vs OPPO — 区域 01：异步/线程层（lib vs ColorOS 15 Launcher 15.8.24）
 
+> **2026-09-09 续轮完成**：§4.1-2 的 Boolean 工厂现已补齐（含 Java 静态入口），不是仅存在 `ofFloat(vararg)` 就算完成；保留异步快捷重载。选择分支和值域经回归验证，见[续轮落地记录](2026-09-09-review-followup.md)。以下旧提交记录仍保留为历史快照，其他缺口不随此项标完成。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/`（Kotlin；2026-09-09 包重组 e62dbff/b39f130 后：`anim/`＝async+continuation、`thread/`＝animthread+async 线程类、`core/`＝anim+scheduler+Trace。下文 lib 证据路径均已按此校正；`ScheduledTickScheduler`/`HandlerTickScheduler` 已于 215ecb5 删除）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24，JADX 反编译；80% 文件 DLP 加密，全部证据经 Grep ripgrep 明文通道取得，行号为 JADX 反编译文本行号）
@@ -269,7 +271,7 @@
 | # | 改动 | 理由 | 风险消除 |
 |---|---|---|---|
 | 1 | ✅已修复（215ecb5：删两个 scheduler，ChoreographerTickScheduler 唯一且空则停） — **统一两个 scheduler 的"空则停"语义**（`ScheduledTickScheduler.kt:56-61` 加空转保护：tick 时 callbacks 为空则自动 stop，下次 `postFrameCallback` 时 restart） | 让两种 scheduler 行为一致；消除 demo 在两种配置下 `frameCount` 增长曲线不一致的问题 | §③-1, §③-14 |
-| 2 | ✅已修复（64d3bab：`anim/AsyncValueAnimator.kt` companion object ofFloat 工厂） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
+| 2 | ✅已完成（2026-09-09 续轮：补齐 Boolean 重载及 Java 静态入口；64d3bab 当时只有异步快捷重载） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
 | 3 | ✔️不修（Kotlin 非空安全有意改进） — **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
 | 4 | ⚠️未修复（线程切换协议大改，见 vs-oppo-16） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
 | 5 | ⚠️未修复（~5 行枚举补 7 值） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |

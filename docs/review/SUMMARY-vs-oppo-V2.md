@@ -1,5 +1,9 @@
 # lib vs OPPO 原厂深度对比分析汇总（22 路 deep-dive）
 
+> **2026-09-09 建议落地续轮**：Review 01 工厂签名、09 监听释放、25 配对及重入、26 独立 reset、34 A1/A2/A3/A7 回归闭环；A6 原厂 feature 部分仍未完成。见[续轮落地记录](2026-09-09-review-followup.md)。历史“全部 bug 已修/约若干行”的估算不能替代本轮逐项验收。
+
+> **2026-09-09 当前复核**：D7 的根监听补齐仍漏掉深层节点，本轮改为真正递归；旧“22 个 bug / 约 150 行全部修掉”等估算不作为当前验收依据。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 生成方式：22 个并行 agent 对 lib（D:/AsyncAnimator/lib）与 OPPO ColorOS 15 Launcher 反编译源码（D:/oppo_a6_launcher/sources）做"按细节切片"的深度分析——把第一轮 12 份按子系统切分的报告里没展开到具体文件/方法/字段的子维度补齐。
 >
 > 上一轮"按子系统"的 12 份报告见 `docs/review/vs-oppo-01-12-*.md` + `SUMMARY-vs-oppo.md`（V1）。本篇为 V2：22 份 deep-dive + 跨子系统聚合。

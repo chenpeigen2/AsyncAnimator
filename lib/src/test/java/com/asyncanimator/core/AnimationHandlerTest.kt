@@ -1,74 +1,109 @@
 package com.asyncanimator.core
 
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertSame
+import org.junit.Assert.*
 import org.junit.Test
-import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * AnimationHandler 单元测试。
- *
- * 验证：
- *
- *  - ThreadLocal 单例：每线程一份，互不干扰
- *  - addAnimationFrameCallback 触发 self-pulse
- *  - removeCallback 懒删除（置 null + listDirty）
- *  - callback doAnimationFrame 返回 true 后下一帧被移除
- */
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk = [36], manifest = org.robolectric.annotation.Config.NONE)
 class AnimationHandlerTest {
+    private class ManualScheduler : TickScheduler {
+        val callbacks = linkedSetOf<TickScheduler.FrameCallback>()
+        var running = false
+        override var frameTimeNanos = 0L
+        override var frameCount = 0L
+        override val frameIntervalMs = 16L
+        override fun postFrameCallback(callback: TickScheduler.FrameCallback?) { callback?.let(callbacks::add) }
+        override fun removeFrameCallback(callback: TickScheduler.FrameCallback?) { callbacks.remove(callback) }
+        override fun start() { running = true }
+        override fun stop() { running = false }
+        fun pulse() {
+            if (!running) return
+            frameTimeNanos += 16_000_000
+            frameCount++
+            callbacks.toList().forEach { it.doFrame(frameTimeNanos) }
+        }
+    }
 
     @Test
     fun testThreadLocalInstance() {
-        val h1 = AnimationHandler.instance
-        val h2 = AnimationHandler.instance
-        assertSame(h1, h2)
+        assertSame(AnimationHandler.instance, AnimationHandler.instance)
+        var other: AnimationHandler? = null
+        Thread { other = AnimationHandler.instance }.apply { start(); join() }
+        assertNotSame(AnimationHandler.instance, other)
     }
 
     @Test
-    fun testAddAndRemoveCallback() {
-        val handler = AnimationHandler(ChoreographerTickScheduler())
-        val count = AtomicInteger()
-        val cb = AnimationHandler.AnimationFrameCallback { frameTime ->
-            count.incrementAndGet()
-            false // 继续
-        }
-        handler.addAnimationFrameCallback(cb)
-        // 验证 list 大小（通过 callbackSize）
-        assertEquals(1, handler.callbackSize)
-
-        handler.removeCallback(cb)
-        // 懒删除：list 还有 1 个槽但是 null，size=0
+    fun testRemoveLastCallbackUnsubscribesAndRestartTicksOnce() {
+        val scheduler = ManualScheduler()
+        val handler = AnimationHandler(scheduler)
+        var calls = 0
+        val callback = AnimationHandler.AnimationFrameCallback { calls++; false }
+        handler.addAnimationFrameCallback(callback)
+        scheduler.pulse()
+        assertEquals(1, calls)
+        handler.removeCallback(callback)
+        scheduler.pulse()
+        assertEquals(1, calls)
         assertEquals(0, handler.callbackSize)
+        assertTrue(scheduler.callbacks.isEmpty())
+        handler.addAnimationFrameCallback(callback)
+        scheduler.pulse()
+        assertEquals(2, calls)
+        assertEquals(1, scheduler.callbacks.size)
     }
 
     @Test
-    fun testCallbackReturnsTrueEndsAnimation() {
-        val handler = AnimationHandler(ChoreographerTickScheduler())
-        val count = AtomicInteger()
-        val cb = AnimationHandler.AnimationFrameCallback { frameTime ->
-            count.incrementAndGet()
-            true // 立即结束
+    fun testReturnValueDoesNotReplaceExplicitRemoval() {
+        val scheduler = ManualScheduler()
+        val handler = AnimationHandler(scheduler)
+        var calls = 0
+        val callback = AnimationHandler.AnimationFrameCallback { calls++; true }
+        handler.addAnimationFrameCallback(callback)
+        scheduler.pulse()
+        scheduler.pulse()
+        assertEquals(2, calls)
+        handler.removeCallback(callback)
+        scheduler.pulse()
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun testCallbackCanRemoveItselfAndAddAnotherInSameFrame() {
+        val scheduler = ManualScheduler()
+        val handler = AnimationHandler(scheduler)
+        val calls = mutableListOf<String>()
+        val second = AnimationHandler.AnimationFrameCallback { calls.add("second"); false }
+        lateinit var first: AnimationHandler.AnimationFrameCallback
+        first = AnimationHandler.AnimationFrameCallback {
+            calls.add("first")
+            handler.removeCallback(first)
+            handler.addAnimationFrameCallback(second)
+            false
         }
-        handler.addAnimationFrameCallback(cb)
-        // 验证列表里有 1 个 callback
-        assertEquals(1, handler.callbackSize)
+        handler.addAnimationFrameCallback(first)
+        scheduler.pulse()
+        assertEquals(listOf("first", "second"), calls)
+        scheduler.pulse()
+        assertEquals(listOf("first", "second", "second"), calls)
     }
 
     @Test
     fun testAddSameCallbackTwice() {
-        val handler = AnimationHandler(ChoreographerTickScheduler())
-        val cb = AnimationHandler.AnimationFrameCallback { false }
-        handler.addAnimationFrameCallback(cb)
-        handler.addAnimationFrameCallback(cb) // 幂等：contains 检查
-        assertEquals(1, handler.callbackSize)
+        val scheduler = ManualScheduler()
+        val handler = AnimationHandler(scheduler)
+        var calls = 0
+        val callback = AnimationHandler.AnimationFrameCallback { calls++; false }
+        handler.addAnimationFrameCallback(callback)
+        handler.addAnimationFrameCallback(callback)
+        scheduler.pulse()
+        assertEquals(1, calls)
+        assertEquals(1, scheduler.callbacks.size)
     }
 
     @Test
     fun testRemoveNonExistentCallback() {
-        val handler = AnimationHandler(ChoreographerTickScheduler())
-        val cb = AnimationHandler.AnimationFrameCallback { false }
-        // 不存在的 callback 不抛异常
-        handler.removeCallback(cb)
+        val handler = AnimationHandler(ManualScheduler())
+        handler.removeCallback(AnimationHandler.AnimationFrameCallback { false })
         assertEquals(0, handler.callbackSize)
     }
 }

@@ -22,7 +22,9 @@ private const val KEY_INTERRUPT_TRANSITION_START_ACTIVITY_SEQ_ID =
  *  - 全局单调 seqId 写入 Bundle（跨进程同步）
  *  - [canFinishRecent] 检查 500ms 内是否刚结束过
  *  - [canInterceptGesture] 检查 300ms 内是否刚启动过 app
- *  - [delayFinishRecents] 500ms 内必须 finish
+ *  - [delayFinishRecents] 在剩余窗口后执行最新请求，支持回调重入提交下一项
+ *
+ * 实例方法由主线程调用；本类不提供任意线程并发访问保证。
  */
 class AnimationSeqHelper : DefaultAnimationSeqHelper() {
 
@@ -40,9 +42,14 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
             handler = Handler(Looper.getMainLooper()) { msg ->
                 if (msg.what == MSG_EXC_RUNNABLE) {
                     Trace.traceBegin(8L, "exc delayRunnable")
-                    delayAction?.invoke()
+                    // Consume before invoking: a reentrant callback may enqueue its successor.
+                    val action = delayAction
                     delayAction = null
-                    Trace.traceEnd(8L)
+                    runCatching {
+                        action?.invoke()
+                    }.also {
+                        Trace.traceEnd(8L)
+                    }.getOrThrow()
                 }
                 true
             }
@@ -97,7 +104,7 @@ class AnimationSeqHelper : DefaultAnimationSeqHelper() {
 
     override fun getNextFinishSeqId(recentsController: Any?): Long {
         val p = nextFinishSeqId
-        // 原厂按引用比较 controller，这里用 === 保持一致
+        // 原厂 Intrinsics.areEqual 按 equals 比较，与更新 pair 的判断保持一致
         if (p != null && p.first == recentsController) return p.second
         return 0L
     }

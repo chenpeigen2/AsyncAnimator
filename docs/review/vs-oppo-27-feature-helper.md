@@ -327,7 +327,7 @@
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **风险6 / §4.1-2**：AnimationFeatureHelper 5个 int flag 默认值从 1/1/0/1/1 改为 -1/-1/-1/-1/-1（），对齐 OPPO 未配置三态语义。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
@@ -335,7 +335,7 @@
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **风险6 / §4.1-2**：AnimationFeatureHelper 5个 int flag 默认值从 1/1/0/1/1 改为 -1/-1/-1/-1/-1（`manager/AnimationFeatureHelper.kt`），对齐 OPPO 未配置三态语义。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。

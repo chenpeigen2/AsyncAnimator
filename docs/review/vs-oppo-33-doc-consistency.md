@@ -1,5 +1,7 @@
 # vs-oppo-16 — 文档 / 代码一致性扫描（USAGE.md + README.md + docs/review/*）
 
+> **2026-09-09 当前复核**：新增本轮复核索引、校正 64d3bab 复核日期、SF-VSYNC 范围以及生命周期示例；未对所有历史结论作全量背书。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 范围：`D:/AsyncAnimator/docs/USAGE.md`、`D:/AsyncAnimator/README.md`、`D:/AsyncAnimator/docs/review/{01-04, SUMMARY, 06-vs-oppo-public-api-and-callsites, vs-oppo-06..12}*.md` 之间的相互一致性 + 与 `D:/AsyncAnimator/lib` 当前状态的对应关系。
 >
 > 取证方式：

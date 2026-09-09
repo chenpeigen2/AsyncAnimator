@@ -29,7 +29,6 @@ internal class AnimatorPlaybackController(
     holders: List<Holder>
 ) : ValueAnimator.AnimatorUpdateListener {
 
-    private val anims = mutableListOf<Animator>()
     private val childAnimations: Array<Holder>
     private var targetCancelled = false
     private var isDispatchStartPending = false
@@ -43,11 +42,6 @@ internal class AnimatorPlaybackController(
     val animationPlayer: ValueAnimator = ValueAnimator.ofFloat(0f, 1f)
 
     init {
-        if (anim is AnimatorSet) {
-            anims.addAll(anim.childAnimations)
-        } else {
-            anims.add(anim)
-        }
         animationPlayer.interpolator = Interpolators.LINEAR // 强制 LINEAR
         animationPlayer.addUpdateListener(this)
         animationPlayer.addListener(OnAnimationEndDispatcher())
@@ -163,15 +157,16 @@ internal class AnimatorPlaybackController(
     /** 根动画（通常是 PendingAnimation.buildAnim() 的 AnimatorSet）。 */
     private val rootAnim: Animator = anim
 
-    private inline fun dispatchToListeners(
+    private fun dispatchToListeners(
         action: Animator.AnimatorListener.(Animator) -> Unit
     ): AnimatorPlaybackController = apply {
-        // 对齐原厂 callListenerCommandRecursively 的前序 DFS：根 → 子动画。
-        // 根 AnimatorSet 自身从不被 APC 启动（只有 animationPlayer 在跑），
-        // 挂在根上的 listener 只能经这里收到回调。
-        val targets = if (anims.size == 1 && anims[0] === rootAnim) anims
-                      else listOf(rootAnim) + anims
-        for (a in targets) a.listeners.orEmpty().forEach { it.action(a) }
+        // Pre-order DFS, matching OPPO callListenerCommandRecursively.
+        // Snapshot each listener list so callbacks may unregister themselves safely.
+        fun visit(animator: Animator) {
+            animator.listeners?.toList()?.forEach { it.action(animator) }
+            if (animator is AnimatorSet) animator.childAnimations.toList().forEach(::visit)
+        }
+        visit(rootAnim)
     }
 
     fun dispatchOnStart(): AnimatorPlaybackController {

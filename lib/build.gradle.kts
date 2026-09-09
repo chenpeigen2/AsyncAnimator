@@ -35,8 +35,25 @@ android {
     }
 }
 
+// Resolve the Robolectric SDK through Gradle once, then use its local resolver.
+// This avoids a second, unmanaged runtime download by the test runner.
+val robolectricSdk by configurations.creating
+val prepareRobolectricSdk by tasks.registering(Sync::class) {
+    from(robolectricSdk)
+    into(layout.buildDirectory.dir("robolectric-sdk"))
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(prepareRobolectricSdk)
+    systemProperty("robolectric.usePreinstrumentedJars", "false")
+    systemProperty("robolectric.dependency.dir", layout.buildDirectory.dir("robolectric-sdk").get().asFile.absolutePath)
+}
+
 dependencies {
     implementation(libs.androidx.dynamicanimation)
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    // SDK 37 signature-only stubs cannot load Application/AnimatorSet in the JVM.
+    testRuntimeOnly(libs.robolectric.android)
+    robolectricSdk(libs.robolectric.android)
     testImplementation(libs.assertj.core)
 }

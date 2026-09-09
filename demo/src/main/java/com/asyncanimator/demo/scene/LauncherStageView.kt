@@ -234,7 +234,19 @@ class LauncherStageView(context: Context) : View(context) {
     }
 
     // ── 帧循环 ───────────────────────────────────────────
-    private fun ensureClock() = clock.start()
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        clock.start()
+    }
+
+    override fun onDetachedFromWindow() {
+        clock.stop()
+        super.onDetachedFromWindow()
+    }
+
+    private fun ensureClock() {
+        if (isAttachedToWindow) clock.start()
+    }
 
     private fun tick(dt: Float) {
         var busy = false

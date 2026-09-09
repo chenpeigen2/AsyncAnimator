@@ -10,6 +10,8 @@ constraintlayout = "2.1.4"
 dynamicanimation = "1.1.0"
 junit = "4.13.2"
 assertj = "3.25.3"
+robolectric = "4.16"
+robolectricAndroid = "16-robolectric-13921718"
 
 [libraries]
 # AndroidX
@@ -23,6 +25,9 @@ google-material = { module = "com.google.android.material:material", version.ref
 # Test
 junit = { module = "junit:junit", version.ref = "junit" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+robolectric-android = { module = "org.robolectric:android-all", version.ref = "robolectricAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

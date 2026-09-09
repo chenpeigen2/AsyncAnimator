@@ -1,5 +1,7 @@
 # 区域 13 对比 Review：AnimSeqTimeStamp 4 字段并发语义
 
+> **2026-09-09 续轮完成（测试项）**：四个时间戳 reset 的独立性已覆盖，逐一断言自身清零哨兵及其他三个字段不变；测试恢复注入时钟。当前 update/reset 已带 `@Synchronized`，以下“写路径/resetAllForTest 无锁”仅为历史快照，不是现状；本轮未更改该同步策略。见[续轮落地记录](2026-09-09-review-followup.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库，Kotlin 重实现）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）

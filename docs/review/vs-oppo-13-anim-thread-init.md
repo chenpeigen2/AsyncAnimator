@@ -1,5 +1,7 @@
 # vs-oppo-13 — AnimationControlThread 深度对照
 
+> **2026-09-09 当前复核**：本库初始化的是自有 AnimationHandler；不是平台 AnimationHandler provider 替换，未实现 UX/SF-VSYNC。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 范围：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/thread/AnimationControlThread.kt`（e62dbff 包重组后自 `launcher/animthread/` 迁入 `thread/`）
 > vs 原厂 `com/oplus/basecommon/thread/OplusExecutors.java`（`ANIM_EXECUTOR` + `ANIM_EXECUTOR$lambda$0`）+
 > `com/oplus/basecommon/thread/Executors.java`（`createAndStartNewLooper`）+
@@ -392,7 +394,7 @@ override fun onLooperPrepared() {
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **R-4 / 4-A-1 / 4-B-5**： 中  改为 ，保留异常日志但去掉 runCatching 冗余包。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。
@@ -400,7 +402,7 @@ override fun onLooperPrepared() {
 
 ---
 
-### 复核记录 v3（2026-09-11，commit 64d3bab）
+### 复核记录 v3（2026-09-09，commit 64d3bab）
 
 - **R-4 / 4-A-1 / 4-B-5**：`AnimationControlThread.kt` 中 `runCatching { Process.setThreadPriority(...) }` 改为 `try { ... } catch (e: Exception) { Log.w(TAG, e) }`，保留异常日志但去掉 runCatching 冗余包。
 - **标记变更**：⚠️未修复 → ✅已修复（64d3bab）。

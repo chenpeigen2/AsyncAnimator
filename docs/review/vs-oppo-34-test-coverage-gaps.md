@@ -1,5 +1,9 @@
 # lib 测试覆盖缺口扫描 — vs OPPO 原厂（34/测试覆盖）
 
+> **2026-09-09 续轮验收**：A1/A2/A3/A7 已补回归；A4/A5 为工作区已有修复，本轮一并验证。A6 只完成当前库的时间边界，原厂 feature 闸门未接入，不标完整完成；A8 未新增压力测试。新增 3 个测试类、24 个 JUnit 用例，其中 4 个用例包含 48 个状态/操作组合，组合数不重复计入用例数。当前全量数量及执行结果见[续轮落地记录](2026-09-09-review-followup.md)，不沿用下方历史 21 条/覆盖率估算。
+
+> **2026-09-09 当前复核**：补入 Robolectric 动画树及监听测试、手动帧时钟和超时/销毁回归；原 Bundle 测试恢复执行。具体执行数量与结果见本轮记录，不沿用旧的 21 条统计。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 范围：`D:/AsyncAnimator/lib/src/test` 下 3 个测试文件、共 **21 个 `@Test`**（其中 1 个 `@Ignore`），对比 `D:/oppo_a6_launcher/sources` 原厂实现，按"逐文件/逐方法/逐字段"扫描覆盖缺口。
 >
 > 前置：12 份按子系统的报告（`vs-oppo-01..12`）+ `vs-oppo-13/14-*` 已就位；本文不重复语义层结论，专门做"测试断言 ↔ 原厂分支"的对齐审计。
@@ -223,13 +227,13 @@
 
 | # | 建议补的测试 | 工作量 | 守护的风险点 |
 |---|---|---|---|
-| **A1** | **状态：⚠️未修复（未补 ~70 行；守护 §3.2）** `addRecentsAnim` 9 个状态转移位的全枚举测试 | ~70 行（9 case × 8 行） | §3.2 UNKNOWN 兜底无回归保护 |
-| **A2** | **状态：⚠️未修复（未补 ~12 行；守护 §3.3——底层 end 通路已 ✅，测试降为可选守护）** `checkAllAnimationFinished` 端分支单测（双 callback 已设 + 双列表空） | ~12 行 | §3.3 收尾 NPE 风险 |
-| **A3** | **状态：⚠️未修复（未补 ~40 行；守护 §3.8）** `delayStartActivityIfNeed` 三层决策树测试（landscape / transition / overview + max-time 过期） | ~40 行 | §3.8 横屏/分屏兜底决策 |
-| **A4** | **状态：⚠️未修复（未补 ~6 行；守护 §3.6）** `AnimationHandler.testCallbackReturnsTrueEndsAnimation` 真正驱动一帧（mock scheduler 调 onTick） | ~6 行 | §3.6 测试名误导 |
-| **A5** | **状态：⚠️未修复（未补 ~25 行；P0——timeout 兜底本身仍 0 测试，守护 §3.4）** `TaskStateChangeTimeOutListener` 单元测试（构造 + 触发 timeout + dispose 验证 callback 被清） | ~25 行 | §3.4 全局事件总线缺位 + timeout 兜底本身无测试 |
-| **A6** | **状态：⚠️未修复（未补 ~20 行；守护 §3.7）** `AnimationSeqHelper.canFinishRecent / canInterceptGesture` 4 boolean × 2 gap = 8 边界测试（含 `isSupportStartingSurface` 守门） | ~20 行 | §3.7 守门砍掉后无回归保护 |
-| **A7** | **状态：⚠️未修复（未补 ~15 行；守护 §3.9）** `AnimSeqTimeStamp` 4 字段 reset 独立性（`resetLastStartAppTime` 不影响其他字段） | ~15 行 | §3.9 死代码 |
+| **A1** | **状态：✅已完成（2026-09-09：12 状态 × 4 操作共 48 组合，生产转移 API 回归）** `addRecentsAnim` 9 个状态转移位的全枚举测试 | ~70 行（9 case × 8 行） | §3.2 UNKNOWN 兜底无回归保护 |
+| **A2** | **状态：✅已完成（2026-09-09：双集合两种完成顺序、双 callback 消费及清理）** `checkAllAnimationFinished` 端分支单测（双 callback 已设 + 双列表空） | ~12 行 | §3.3 收尾 NPE 风险 |
+| **A3** | **状态：✅已完成（2026-09-09：本库三分支、互斥优先级、过期与精确截止边界；不含系统事件联调）** `delayStartActivityIfNeed` 三层决策树测试（landscape / transition / overview + max-time 过期） | ~40 行 | §3.8 横屏/分屏兜底决策 |
+| **A4** | **状态：✅已完成（已有手动 TickScheduler 实际推进帧，本轮重验；回调返回值忽略，显式 remove 结束）** `AnimationHandler.testCallbackReturnsTrueEndsAnimation` 真正驱动一帧（mock scheduler 调 onTick） | ~6 行 | §3.6 测试名误导 |
+| **A5** | **状态：✅已完成（已有事件/定时器一次性消费、dispose 取消回归，本轮重验；不含全局事件总线）** `TaskStateChangeTimeOutListener` 单元测试（构造 + 触发 timeout + dispose 验证 callback 被清） | ~25 行 | §3.4 全局事件总线缺位 + timeout 兜底本身无测试 |
+| **A6** | **状态：⚠️部分完成（2026-09-09：300/500ms 边界与延迟去重已覆盖；原厂 feature 闸门未实现）** `AnimationSeqHelper.canFinishRecent / canInterceptGesture` 4 boolean × 2 gap = 8 边界测试（含 `isSupportStartingSurface` 守门） | ~20 行 | §3.7 守门砍掉后无回归保护 |
+| **A7** | **状态：✅已完成（2026-09-09：四个 reset 分别验证其他三字段不变）** `AnimSeqTimeStamp` 4 字段 reset 独立性（`resetLastStartAppTime` 不影响其他字段） | ~15 行 | §3.9 死代码 |
 | **A8** | **状态：⚠️未修复（未补 ~30 行 stress；守护 §3.5——若维持 @Volatile 简化则该测试价值有限）** `AnimSeqTimeStamp` 多线程并发写（2 线程 × 1000 次 update vs read） | ~30 行 | §3.5 `@Volatile` vs `synchronized` 降级 |
 | **小计** | — | **~220 行** | — |
 

@@ -27,6 +27,12 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
     override val demoTitle = "Demo 3: AsyncValueAnimator 跨 Looper"
     override val docSection = "§6.3"
 
+    private val uiHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val animationLock = Any()
+    private var disposed = false
+    private val animations = mutableMapOf<AsyncValueAnimator, NullableAnimatorListenerAdapter>()
+    private val clearBanner = Runnable { stage.banner = null }
+
     private lateinit var stage: LauncherStageView
     private lateinit var lanes: ThreadLaneView
 
@@ -68,7 +74,7 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
         anim.setFloatValues(0f, 1f)
         anim.executor = Executors.MAIN_EXECUTOR
         anim.duration = 500
-        anim.asyncAnimCallbacks.addListener(object : NullableAnimatorListenerAdapter() {
+        val listener = object : NullableAnimatorListenerAdapter() {
             override fun onAnimationStart(animator: Animator) {
                 log("onAnimationStart on ${Thread.currentThread().name}  (main=${Thread.currentThread() == android.os.Looper.getMainLooper().thread})")
                 runOnUiThread {
@@ -77,13 +83,16 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
                 }
             }
             override fun onAnimationEnd(animator: Animator) {
+                animations.remove(anim)
                 log("onAnimationEnd on ${Thread.currentThread().name}  —— listener 始终回主线程 fire")
                 runOnUiThread {
                     lanes.event(1)
                     lanes.setLaneBusy(1, false)
                 }
             }
-        })
+        }
+        anim.addAnimatorListener(listener)
+        animations[anim] = listener
         return anim
     }
 
@@ -94,25 +103,45 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
         buildAnim().start()
         stage.banner = "主线程直接执行 → openApp"
         stage.openApp(0)
-        stage.postDelayed({ stage.banner = null }, 1500)
+        uiHandler.postDelayed(clearBanner, 1500)
         log("start() 立即返回；实际 frame 在主线程 tick")
     }
 
     private fun startFromWorker() {
         log("=== worker 线程 start() ===")
+        val anim = buildAnim()
         Thread {
             log("worker thread = ${Thread.currentThread().name}")
             // worker 泳道打点 + start() marshal 箭头飞向 main
-            runOnUiThread { lanes.marshal(0, 1, "start()") }
-            buildAnim().start()
+            synchronized(animationLock) {
+                if (disposed) return@Thread
+                uiHandler.post { lanes.marshal(0, 1, "start()") }
+                anim.start()
+            }
             log("worker: start() 立即返回，已 marshal 到主线程")
             // marshal 先演（箭头约 1s），主线程随后真正落地 → 图标开屏
-            stage.postDelayed({
-                stage.banner = "main 线程执行 start() → openApp"
-                stage.openApp(0)
-                log("main: start() 落地执行，openApp 开屏（${Thread.currentThread().name}）")
-                stage.postDelayed({ stage.banner = null }, 1500)
-            }, 800)
+            synchronized(animationLock) {
+                if (disposed) return@Thread
+                uiHandler.postDelayed({
+                    stage.banner = "main 线程执行 start() → openApp"
+                    stage.openApp(0)
+                    log("main: start() 落地执行，openApp 开屏（${Thread.currentThread().name}）")
+                    uiHandler.postDelayed(clearBanner, 1500)
+                }, 800)
+            }
         }.start()
+    }
+
+    override fun onCleanup() {
+        synchronized(animationLock) {
+            disposed = true
+            uiHandler.removeCallbacksAndMessages(null)
+            val pending = animations.keys.toList()
+            animations.keys.forEach { it.asyncAnimCallbacks.dispose() }
+            animations.clear()
+            // Queue after any start already posted by the worker; immediate cancel could precede it.
+            Executors.MAIN_EXECUTOR.post { pending.forEach { it.cancel() } }
+        }
+        super.onCleanup()
     }
 }

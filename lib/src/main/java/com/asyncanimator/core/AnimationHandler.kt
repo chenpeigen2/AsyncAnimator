@@ -19,13 +19,15 @@ package com.asyncanimator.core
  */
 internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
-    /** 每帧回调契约：返回 true 表示本动画已结束，Handler 据此调度续帧。 */
+    /** 每帧回调契约：与原厂一致，返回值被忽略；动画结束必须显式 removeCallback。 */
     fun interface AnimationFrameCallback {
         fun doAnimationFrame(frameTimeMs: Long): Boolean
     }
 
     /** TickScheduler 持有者（懒构造）。可被 [replaceThreadScheduler] 替换。 */
     private var schedulerHolder = TickSchedulerHolder(scheduler)
+
+    private val tickCallback = TickScheduler.FrameCallback(::onTick)
 
     /** 当前线程上活跃的 animation callbacks。懒删除（null 槽）。 */
     private val animationCallbacks = mutableListOf<AnimationFrameCallback?>()
@@ -51,7 +53,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         if (animationCallbacks.isEmpty()) {
             // 首次注册：确保 scheduler 已就绪，并注册 self-pulse
             scheduler.start()
-            scheduler.postFrameCallback(::onTick)
+            scheduler.postFrameCallback(tickCallback)
         }
         if (!animationCallbacks.contains(callback)) {
             animationCallbacks.add(callback)
@@ -76,13 +78,13 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
      * TickScheduler 每帧调一次。这是原厂 onAnimationFrame 的入口（对比见 review 04）。
      *
      * 顺序：分发所有 callback → cleanUpList 压缩 null 槽 → 若还有 callback 则由 TickScheduler 续帧
-     * （这里续帧逻辑由 ScheduledTickScheduler.scheduleAtFixedRate 自动完成，
-     * 不需要手动 postFrameCallback）。
+     * 所有动画移除后退订 self-pulse；ChoreographerTickScheduler 无订阅者时自行停止。
      */
     private fun onTick(frameTimeNanos: Long) {
         val frameTimeMs = frameTimeNanos / 1_000_000L // nanos → ms（对齐 AndroidX 行为）
         doAnimationFrame(frameTimeMs)
         cleanUpList()
+        if (animationCallbacks.isEmpty()) scheduler.removeFrameCallback(tickCallback)
     }
 
     /**
@@ -110,11 +112,12 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     @Synchronized
     private fun swapScheduler(s: TickScheduler) {
+        schedulerHolder.get().removeFrameCallback(tickCallback)
         schedulerHolder.get().stop()
         schedulerHolder = TickSchedulerHolder(s)
         if (callbackSize > 0) {
             s.start()
-            s.postFrameCallback(::onTick)
+            s.postFrameCallback(tickCallback)
         }
     }
 
@@ -146,7 +149,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
          *
          * 对应"独立动画线程"方案：独立线程在 onLooperPrepared() 时调用，
          * 让该线程的 AnimationHandler（ThreadLocal 单例）用绑定本线程 Looper 的帧调度器，
-         * 而不是默认的 ScheduledTickScheduler（共享 JVM 调度线程）。
+         * 而不是默认的本线程 Choreographer 调度器。
          *
          * 必须在该线程首次访问 [instance] 之前调用；若已被创建则不生效。
          */

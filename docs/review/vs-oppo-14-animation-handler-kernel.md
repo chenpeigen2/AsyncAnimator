@@ -1,5 +1,7 @@
 # Region 14 重对比 Review：AnimationHandler 帧调度内核（文件级 / 方法级 / 字段级深挖）
 
+> **2026-09-09 当前复核**：已补自有 scheduler self-pulse 退订；回调返回值仍按原厂忽略，必须显式 removeCallback；对应测试真正推进帧。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/core/AnimationHandler.kt`（共 176 行，Kotlin 重实现）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（ColorOS 15 Launcher 15.8.24，JADX 反编译）。**两条 AnimationHandler 路径并存**：

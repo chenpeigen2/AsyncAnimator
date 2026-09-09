@@ -1,5 +1,9 @@
 # 区域 09 对比 Review：生命周期与资源回收
 
+> **2026-09-09 续轮完成**：§4.1-5 `AsyncAnimCallbacks.dispose()` 已落地并由 Demo3 清理调用；释放监听/ID、失效旧代次排队事件，逻辑及物理结束均适用，监听内重入释放会跳过余下监听。容器可重新注册，但不保证 animator 复用；不能撤回正在执行的回调。见[续轮落地记录](2026-09-09-review-followup.md)。
+
+> **2026-09-09 当前复核**：已接入 Demo3/6/7 清理、Controller 观察者释放及超时一次性消费；公共场景停止帧订阅。提供 destroy/onCleanup 方法本身不等于调用方已完成清理。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/`（core/thread/anim/playback/seq/control/manager 子包，e62dbff 包重组后）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24 JADX 反编译）
@@ -134,7 +138,7 @@
 3. **【必补】`DemoBaseActivity` 重写 `onDestroy()`**：调 `AnimationController.reset()` + 显式 cancel 所有 AsyncValueAnimator + `AsyncAnimCallbacks.clearListeners()`。对应 C-6 / C-4，~10 行。这是 demo "Activity 销毁安全"的可观测证据，不补则 lib 的"安全 cancel 所有动画"宣传无 demo 验证。
 > **✔️保持简化（暴露 quitSafely 反引误用；永不 quit 即契约）**
 4. **【建议补】`AnimationControlThread` 暴露 `quitSafely()` / `quit()`**：明示"进程级单例，永不 quit"是设计而非疏忽。给调用方一个明确的语义锚点，避免误用。对应 §3-7，约 3 行。
-> **✔️保持简化（dispose() 复合方法无调用方需求；clearListeners 已存在）**
+> **✅已完成（2026-09-09 续轮：公开 dispose + 代次失效 + Demo3 调用 + 回归测试）**
 5. **【建议补】`AsyncAnimCallbacks` 加 `dispose()` 复合方法** = `clearListeners() + animationId = -1`：让业务在"逻辑结束 + 物理结束"双轨时统一摘除 listener 容器，避免 ArrayList 长期增长。对应 §3-5，约 3 行。
 > **✔️保持简化（2 行补强；原厂未做、lib 无独立泄漏窗口——见 ③-9）**
 6. **【建议补】`TaskStateChangeTimeOutListener.dispose()` 时把 `option` / `type` 也置 null**：缩窄引用窗口，让 option 闭包持有的 View/Activity 更早可 GC。原厂未做（`TaskStateHelper.java:147-154`），lib 是补强的好机会。对应 C-11，2 行。

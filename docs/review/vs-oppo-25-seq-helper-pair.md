@@ -1,5 +1,9 @@
 # vs-oppo-13：AnimationSeqHelper seqId 配对与时间窗判定细节
 
+> **2026-09-09 续轮完成**：§4.1-6 同 controller 不重复递增、equals 相等实例保持配对、不同 controller 递增均有回归守护；修正 lib 的引用比较旧注释。此外修复延迟回调内重新提交任务被尾部清空的问题（库侧重入补强，原厂同样存在旧顺序）。见[续轮落地记录](2026-09-09-review-followup.md)；feature 闸门仍保持简化。
+
+> **2026-09-09 当前复核**：配对值相等语义维持不变；新增边界/配对回归，并修复延迟 finish 回调重入时清掉后续 action 的问题。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - lib：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/seq/AnimationSeqHelper.kt` + `DefaultAnimationSeqHelper.kt`
 > - 原厂：`D:/oppo_a6_launcher/sources/com/oplus/quickstep/utils/AnimationSeqHelper.java`（130 行，classes5.dex，Kotlin 反编译）+ `DefaultAnimationSeqHelper.java`（43 行）
@@ -246,7 +250,7 @@ review 03 §3-e 已标，本报告给完整证据：
 | 3 | ✅已修复（60bd048）— `getNextFinishSeqId` 把 `===` 改 `==`，注释改为"用结构相等匹配原厂 `Intrinsics.areEqual`"（§3-c） | 1 行 + 注释改写 | 当前可观察性低，未来 controller 类型自定义 equals 时落空；footgun 预防 | 高 |
 | 4 | ⚠️未修复（成本 4 行 + flag 注入 / feature flag 在 lib 不存在）— `canFinishRecent` / `canInterceptGesture` 加 `supportInterruption() && isSupportStartingSurface()` 闸门（§3-b） | 4 行 + `AnimationFeatureHelper.kt` 加 `isSupportStartingSurface` setter（约 3 行） | B 级：feature on 设备下 500/300ms 防抖真的生效 | 中（需要 feature flag 注入） |
 | 5 | ⚠️未修复（成本 2 行 / 当前 supportInterruption 恒 true，零影响）— `addSeqId` 加 `supportInterruption()` 早 return（§3-a） | 3 行 | 当前 lib 下不可观察（`supportInterruption` 恒 true），未来若改 flag 则放大 | 中（防御性） |
-| 6 | ⚠️待复核（未确认测试是否补）— 补 `testRepeatedUpdateSameControllerReturnsSameSeqId` 单测（§3-e 验证） | 8 行 | 锁定 §3-e 修复后的不变式 | 中 |
+| 6 | ✅已完成（2026-09-09：`AnimationSeqRegressionTest.testSameAndEqualControllersKeepSequenceUntilControllerChanges`，覆盖同引用及 equals 相等实例）— controller 重复调用单测（§3-e 验证） | 8 行 | 锁定 §3-e 修复后的不变式 | 中 |
 | 7 | ⚠️未修复（成本 1 行 / 纯遗留常量，类内零引用）— 补 `MAX_GO_NORMAL_DELAY_TIME = 200L` 常量（§3-f） | 1 行 | 公共契约补齐 | 低 |
 
 合计：约 **15-20 行** Kotlin 改动 + 8 行单测。**性价比集中在前 3 条（5 行内堵 3 个 bug 级语义差）**。

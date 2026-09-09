@@ -1,5 +1,9 @@
 # lib vs OPPO 原厂对比分析汇总（12 路 review）
 
+> **2026-09-09 建议落地续轮**：Boolean 动画工厂补全、监听容器释放及 Demo3 接线、延迟 finish 重入修复、状态矩阵/收尾/决策树/SeqId/时间戳回归已落地。完成项及未完成边界以[续轮落地记录](2026-09-09-review-followup.md)为准，不代表整套 OPPO 系统转场移植完成。
+
+> **2026-09-09 当前复核**：历史汇总不是当前待办清单。本轮只修复已复现的监听、清理及测试问题；不宣称所有迁移缺口已完成。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 生成方式：12 个并行 agent 对 lib（`D:/AsyncAnimator/lib`）与 OPPO ColorOS 15 Launcher 反编译源码（`D:/oppo_a6_launcher/sources`）按子系统/质量维度做对比分析。每路独立 Markdown 报告 + 200 字摘要见 `docs/review/vs-oppo-NN-*.md`。
 >
 > 范围：lib 当前所有 public/internal 类 vs 原厂对应实现；目标盘点所有"精确复刻 / 有意简化 / 遗漏 / bug 级差异"。

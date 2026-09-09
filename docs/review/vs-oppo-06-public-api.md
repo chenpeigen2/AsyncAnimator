@@ -1,5 +1,7 @@
 # 区域 06 vs-oppo public API 与调用面
 
+> **2026-09-09 当前复核**：补齐原厂带 isAsync 参数的 ofFloat 静态重载；dispose 是本库新增的生命周期屏障，不是原厂同名 API。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - lib public API：`D:/AsyncAnimator/docs/USAGE.md` 暴露的全部类型 + demo/ 11 个 demo 实际用法
 > - 原厂调用面：`D:/oppo_a6_launcher/sources` 里实际 import/extends/calls 这些 API 的位置

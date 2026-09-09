@@ -27,6 +27,10 @@ import com.asyncanimator.core.Trace
  */
 abstract class DemoBaseActivity : AppCompatActivity() {
 
+    private var cleanedUp = false
+    private var originalErr: java.io.PrintStream? = null
+    private var traceStream: java.io.PrintStream? = null
+
     protected lateinit var titleView: TextView
     protected lateinit var sectionView: TextView
     protected lateinit var contentContainer: FrameLayout
@@ -140,6 +144,7 @@ abstract class DemoBaseActivity : AppCompatActivity() {
     /** 子类调用的便捷日志方法。 */
     protected fun log(msg: String) {
         runOnUiThread {
+            if (cleanedUp) return@runOnUiThread
             logView.append("> $msg\n")
             scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
         }
@@ -152,24 +157,35 @@ abstract class DemoBaseActivity : AppCompatActivity() {
     protected open fun onCleanup() {}
 
     override fun onDestroy() {
-        onCleanup()
-        super.onDestroy()
+        cleanedUp = true
+        try {
+            onCleanup()
+        } finally {
+            if (System.err === traceStream) originalErr?.let(System::setErr)
+            traceStream = null
+            originalErr = null
+            super.onDestroy()
+        }
     }
 
     private fun redirectTraceToLogView() {
-        // 简化：每次 Trace 输出到 stderr 时通过 System.setErr 捕获
-        val originalErr = System.err
-        val redirectStream = object : java.io.PrintStream(originalErr) {
-            override fun println(x: String?) {
-                super.println(x)
-                if (x != null && x.contains("Trace")) {
-                    runOnUiThread {
-                        logView.append("$x\n")
-                        scrollView.post { scrollView.fullScroll(View.FOCUS_DOWN) }
+        originalErr = System.err
+        traceStream = TraceLogStream(System.err, this).also(System::setErr)
+    }
+
+    private class TraceLogStream(delegate: java.io.PrintStream, activity: DemoBaseActivity) :
+        java.io.PrintStream(delegate) {
+        private val owner = java.lang.ref.WeakReference(activity)
+
+        override fun println(x: String?) {
+            super.println(x)
+            if (x != null && x.contains("Trace")) {
+                owner.get()?.let { activity ->
+                    activity.runOnUiThread {
+                        if (!activity.cleanedUp) activity.log(x)
                     }
                 }
             }
         }
-        System.setErr(redirectStream)
     }
 }

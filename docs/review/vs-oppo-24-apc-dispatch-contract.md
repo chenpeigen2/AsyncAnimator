@@ -1,5 +1,7 @@
 # vs-oppo-13-apc-dispatch-contract — AnimatorPlaybackController 派发契约细节对比
 
+> **2026-09-09 当前复核**：已补齐任意深度 AnimatorSet 的前序监听派发，并以真实动画对象验证 start/end/cancel；仅补根监听不等于递归完成。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/playback/AnimatorPlaybackController.kt`（194 行）
 > - **原厂**：`D:/oppo_a6_launcher/sources/com/android/launcher3/anim/AnimatorPlaybackController.java`（467 行，JADX 反编译）

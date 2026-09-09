@@ -19,8 +19,8 @@ import com.asyncanimator.thread.Executors
  *
  * 三个对齐原厂（`com/android/quickstep/util/animation/AsyncAnimCallbacks.java`）的派发语义：
  *
- *  - **快照迭代**：每次派发先压缩懒删除的 null 槽再拷贝快照（原厂 `getListeners()`
- *    = `removeNullEntries` + `toArray`，:29-32, 81-97），消除"动画线程 add/remove、
+ *  - **快照迭代**：增删与快照生成使用同一把锁，派发前压缩懒删除的 null 槽再拷贝快照（原厂 `getListeners()`
+ *    = `removeNullEntries` + `toArray`，:29-32, 81-97），库额外加锁以消除"动画线程 add/remove、
  *    主线程迭代"的 CME 窗口，null 槽也不会只增不减；
  *  - **异步消息**：主线程外投递用 `Message.setAsynchronous(true)`（原厂
  *    `Utilities.postAsyncCallback`，`Utilities.java:631-637`），sync-barrier
@@ -30,20 +30,40 @@ import com.asyncanimator.thread.Executors
  */
 class AsyncAnimCallbacks {
 
+    private val listenerLock = Any()
+    private var generation = 0L
+
     private val animListeners = mutableListOf<NullableAnimatorListener?>()
 
+    @Volatile
     internal var animationId = -1
 
     fun addListener(l: NullableAnimatorListener?) {
-        if (l != null && !animListeners.contains(l)) animListeners.add(l)
+        synchronized(listenerLock) {
+            if (l != null && !animListeners.contains(l)) animListeners.add(l)
+        }
     }
 
     fun removeListener(l: NullableAnimatorListener?) {
-        val idx = animListeners.indexOf(l)
-        if (idx >= 0) animListeners[idx] = null
+        synchronized(listenerLock) {
+            val idx = animListeners.indexOf(l)
+            if (idx >= 0) animListeners[idx] = null
+        }
     }
 
-    internal fun clearListeners() = animListeners.clear()
+    internal fun clearListeners() = synchronized(listenerLock) { animListeners.clear() }
+
+    /**
+     * Release the current registration generation, listeners and animationId.
+     * Queued old events and remaining listeners after reentrant disposal are dropped.
+     * Registration may resume, but an executing callback cannot be recalled.
+     * This does not cancel the animator or make a one-shot animator reusable.
+     */
+    fun dispose() = synchronized(listenerLock) {
+        generation++
+        animListeners.clear()
+        animationId = -1
+    }
 
     internal fun onAnimationStart(animator: Animator) =
         dispatch("AsyncAnimStart-") { it.onAnimationStart(animator) }
@@ -59,35 +79,50 @@ class AsyncAnimCallbacks {
      * 对齐原厂 `AsyncAnimCallbacks.java:34-43, 111-122`。
      */
     internal fun onAnimActualEnd(animator: Animator) {
-        runOnMainThread {
-            for (l in getListeners()) {
-                if (l is ActualEndAnimListener) {
-                    l.animationId = animationId
-                    l.onAnimActualEnd(animator)
-                }
+        withListenersOnMain { listener, id ->
+            if (listener is ActualEndAnimListener) {
+                listener.animationId = id
+                listener.onAnimActualEnd(animator)
             }
         }
     }
 
     /**
      * 压缩懒删除的 null 槽 + 返回快照拷贝（原厂 `getListeners()` 模式，
-     * `AsyncAnimCallbacks.java:29-32, 81-97`）。快照保证迭代期间并发 add/remove 不会 CME。
+     * `AsyncAnimCallbacks.java:29-32, 81-97`）。锁保护快照生成；调用 listener 时已释放锁，允许重入增删。
      */
-    private fun getListeners(): List<NullableAnimatorListener> {
+    private fun getListeners(): List<NullableAnimatorListener> = synchronized(listenerLock) {
         animListeners.removeAll { it == null }
-        return animListeners.filterNotNull()
+        animListeners.filterNotNull()
     }
 
-    /** 打 trace → 回主线程按快照逐个 fire（同步 animationId）。 */
-    private fun dispatch(traceTagPrefix: String, action: (NullableAnimatorListener) -> Unit) {
-        Trace.traceBegin(8L, "$traceTagPrefix$animationId")
+    /** Capture the event generation before posting; snapshot listeners only on delivery. */
+    private fun withListenersOnMain(action: (NullableAnimatorListener, Int) -> Unit) {
+        val (eventGeneration, id) = synchronized(listenerLock) { generation to animationId }
         runOnMainThread {
-            for (l in getListeners()) {
-                (l as? NullableAnimatorListenerAdapter)?.animationId = animationId
-                action(l)
+            val listeners = synchronized(listenerLock) {
+                if (eventGeneration != generation) return@runOnMainThread
+                getListeners()
+            }
+            for (listener in listeners) {
+                // Also respect dispose called reentrantly by an earlier listener.
+                if (synchronized(listenerLock) { eventGeneration != generation }) return@runOnMainThread
+                action(listener, id)
             }
         }
-        Trace.traceEnd(8L)
+    }
+
+    /** 打 trace → 回主线程按快照逐个 fire（同步事件的 animationId）。 */
+    private fun dispatch(traceTagPrefix: String, action: (NullableAnimatorListener) -> Unit) {
+        Trace.traceBegin(8L, "$traceTagPrefix$animationId")
+        runCatching {
+            withListenersOnMain { listener, id ->
+                (listener as? NullableAnimatorListenerAdapter)?.animationId = id
+                action(listener)
+            }
+        }.also {
+            Trace.traceEnd(8L)
+        }.getOrThrow()
     }
 
     /**
