@@ -79,14 +79,20 @@ USAGE.md 漏列 1 个：`AsyncSpringAnim`（Demo11 在用，对应原厂 `OplusA
 
 ## 3. 行为差异风险点
 
+> **✅已修复（60bd048：typealias→fun interface，引用相等性恢复）**
 1. **typealias `OnAnimStateChangeListener` 改坏了 listener 增删契约**（与区域 10 重叠）——Kotlin lambda 没有引用相等性，`removeOnAnimStateChangeListener` 调用方传 lambda 永远失败；原厂 Java 是实例相等性。Demo `Demo6StateMachineActivity` 有 addListener/removeListener 调用，运行时静默失效。
+> **⚠️未修复（缺 TaskStateHelper 全局事件总线）**
 2. **`TaskStateChangeTimeOutListener` 缺全局事件总线**（与区域 12 重叠）——原厂 7 个回调（`onTaskListenerReleased` / `onTransitionFinish` / `onLandScapeSceneExit` / `onAllAppExitTransitionFinish` / `onTaskViewDestroyed` / `onTaskViewAppeared` / `onUnfoldAnimationStart`）由 `TaskStateHelper.globalListeners` 集中 dispatch；lib 完全无事件源，listener 只能 timeout 兜底。
+> **✔️已复核（object init 线程安全；interruptionEnabled setter 并发已 60bd048 @Synchronized）**
 3. **`OplusAnimManager.Impl` 字段初始化时序**（与区域 07 重叠）——原厂 `static final INSTANCE + static{}` 类加载即触发 6 helper 链式创建；lib `var ... = null` 首次访问字段才触发 `init`，并发切换 feature flag 时 race。
+> **✔️已澄清（6bbe9a1：lib 已真用 runOnMainThread；原厂为保留骨架）**
 4. **`AsyncAnimWrapper` 的 `runOnMainThread` 在原厂两个 wrapper 也不调用**（与区域 01 重叠）——已在最近修复中让 `AsyncSpringAnim.addEndListener` 真正使用。
+> **⚠️未修复（3 vs 7 值，demo 有意简化）**
 5. **AnimType 枚举不一致导致跨设备兼容性预期偏差**——上游 launcher 业务代码若按 `OPEN_FROM_HOME` 编号对接 lib，会因 enum 顺序不同行为差异。
 
 ---
 
+> ⚠️ ④ 建议表各行待逐条打标（风险项状态见 ③ 打标）。
 ## 4. 回移建议
 
 ### 4.1 值得补的

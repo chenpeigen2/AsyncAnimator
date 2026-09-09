@@ -319,6 +319,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
+> ⚠️ ④ 建议表各行待逐条打标（风险项状态见 ③ ①-⑨ 打标）。
 ## ④ 回移建议
 
 ### A. 值得补进 lib 的（性价比高 / 必修）
