@@ -9,7 +9,7 @@
 ## 整体分层
 
 ```
-core/scheduler (internal)        TickScheduler / ScheduledTickScheduler   ← 帧源抽象（可替换）
+core/scheduler (internal)        TickScheduler / ChoreographerTickScheduler ← 帧源（真 VSYNC）
 core/anim (internal)             AnimationHandler                         ← ThreadLocal 调度中枢
         ↑ installThreadScheduler
 launcher/animthread              AnimationControlThread                 ← "launcher.anim" 独立线程
@@ -308,7 +308,7 @@ lib 内部的动效溯源 trace（输出到 stderr）。demo 不直接调用其�
 
 以下是**有意为之**的裁剪，细节与证据见对应 review：
 
-- 帧源：`SfVsyncFrameCallbackProvider`（@hide）→ `core/scheduler` 的 `ChoreographerTickScheduler`（VSYNC）/ `HandlerTickScheduler`（兜底）帧循环（review 01 §②-B1、review 04 §4.2-1）
+- 帧源：`SfVsyncFrameCallbackProvider`（@hide）→ `core/scheduler` 的 `ChoreographerTickScheduler`（VSYNC）帧循环（review 01 §②-B1、review 04 §4.2-1）
 - `LauncherBooster` UX 线程注册 / UAF 绑核：OPPO 私有，退化为 `Process.setThreadPriority` 兜底（review 01 §②-B2）
 - `OplusLooperExecutor` 四扩展（executeAtFront/WithUx/BlockWait/Delay）未复刻（review 01 §②-B4）
 - `Executors` 只保留 `MAIN_EXECUTOR`（review 01 §②-B3）

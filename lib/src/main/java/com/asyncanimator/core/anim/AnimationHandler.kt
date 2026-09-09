@@ -1,6 +1,6 @@
 package com.asyncanimator.core.anim
 
-import com.asyncanimator.core.scheduler.ScheduledTickScheduler
+import com.asyncanimator.core.scheduler.ChoreographerTickScheduler
 import com.asyncanimator.core.scheduler.TickScheduler
 
 /**
@@ -125,7 +125,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
         @Synchronized
         fun get(): TickScheduler =
-            scheduler ?: ScheduledTickScheduler().also { scheduler = it }
+            scheduler ?: ChoreographerTickScheduler().also { scheduler = it }
     }
 
     companion object {
@@ -141,7 +141,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         /** 当前线程的 AnimationHandler 单例（测试 hook 优先）。 */
         val instance: AnimationHandler
             get() = testHandler ?: threadLocalHandler.get()
-                ?: AnimationHandler(ScheduledTickScheduler()).also(threadLocalHandler::set)
+                ?: AnimationHandler(ChoreographerTickScheduler()).also(threadLocalHandler::set)
 
         /**
          * 为当前线程安装自定义 TickScheduler。

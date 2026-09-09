@@ -1,6 +1,6 @@
 package com.asyncanimator.core.anim
 
-import com.asyncanimator.core.scheduler.ScheduledTickScheduler
+import com.asyncanimator.core.scheduler.ChoreographerTickScheduler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -27,7 +27,7 @@ class AnimationHandlerTest {
 
     @Test
     fun testAddAndRemoveCallback() {
-        val handler = AnimationHandler(ScheduledTickScheduler())
+        val handler = AnimationHandler(ChoreographerTickScheduler())
         val count = AtomicInteger()
         val cb = AnimationHandler.AnimationFrameCallback { frameTime ->
             count.incrementAndGet()
@@ -44,7 +44,7 @@ class AnimationHandlerTest {
 
     @Test
     fun testCallbackReturnsTrueEndsAnimation() {
-        val handler = AnimationHandler(ScheduledTickScheduler())
+        val handler = AnimationHandler(ChoreographerTickScheduler())
         val count = AtomicInteger()
         val cb = AnimationHandler.AnimationFrameCallback { frameTime ->
             count.incrementAndGet()
@@ -57,7 +57,7 @@ class AnimationHandlerTest {
 
     @Test
     fun testAddSameCallbackTwice() {
-        val handler = AnimationHandler(ScheduledTickScheduler())
+        val handler = AnimationHandler(ChoreographerTickScheduler())
         val cb = AnimationHandler.AnimationFrameCallback { false }
         handler.addAnimationFrameCallback(cb)
         handler.addAnimationFrameCallback(cb) // 幂等：contains 检查
@@ -66,7 +66,7 @@ class AnimationHandlerTest {
 
     @Test
     fun testRemoveNonExistentCallback() {
-        val handler = AnimationHandler(ScheduledTickScheduler())
+        val handler = AnimationHandler(ChoreographerTickScheduler())
         val cb = AnimationHandler.AnimationFrameCallback { false }
         // 不存在的 callback 不抛异常
         handler.removeCallback(cb)
