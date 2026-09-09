@@ -37,6 +37,9 @@ internal class HandlerTickScheduler(
     private var running = false
     private var pulsePosted = false
 
+    /** 上一帧时间戳（uptime ms），用于漂移补偿——对齐原厂 FrameCallbackProvider14。 */
+    private var lastFrameMs = -1L
+
     override val frameTimeNanos: Long get() = frameTimeNanosAtomic.get()
 
     override val frameCount: Long get() = frameCountAtomic.get()
@@ -63,20 +66,31 @@ internal class HandlerTickScheduler(
         running = false
     }
 
-    /** 帧脉冲：每帧执行一次 tick，再按需续帧。 */
+    /**
+     * 帧脉冲：每帧执行一次 tick，再按需续帧。
+     *
+     * 延迟做漂移补偿：delay = frameInterval - (now - lastFrame)，clamp ≥ 0——
+     * 对齐原厂 `FrameCallbackProvider14.postFrameCallback`
+     * （androidx/core/animation/AnimationHandler.java:61-63）。
+     * 上一帧处理耗时越长，下一帧延迟越短，保持整体节奏不漂移。
+     */
     private fun scheduleNextFrame() {
         if (!running || pulsePosted || handler == null) return
         pulsePosted = true
+        val now = SystemClock.uptimeMillis()
+        val delay = if (lastFrameMs < 0) frameIntervalMs
+                    else (frameIntervalMs - (now - lastFrameMs)).coerceAtLeast(0)
         handler.postDelayed({
             pulsePosted = false
             if (!running) return@postDelayed
+            lastFrameMs = SystemClock.uptimeMillis()
             tick()
             if (!callbacks.isEmpty()) {
                 scheduleNextFrame()
             } else {
                 running = false // 无订阅者，停止脉冲（下次 add 时 start() 重启）
             }
-        }, frameIntervalMs)
+        }, delay)
     }
 
     /** 一次 tick：取时间戳 → 快照遍历 callbacks → 逐个 doFrame。 */
