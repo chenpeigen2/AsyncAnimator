@@ -133,7 +133,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 ### A. 极严重（语义反转或语义消失）
 
-#### A1. 第三层运行态被换成时间窗（bug 级）
+#### A1. ⚠️未修复（中，~40行）— 第三层运行态被换成时间窗（bug 级）
 
 - **OPPO**：`AnimationController.java:646-650` 调用 `AppSwipeToRecentContinuationHelper.INSTANCE.isAppSwipeToRecentContinuationRunning()` —— 这是个**单例静态布尔字段**（`AppSwipeToRecentContinuationHelper.java:13154` `private static boolean isAppSwipeToRecentContinuationRunning`），由 `setAppSwipeToRecentContinuationState(true)` 设 true、`continuationScrollAnim` end/cancel 设 false。**判定语义是"续行动画此刻是否在跑"**。
 - **lib**：`AnimationController.kt:189-196` 用 `if (SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime)` —— 这是个**时间窗**，由 `setAppToOverviewContinuationState(true)` 触发注册 listener 时 `maxTime = uptimeMillis() + 100`（`AnimationController.kt:147-152`），**判定语义是"注册 listener 后 100ms 内"**。
@@ -143,7 +143,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **真机体现**：用户感知为"app→overview 续行时点击图标偶尔闪一下"（race-condition 1 的副作用）或"偶尔 startActivity 与续行动画交叠"（race-condition 2）。demo9 / demo11 这类展示 swipe-to-recent 的 demo 在 lib 上复现该 bug。
 - **修复成本**：约 **40 行**。补一个 `object AppSwipeToRecentContinuationHelper { @Volatile var isRunning: Boolean = false }` 桩 + `setAppToOverviewContinuationState(true)` 时设 true、`continuationScrollAnim` end callback 时设 false（demo 端桩）；`delayStartActivityIfNeed` 第三层改成 `if (AppSwipeToRecentContinuationHelper.isRunning)`。
 
-#### A2. 第二层缺 `isSpecialAppScene(intent)`（语义消失）
+#### A2. ⚠️未修复（小，~15行）— 第二层缺 `isSpecialAppScene(intent)`（语义消失）
 
 - **OPPO**：`AnimationController.java:628, 640` + 方法定义 `:283-290`：
   ```java
@@ -160,7 +160,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 - **后果**：搜索入口（Heytap 搜索 / 桌面搜索）触发的 startActivity 在 lib 上**不被挂起等 transition finish** —— 原厂该场景会等。原厂意图是"防搜索框闪一下再启动 app"。真机表现：搜索→app 转场搜索框短暂残影。
 - **修复成本**：约 **15 行**。在 `AnimationController.kt` 加 `private fun isSpecialAppScene(intent: Intent?): Boolean` demo 化版本（仅匹配一种 intent action stub 即可），并在第二层 if 加入该谓词。`IndicatorEntry` / `BranchSearchHelper` 常量可注入。
 
-#### A3. 第一层 `isLandScapeGesture` 缺 `!ScreenUtils.isTablet()` conj（语义反转）
+#### A3. ⚠️未修复（小，~5行）— 第一层 `isLandScapeGesture` 缺 `!ScreenUtils.isTablet()` conj（语义反转）
 
 - **OPPO**：`AnimationController.java:620` `boolean z13 = this.mIsLandScapeGesture && !ScreenUtils.isTablet()` —— 横屏手势**只在非平板时**触发挂起。
 - **lib**：`AnimationController.kt:180` `isLandScapeGesture` 单独参与第一层 OR —— 横屏手势**无论手机/平板都触发挂起**。
@@ -171,7 +171,7 @@ lib 对应区段（`AnimationController.kt:175-201`）：
 
 ### B. 严重（语义弱化或观测性退化）
 
-#### B1. 顶部 `supportInterruption()` guard 缺失（feature-off 总开关失效）
+#### B1. ⚠️未修复（小，~3行）— 顶部 `supportInterruption()` guard 缺失（feature-off 总开关失效）
 
 - **OPPO**：`AnimationController.java:601-603` —— `OplusAnimManager.supportInterruption()` 返回 false 时整个方法直接 return false（不进入任何挂起逻辑，也不 dispose listener，因为 listener 此时根本没注册）。
 - **lib**：无此 guard。**`delayStartActivityIfNeed` 总会被调用并走完三层**，即使 feature flag 关了。

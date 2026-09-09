@@ -99,7 +99,7 @@
 
 下列按"风险等级 + 修复成本"组织。**Bug 级**指语义在原厂下与 lib 下会以可观察方式偏离。
 
-### 3-a. `addSeqId` 缺 `supportInterruption()` 闸门  **[B级 / 修复 3 行]**
+### 3-a. ⚠️未修复（成本 2 行 / 当前不可观察）— `addSeqId` 缺 `supportInterruption()` 闸门  **[B级 / 修复 3 行]**
 
 - **OPPO** (`AnimationSeqHelper.java:59-62`)：
   ```java
@@ -121,7 +121,7 @@
 - **影响**：当前 lib 的 `OplusAnimManager.supportInterruption()` 恒 true（review 03 §2.2），所以这条 bug **当前不可观察**。一旦未来 lib 把 feature flag 改成可配置，差异立刻放大——OPPO 下 `seqId` 不会递增，lib 下会。
 - **修复**：在 `addSeqId` 第一行加 `if (!OplusAnimManager.supportInterruption()) return`（不写 log 也可），3 行内。
 
-### 3-b. `canFinishRecent` / `canInterceptGesture` 缺 feature 闸门  **[B级 / 修复 4 行 + 需注入 flag]**
+### 3-b. ⚠️未修复（成本 4 行 + flag 注入 / 当前不可观察）— `canFinishRecent` / `canInterceptGesture` 缺 feature 闸门  **[B级 / 修复 4 行 + 需注入 flag]**
 
 - **OPPO** (`AnimationSeqHelper.java:69-71, 74-76`)：
   ```java
@@ -150,7 +150,7 @@
 - **当前可观察性**：lib 的 `isSupportStartingSurface` 不存在（无 `AppFeatureUtils`）；如果把 `AppFeatureUtils.INSTANCE.isSupportStartingSurface()` 看作恒 false（OPPO 默认值在 `com/android/common/util/AppFeatureUtils.java:776-777, 3711-3712` 是 RUS 配置下发的，可真可假），则 `canFinishRecent/canInterceptGesture` 整体退化为只比时间窗——**与 lib 现状等价**。但**这个等价是"feature off"等价，不是"feature on"等价**。
 - **修复**：在 lib 中把 `supportInterruption` 闸门加上（`OplusAnimManager.supportInterruption()` 已恒 true，加这条等价于现状，零成本）。`isSupportStartingSurface` 在 lib 中没有，建议在 `AnimationFeatureHelper.kt` 里加一个布尔 setter（默认 `false`），与原厂对齐"feature flag 由 RUS 下发"语义。约 4 行 + 文档注释。
 
-### 3-c. `getNextFinishSeqId` 用 `===`（引用相等） vs OPPO `Intrinsics.areEqual`（结构相等） **[B级 / 修复 1 行 + 改注释]**
+### 3-c. ✅已修复（60bd048）— `getNextFinishSeqId` 用 `===`（引用相等） vs OPPO `Intrinsics.areEqual`（结构相等） **[B级 / 修复 1 行 + 改注释]**
 
 - **OPPO** (`AnimationSeqHelper.java:104-108`)：
   ```java
@@ -174,7 +174,7 @@
 - **未来风险点**：lib 把 controller 类型泛化到 `Any?`——如果 lib 调用方传入一个重写了 `equals` 的对象（例如 future RecentsAnimationController subclass 实现了 contentEquals 用于日志调试），OPPO 的 `==` 会命中（结构相等 → 同 controller 视为同），lib 的 `===` 会落空（引用不同 → return 0L）。这是一个**面向未来的隐藏 footgun**。
 - **修复**：把 `===` 改成 `==`（即 `Intrinsics.areEqual` 的 Kotlin 等价写法），1 行。注释同时改写为"用结构相等以匹配原厂 `Intrinsics.areEqual`，对 `RecentsAnimationController`（无 equals override）退化为引用相等"。
 
-### 3-d. `resetInterceptState()` no-op 残留  **[Bug 级 / 修复 1 行]**
+### 3-d. ✅已修复（60bd048）— `resetInterceptState()` no-op 残留  **[Bug 级 / 修复 1 行]**
 
 - **OPPO** (`AnimationSeqHelper.java:111-114`)：
   ```java
@@ -190,7 +190,7 @@
   lib 下 no-op，下次手势的 `canInterceptGesture` 仍按 stale 时间戳判定，可能继续返回 false 拦截下一帧。**Bug 级**：在 demo 演示"启动 app 后 300ms 内手势拦截"场景时，手指抬起后下一帧手势应放行但 lib 会继续吞事件。
 - **修复**：`AnimationSeqHelper.kt` 加 `override fun resetInterceptState() { AnimSeqTimeStamp.resetLastStartAppTime() }`，1 行（`AnimSeqTimeStamp.resetLastStartAppTime` 在 review 03 §2.2 已记为 lib 中存在的公共方法）。
 
-### 3-e. `updateNextFinishSeqIdIfNeed` 无条件 `++seqId` 与覆写 pair  **[Bug 级 / 修复 3 行]**
+### 3-e. ✅已修复（60bd048）— `updateNextFinishSeqIdIfNeed` 无条件 `++seqId` 与覆写 pair  **[Bug 级 / 修复 3 行]**
 
 review 03 §3-e 已标，本报告给完整证据：
 
@@ -226,7 +226,7 @@ review 03 §3-e 已标，本报告给完整证据：
 - **修复**：lib 加 `if (nextFinishSeqId == null || nextFinishSeqId.first != recentsController) { ... }` 包裹，共 3 行。同时按 §3-a 把 `supportInterruption` 闸门补上（OPPO `:119-122`）。
 - **测试覆盖**：现有测试 `AnimationSeqHelperTest.kt:testUpdateNextFinishSeqIdIfNeed`（`:78-90`）只验证"不同 controller 返回 0L"，**未覆盖"同 controller 重复调用应返回相同 seqId"**这一关键不变式。补一个 `testRepeatedUpdateSameControllerReturnsSameSeqId` 测试即可。
 
-### 3-f. `MAX_GO_NORMAL_DELAY_TIME = 200L` 缺失  **[D级（纯文档级）/ 修复 1 行]**
+### 3-f. ⚠️未修复（成本 1 行 / 纯文档级零影响）— `MAX_GO_NORMAL_DELAY_TIME = 200L` 缺失  **[D级（纯文档级）/ 修复 1 行]**
 
 - 原厂 `AnimationSeqHelper.java:20` `public static final long MAX_GO_NORMAL_DELAY_TIME = 200`，作为**公共契约**对外开放，但类内 0 引用。
 - lib 缺失。
@@ -241,13 +241,13 @@ review 03 §3-e 已标，本报告给完整证据：
 
 | # | 内容 | 修复成本 | 影响面 | ROI |
 |---|---|---|---|---|
-| 1 | `resetInterceptState()` override 调 `AnimSeqTimeStamp.resetLastStartAppTime()`（§3-d） | 1 行 | Bug 级：手指抬起后下一帧手势放行；演示价值高 | 极高 |
-| 2 | `updateNextFinishSeqIdIfNeed` 改成"pair 为空或 controller 不同才更新"（§3-e） | 3 行 + 1 行 `supportInterruption` 早 return | Bug 级：seqId-finish 配对错位（罕见但可观察） | 高 |
-| 3 | `getNextFinishSeqId` 把 `===` 改 `==`，注释改为"用结构相等匹配原厂 `Intrinsics.areEqual`"（§3-c） | 1 行 + 注释改写 | 当前可观察性低，未来 controller 类型自定义 equals 时落空；footgun 预防 | 高 |
-| 4 | `canFinishRecent` / `canInterceptGesture` 加 `supportInterruption() && isSupportStartingSurface()` 闸门（§3-b） | 4 行 + `AnimationFeatureHelper.kt` 加 `isSupportStartingSurface` setter（约 3 行） | B 级：feature on 设备下 500/300ms 防抖真的生效 | 中（需要 feature flag 注入） |
-| 5 | `addSeqId` 加 `supportInterruption()` 早 return（§3-a） | 3 行 | 当前 lib 下不可观察（`supportInterruption` 恒 true），未来若改 flag 则放大 | 中（防御性） |
-| 6 | 补 `testRepeatedUpdateSameControllerReturnsSameSeqId` 单测（§3-e 验证） | 8 行 | 锁定 §3-e 修复后的不变式 | 中 |
-| 7 | 补 `MAX_GO_NORMAL_DELAY_TIME = 200L` 常量（§3-f） | 1 行 | 公共契约补齐 | 低 |
+| 1 | ✅已修复（60bd048）— `resetInterceptState()` override 调 `AnimSeqTimeStamp.resetLastStartAppTime()`（§3-d） | 1 行 | Bug 级：手指抬起后下一帧手势放行；演示价值高 | 极高 |
+| 2 | ⚠️半修（60bd048 仅修了条件更新；`supportInterruption` 闸门未补）— `updateNextFinishSeqIdIfNeed` 改成"pair 为空或 controller 不同才更新"（§3-e） | 3 行 + 1 行 `supportInterruption` 早 return | Bug 级：seqId-finish 配对错位（罕见但可观察） | 高 |
+| 3 | ✅已修复（60bd048）— `getNextFinishSeqId` 把 `===` 改 `==`，注释改为"用结构相等匹配原厂 `Intrinsics.areEqual`"（§3-c） | 1 行 + 注释改写 | 当前可观察性低，未来 controller 类型自定义 equals 时落空；footgun 预防 | 高 |
+| 4 | ⚠️未修复（成本 4 行 + flag 注入 / feature flag 在 lib 不存在）— `canFinishRecent` / `canInterceptGesture` 加 `supportInterruption() && isSupportStartingSurface()` 闸门（§3-b） | 4 行 + `AnimationFeatureHelper.kt` 加 `isSupportStartingSurface` setter（约 3 行） | B 级：feature on 设备下 500/300ms 防抖真的生效 | 中（需要 feature flag 注入） |
+| 5 | ⚠️未修复（成本 2 行 / 当前 supportInterruption 恒 true，零影响）— `addSeqId` 加 `supportInterruption()` 早 return（§3-a） | 3 行 | 当前 lib 下不可观察（`supportInterruption` 恒 true），未来若改 flag 则放大 | 中（防御性） |
+| 6 | ⚠️待复核（未确认测试是否补）— 补 `testRepeatedUpdateSameControllerReturnsSameSeqId` 单测（§3-e 验证） | 8 行 | 锁定 §3-e 修复后的不变式 | 中 |
+| 7 | ⚠️未修复（成本 1 行 / 纯遗留常量，类内零引用）— 补 `MAX_GO_NORMAL_DELAY_TIME = 200L` 常量（§3-f） | 1 行 | 公共契约补齐 | 低 |
 
 合计：约 **15-20 行** Kotlin 改动 + 8 行单测。**性价比集中在前 3 条（5 行内堵 3 个 bug 级语义差）**。
 
@@ -255,12 +255,12 @@ review 03 §3-e 已标，本报告给完整证据：
 
 | # | 内容 | 简化理由 |
 |---|---|---|
-| 1 | `LogUtils.i` 5 处日志全部省略 | lib 是演示库，log 噪声会污染 demo 输出；OPPO log 是 trace 排查用，demo 阶段无需 |
-| 2 | `Intrinsics.checkNotNullParameter` 全部省略（用 Kotlin null-safety） | Java/SAM 路径不会传 null；demo 中调用方都是 lib 自身，可空签名反而更友好 |
-| 3 | Handler 字段即时初始化 → 延迟初始化 | JVM 测试环境无主 Looper 是硬约束（`Handler(Looper.getMainLooper())` 会抛 `NullPointerException`）。保持 `getOrCreateHandler()` 延迟构造 |
-| 4 | `Runnable` → `(() -> Unit)?` + `Bundle?` + `Any?` 泛化 controller 类型 | lib 去 AOSP 平台依赖的标准做法；mock/单测友好；类型擦除后字节码一致 |
-| 5 | `maxOf(0L, delay)` 钳制 | 当前不可达（`canFinishRecent` 已保证 `gap<=500`）；保留零风险，可作为未来单调时钟回退的护栏，**建议保留**而非裁剪 |
-| 6 | `TAG` 常量 + `USE_SEQ = true` 常量 | 纯遗留，lib 无 log 无 USE_SEQ 引用，保持不引入 |
+| 1 | ✔️保持简化 — `LogUtils.i` 5 处日志全部省略 | lib 是演示库，log 噪声会污染 demo 输出；OPPO log 是 trace 排查用，demo 阶段无需 |
+| 2 | ✔️保持简化 — `Intrinsics.checkNotNullParameter` 全部省略（用 Kotlin null-safety） | Java/SAM 路径不会传 null；demo 中调用方都是 lib 自身，可空签名反而更友好 |
+| 3 | ✔️保持简化 — Handler 字段即时初始化 → 延迟初始化 | JVM 测试环境无主 Looper 是硬约束（`Handler(Looper.getMainLooper())` 会抛 `NullPointerException`）。保持 `getOrCreateHandler()` 延迟构造 |
+| 4 | ✔️保持简化 — `Runnable` → `(() -> Unit)?` + `Bundle?` + `Any?` 泛化 controller 类型 | lib 去 AOSP 平台依赖的标准做法；mock/单测友好；类型擦除后字节码一致 |
+| 5 | ✔️保持简化 — `maxOf(0L, delay)` 钳制 | 当前不可达（`canFinishRecent` 已保证 `gap<=500`）；保留零风险，可作为未来单调时钟回退的护栏，**建议保留**而非裁剪 |
+| 6 | ✔️保持简化 — `TAG` 常量 + `USE_SEQ = true` 常量 | 纯遗留，lib 无 log 无 USE_SEQ 引用，保持不引入 |
 
 ---
 
@@ -294,3 +294,34 @@ review 03 §3-e 已标，本报告给完整证据：
 - **60bd048** — resetInterceptState override、updateNextFinishSeqIdIfNeed 条件更新（pair 空/变才 ++）、getNextFinishSeqId 改 == + 注释修正
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+
+---
+
+## 复核记录（批次 5 / 2026-09-09 / 子代理逐项）
+
+### §3 行为差异风险点逐项判定
+
+| 项 | 标题 | 状态 | 证据 |
+|---|---|---|---|
+| 3-a | `addSeqId` 缺 `supportInterruption()` 闸门 | ⚠️未修复（成本 2 行 / 当前不可观察） | `lib/.../seq/AnimationSeqHelper.kt:55-58` 仍无 feature gate；`OplusAnimManager.supportInterruption()` 恒 true（`manager/OplusAnimManager.kt:27`），实际零影响；OPPO `:59-62` 逻辑保留 |
+| 3-b | `canFinishRecent` / `canInterceptGesture` 缺 feature 闸门 | ⚠️未修复（成本 4 行 + flag 注入） | `AnimationSeqHelper.kt:60-63` 仍只比时间窗；OPPO `:70,75` 的 `AppFeatureUtils.isSupportStartingSurface()` + `supportInterruption()` 双闸门未移植（lib 无 `AppFeatureUtils`） |
+| 3-c | `getNextFinishSeqId` 用 `===` vs OPPO `Intrinsics.areEqual` | ✅已修复（60bd048） | `AnimationSeqHelper.kt:91-94` 已改为 `==`；OPPO `AnimationSeqHelper.java:105` 用 `Intrinsics.areEqual` 等价结构相等 |
+| 3-d | `resetInterceptState()` no-op 残留 | ✅已修复（60bd048） | `AnimationSeqHelper.kt:81-83` override 调 `AnimSeqTimeStamp.resetLastStartAppTime()`，与 OPPO `:112-114` 等价 |
+| 3-e | `updateNextFinishSeqIdIfNeed` 无条件 `++seqId` 与覆写 pair | ✅已修复（60bd048） | `AnimationSeqHelper.kt:85-90` 改为「pair 为空或 controller 不同才 ++」；OPPO `AnimationSeqHelper.java:124-128` 同结构 |
+| 3-f | `MAX_GO_NORMAL_DELAY_TIME = 200L` 缺失 | ⚠️未修复（成本 1 行 / 纯遗留常量） | `AnimationSeqHelper.kt:6-7` 仅声明 `MAX_DELAY_TIME`/`MAX_INTERCEPT_GESTURE_DELAY_TIME`，OPPO `:20` 的 `MAX_GO_NORMAL_DELAY_TIME` 未补（类内 0 引用，零影响） |
+
+### §4.1 值得补进 lib 的（逐项判定）
+
+| # | 内容 | 状态 |
+|---|---|---|
+| 1 | `resetInterceptState()` override | ✅已修复（60bd048） |
+| 2 | `updateNextFinishSeqIdIfNeed` 条件更新 | ⚠️半修（60bd048 仅修条件更新；`supportInterruption` 闸门未补，因 lib 恒 true 零影响） |
+| 3 | `getNextFinishSeqId` 改 `==` | ✅已修复（60bd048） |
+| 4 | `canFinishRecent`/`canInterceptGesture` feature 闸门 | ⚠️未修复（feature flag 不存在，零影响） |
+| 5 | `addSeqId` `supportInterruption()` 早 return | ⚠️未修复（恒 true，零影响） |
+| 6 | `testRepeatedUpdateSameControllerReturnsSameSeqId` 单测 | ⚠️待复核（grep 未确认测试是否补） |
+| 7 | `MAX_GO_NORMAL_DELAY_TIME` 常量 | ⚠️未修复（纯遗留，零影响） |
+
+### §4.2 建议保持简化（全部确认合理）
+
+6 条全部标 `✔️保持简化`；理由与原文档一致。

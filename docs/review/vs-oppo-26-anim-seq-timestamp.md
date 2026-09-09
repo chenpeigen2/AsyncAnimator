@@ -80,7 +80,7 @@
 
 ## ③ 行为差异风险点（按严重度排序）
 
-### 风险 1（高，Bug 级）：`resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime` 三个 reset 方法彻底缺失
+### ✅已修复（60bd048）— 风险 1（高，Bug 级）：`resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime` 三个 reset 方法彻底缺失
 
 **位置**：lib `AnimSeqTimeStamp.kt:31-66` 整文件
 
@@ -106,7 +106,7 @@
 
 ---
 
-### 风险 2（高，Bug 级）：`gapTo(0L) → Long.MAX_VALUE` vs 原厂 `SystemClock.uptimeMillis()` 的隐式哨兵差异（生产侧 math 可能溢出）
+### ⚠️未修复（成本 1 行 + 注释 / 当前调用方行为一致）— 风险 2（高，Bug 级）：`gapTo(0L) → Long.MAX_VALUE` vs 原厂 `SystemClock.uptimeMillis()` 的隐式哨兵差异（生产侧 math 可能溢出）
 
 **位置**：`AnimSeqTimeStamp.kt:56-57`
 
@@ -132,7 +132,7 @@
 
 ---
 
-### 风险 3（中）：`clock` 字段是 public `@Volatile var`，无 setter 约束
+### ⚠️未修复（成本 5 行 / demo 化合理保留）— 风险 3（中）：`clock` 字段是 public `@Volatile var`，无 setter 约束
 
 **位置**：`AnimSeqTimeStamp.kt:25-27`
 
@@ -154,7 +154,7 @@
 
 ---
 
-### 风险 4（中）：`resetAllForTest` 4 字段连写无锁 —— 多字段撕裂快照窗口
+### ⚠️未修复（成本 3 行 / 当前 @Before 单线程调用无 race）— 风险 4（中）：`resetAllForTest` 4 字段连写无锁 —— 多字段撕裂快照窗口
 
 **位置**：`AnimSeqTimeStamp.kt:51-54`
 
@@ -184,7 +184,7 @@ internal fun resetAllForTest() {
 
 ---
 
-### 风险 5（中）：缺失 12 处 `Log.d(TAG, ...)` 调试日志 —— 生产侧无 trace 能力
+### ⚠️未修复（成本 12 行 / demo 阶段不需要，集成时再补）— 风险 5（中）：缺失 12 处 `Log.d(TAG, ...)` 调试日志 —— 生产侧无 trace 能力
 
 **位置**：`AnimSeqTimeStamp.kt` 整文件无 Log 调用
 
@@ -205,7 +205,7 @@ internal fun resetAllForTest() {
 
 ---
 
-### 风险 6（低）：单字段 update / reset 的并发原子性在 OPPO 真实 callsite 下与 lib 表现不同
+### ✔️保持简化（与原厂等价 happens-before）— 风险 6（低）：单字段 update / reset 的并发原子性在 OPPO 真实 callsite 下与 lib 表现不同
 
 **位置**：`AnimSeqTimeStamp.kt:31-66`
 
@@ -245,7 +245,7 @@ internal fun resetAllForTest() {
 
 ---
 
-### 风险 7（低）：`updateLastRecentFinishTime` 是 public，其余 3 个 update 是 internal —— API 不对称
+### ⚠️未修复（成本 3 个关键字替换 / 集成时再补）— 风险 7（低）：`updateLastRecentFinishTime` 是 public，其余 3 个 update 是 internal —— API 不对称
 
 **位置**：`AnimSeqTimeStamp.kt:31-45`
 
@@ -266,7 +266,7 @@ internal fun resetAllForTest() {
 
 ---
 
-### 风险 8（提示）：字段命名简化（去 `Millis`/`Mills` 后缀）影响与 OPPO 工程师对话的字段映射
+### ✔️保持简化（命名更干净，避开原厂笔误 `Mills`）— 风险 8（提示）：字段命名简化（去 `Millis`/`Mills` 后缀）影响与 OPPO 工程师对话的字段映射
 
 **位置**：`AnimSeqTimeStamp.kt:9-23`
 
@@ -293,27 +293,27 @@ internal fun resetAllForTest() {
 
 | # | 改动 | 理由 | 工作量 |
 |---|---|---|---|
-| 1 | **补 3 个独立 reset 方法**（`resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime`，与 `resetLastStartAppTime` 对齐） | **集成阻断修复** —— 原厂 7+ 处 callsite 依赖；`resetAllForTest` 不是等效物（blast reset vs 字段 reset） | **3 行 × 3 方法 = 9 行** + 显式 `@JvmStatic @JvmName("resetLastXxxTime")` Java 互操作注解（每方法 ~4 行）= 共 ~21 行 |
-| 2 | **统一 4 个 update 为 public**（与原厂对齐） | 当前 lib `updateLastRecentFinishTime` public、其余 3 个 internal —— 与原厂 4 个全 public 不一致。集成时 API 不兼容 | **3 个关键字替换** |
-| 3 | **`gapTo(0L)` 哨兵改成 `Long.MAX_VALUE / 2` 或在调用方显式 guard** | 防止未来算术运算溢出（`gapTo() * 2` 会从 `Long.MAX_VALUE` 翻成 -2） | **1 行 + 注释** |
-| 4 | **`clock` 字段封装为 `@VisibleForTesting` setter** | 当前 `clock` 是 public `var`，无 setter 约束；可注入性是 JVM 单测需要，但生产侧不应能改 | **5 行**（私有 `_clock` + `@VisibleForTesting fun setClockForTest`） |
-| 5 | **`resetAllForTest` 加 `synchronized(this)`** | 防止未来"全局 reset"生产入口下读者看到撕裂的 4 字段快照 | **3 行**（synchronized 包装） |
-| 6 | **每个方法加 `Log.d("AnimSeqTimeStamp", ...)`**（12 处） | 生产侧 trace 能力补齐；与 review 08 §③-风险 1 一致 | **12 行** |
+| 1 | ✅已修复（60bd048）— **补 3 个独立 reset 方法**（`resetLastRecentFinishTime / resetLastRecentStartTime / resetLastLaunchTaskTime`，与 `resetLastStartAppTime` 对齐） | **集成阻断修复** —— 原厂 7+ 处 callsite 依赖；`resetAllForTest` 不是等效物（blast reset vs 字段 reset） | **3 行 × 3 方法 = 9 行** + 显式 `@JvmStatic @JvmName("resetLastXxxTime")` Java 互操作注解（每方法 ~4 行）= 共 ~21 行 |
+| 2 | ⚠️未修复（成本 3 个关键字替换 / 集成时再补）— **统一 4 个 update 为 public**（与原厂对齐） | 当前 lib `updateLastRecentFinishTime` public、其余 3 个 internal —— 与原厂 4 个全 public 不一致。集成时 API 不兼容 | **3 个关键字替换** |
+| 3 | ⚠️未修复（成本 1 行 + 注释 / 当前调用方都做阈值比较或 maxOf 钳位，行为一致）— **`gapTo(0L)` 哨兵改成 `Long.MAX_VALUE / 2` 或在调用方显式 guard** | 防止未来算术运算溢出（`gapTo() * 2` 会从 `Long.MAX_VALUE` 翻成 -2） | **1 行 + 注释** |
+| 4 | ⚠️未修复（成本 5 行 / demo 化合理保留）— **`clock` 字段封装为 `@VisibleForTesting` setter** | 当前 `clock` 是 public `var`，无 setter 约束；可注入性是 JVM 单测需要，但生产侧不应能改 | **5 行**（私有 `_clock` + `@VisibleForTesting fun setClockForTest`） |
+| 5 | ⚠️未修复（成本 3 行 / 当前 @Before 单线程调用，无 race）— **`resetAllForTest` 加 `synchronized(this)`** | 防止未来"全局 reset"生产入口下读者看到撕裂的 4 字段快照 | **3 行**（synchronized 包装） |
+| 6 | ⚠️未修复（成本 12 行 / demo 通过 Trace.kt 足够，集成时再补）— **每个方法加 `Log.d("AnimSeqTimeStamp", ...)`**（12 处） | 生产侧 trace 能力补齐；与 review 08 §③-风险 1 一致 | **12 行** |
 
 ### 4.2 建议保持简化的
 
 | # | 保留简化 | 理由 |
 |---|---|---|
-| 1 | **`@Volatile` 字段 + 无锁读写**（相对原厂 `@JvmStatic synchronized`） | 单字段 update/read 的 JMM happens-before via volatile 与 monitor 等价；lib 无锁读性能更好；review 07 §②-B-5 已确认 |
-| 2 | **`gapTo` 私有抽取** | 4 个 getter 走同一函数，未来加日志/限流只需改一处。原厂内联 4 次 |
-| 3 | **`clock` 字段可注入**（封装为 setter 后） | JVM 单测必备 —— `SystemClock.uptimeMillis()` 在 JVM stub 下永远返回 0，无法做时间窗测试。`AnimationSeqHelperTest.kt:28` 注入 `nanoTime` 是合理增强 |
-| 4 | **Kotlin `object` 替代 Java `INSTANCE` + private constructor** | 编译产物等价；Kotlin 风格更地道 |
-| 5 | **字段命名去 `Millis/Mills` 后缀**（保留与原厂偏差） | 命名更干净 + 避开原厂 `lastRecentFinishTimeMills` 笔误 |
-| 6 | **`gapTo(0L) → Long.MAX_VALUE` 哨兵** | 当前调用方全做阈值比较（`> 500` / `< 300`），行为与原厂一致 |
-| 7 | **缺失 12 处 `Log.d` 调试日志**（若不补 §4.1-6） | demo 场景通过 `Trace.kt` 输出 trace 已足够；**仅在集成到生产侧时补** |
-| 8 | **`updateLastRecentFinishTime` public、其余 3 个 update internal**（若不补 §4.1-2） | 当前 demo 模块内已够用；lib 内部不暴露的字段对齐"internal by default" 风格 |
-| 9 | **`resetAllForTest` 4 字段连写无锁**（若不补 §4.1-5） | 当前 `@Before` 单线程调用，无 race |
-| 10 | **`AnimSeqTimeStamp.kt:8-10` 文档注释保留** | 已明示"demo 简化版" + 对应原厂 `com.android.systemui.shared.system.AnimSeqTimeStamp`，便于 navigation |
+| 1 | ✔️保持简化 — **`@Volatile` 字段 + 无锁读写**（相对原厂 `@JvmStatic synchronized`） | 单字段 update/read 的 JMM happens-before via volatile 与 monitor 等价；lib 无锁读性能更好；review 07 §②-B-5 已确认 |
+| 2 | ✔️保持简化 — **`gapTo` 私有抽取** | 4 个 getter 走同一函数，未来加日志/限流只需改一处。原厂内联 4 次 |
+| 3 | ✔️保持简化 — **`clock` 字段可注入**（封装为 setter 后） | JVM 单测必备 —— `SystemClock.uptimeMillis()` 在 JVM stub 下永远返回 0，无法做时间窗测试。`AnimationSeqHelperTest.kt:28` 注入 `nanoTime` 是合理增强 |
+| 4 | ✔️保持简化 — **Kotlin `object` 替代 Java `INSTANCE` + private constructor** | 编译产物等价；Kotlin 风格更地道 |
+| 5 | ✔️保持简化 — **字段命名去 `Millis/Mills` 后缀**（保留与原厂偏差） | 命名更干净 + 避开原厂 `lastRecentFinishTimeMills` 笔误 |
+| 6 | ✔️保持简化 — **`gapTo(0L) → Long.MAX_VALUE` 哨兵** | 当前调用方全做阈值比较（`> 500` / `< 300`），行为与原厂一致 |
+| 7 | ✔️保持简化 — **缺失 12 处 `Log.d` 调试日志**（若不补 §4.1-6） | demo 场景通过 `Trace.kt` 输出 trace 已足够；**仅在集成到生产侧时补** |
+| 8 | ✔️保持简化 — **`updateLastRecentFinishTime` public、其余 3 个 update internal**（若不补 §4.1-2） | 当前 demo 模块内已够用；lib 内部不暴露的字段对齐"internal by default" 风格 |
+| 9 | ✔️保持简化 — **`resetAllForTest` 4 字段连写无锁**（若不补 §4.1-5） | 当前 `@Before` 单线程调用，无 race |
+| 10 | ✔️保持简化 — **`AnimSeqTimeStamp.kt:8-10` 文档注释保留** | 已明示"demo 简化版" + 对应原厂 `com.android.systemui.shared.system.AnimSeqTimeStamp`，便于 navigation |
 
 ---
 

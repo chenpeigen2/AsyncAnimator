@@ -91,12 +91,15 @@
 
 按"可能导致语义不同"的严重度排序：
 
+> **✅已修复（cdd125e+60bd048：end 分支 + mAppLaunchAnims.add + checkAllAnimationFinished）**
 **a.（高 / bug 级）`appLaunchAnimStartOrEnd` end 分支 + `mAppLaunchAnims.add` 链路完全缺失**（§2.3-1）。`AnimationController.kt:88-95` 的 start 分支**只置位、不 add factory**，导致 `appLaunchAnims` 恒空 → `cleanUpRecentsAnim` 的 `hasOpeningAnim` 恒 false（`AnimationController.kt:78`）→ `checkAllAnimationFinished` 逻辑可触发但只走"recentsAnims 刚空 + appLaunchAnims 刚空"的平凡路径；原厂的 OPEN→WAITING、MULTI_OPEN→MULTI_WAITING、`mOpenWindowAnimRunning` 闸门、`MESSAGE_RELEASE_TOUCH(101)` 600ms 防抖全部不进入。在 demo 端表现为"按原厂顺序 OPEN→CLOSE→WAITING→NONE 的转场在 lib 里永远停在 OPEN/CLOSE/NONE 三态中"。
 
+> **✅已修复（cdd125e：UNKNOWN→UNKNOWN、MULTI_WAITING→MULTI_CLOSE）**
 **b.（高）`addRecentsAnim` 转移表两处偏差**（lib `AnimationController.kt:64-72` vs 原厂 `:482-499`）：
 - lib 把 `UNKNOWN` 归入 →CLOSE 组，原厂 `UNKNOWN` 落入 default → 保持 `UNKNOWN` 并打 `"Error animation state"` 日志（`:465-467`）；
 - lib 把 `MULTI_WAITING` 落入 else → `UNKNOWN`，原厂 `MULTI_WAITING` → `MULTI_CLOSE`。
 
+> **✅部分修复（cdd125e：else-if 互斥 + 清理段；仍缺 isTablet/isSpecialAppScene/运行态桩）**
 **c.（高 / bug 级）`delayStartActivityIfNeed` 三层判定非互斥 + 缺最终清理段**（lib `AnimationController.kt:178-198` vs 原厂 `:598-671`）：
 - lib 三个 `if` 顺序，第一个 listener 存在但条件不满足会**继续试第二、三层并可能返回 true**；原厂 `if / else if / else if` 互斥，第一层不满足直接穿透到清理段返回 false；
 - 第一层 lib 漏 `!ScreenUtils.isTablet()` 限定（原厂 `:620` `mIsLandScapeGesture && !ScreenUtils.isTablet()`）；
@@ -104,16 +107,21 @@
 - 第三层语义替换：lib 用"100ms 时间窗内"判定（`:194` `SystemClock.uptimeMillis() < overviewContinuationTimeOutMaxTime`），原厂用 `AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()` 运行态判定（`:646-650`）——时间窗与运行态不等价；
 - 原厂最终落点 dispose 三个 listener + 清两个 Between 标志（`:653-669`），lib 三层全不命中时**什么都不清**，listener 与标志残留污染下一次调用。
 
+> **⚠️未修复（缺 TaskStateHelper 全局事件总线）**
 **d.（高 / bug 级）`TaskStateChangeTimeOutListener` 的"事件触发"路径完全失效**（§2.3-9）。原厂 `TaskStateHelper$TaskStateChangeTimeOutListener` 是 `BaseTaskStateChangeListener`（TaskStateHelper.java:117）——构造时把自己加入 `TaskStateHelper.globalListeners`（`OplusAnimManager` 入口的 `TaskStateHelper.addGlobalTaskStateChangeListener(listener2)`），由 `TaskStateHelper$taskListener$1 extends OplusTaskListener`（`TaskStateHelper$taskListener$1.java:26`）在 `onLandScapeSceneExit(boolean z8)`/`onTransitionFinish(boolean z8)`/`onTaskListenerReleased()`/`onBackPressedOnTaskRoot`/`onTaskAppeared`/`onTaskVanished`/`onTaskInfoChanged` 七个回调里迭代派发（TaskStateHelper$taskListener$1.java:113-180）。lib `TaskStateChangeTimeOutListener.kt:13-46` 是 fun interface + 自管理 Handler timeout，**既不是 `BaseTaskStateChangeListener` 也不加入任何全局 list**；`onTimeOut(type, duration)` 只能被动由外部调用。**实际后果**：
 - 1) `registerSpecialSceneExitTimeOutListener(1500L)`/`registerTransitionFinishListener(1500L)` 在原厂会**自动**通过 `OplusTaskListener` 在事件到达时触发 option；lib 里**只有 timeout 兜底**能跑（构造时 `handler.postDelayed(timeOutOption, duration)`），且 timeout handler 跑在主线程（lib `TaskStateChangeTimeOutListener.kt:31-32` `Looper.getMainLooper()`），原厂跑在 `URGENT_TRANSACTION_EXECUTOR`（TaskStateHelper.java:130）。
 - 2) `delayStartActivityIfNeed` 挂起的 `startActivityRunnable`（lib `AnimationController.kt:178-198`）**只有 timeout 一条放行路径**；原厂有"事件即时放行" + "timeout 兜底"两条。任务状态变化快于 timeout 时，原厂几乎立即放行，lib 至少等 100/1500ms。
 
+> **⚠️未修复（setBetween* 未 override，flag 恒 false）**
 **e.（高）`isStartActivityBetweenTransitionEndAndFinish` 恒 false**（§2.3-6）。lib `AnimationController.kt:205-206` 只读 `isBetweenTransitionEndAndFinish` 字段；该字段**从未被赋 true**——`setBetweenTransitionEndAndFinish`/`setBetweenAppExitTransitionEndAndFinish` 走基类 no-op（`DefaultAnimationController.kt:113, 115`）。原厂条件是 `mIsBetweenTransitionEndAndFinish && startActivityRunnable != null`（双条件，`:798-799`），lib 缺 `startActivityRunnable != null` 半数条件 + flag 永 false。
 
+> **⚠️未修复（forbidTouch 600ms 闸门属手势层，有意简化）**
 **f.（高）`forbidTouch()` 无 600ms 闸门**（§2.3-5）。原厂 `mOpenWindowAnimRunning || MULTI_WAITING || REVERSE_OPEN || startActivityRunnable != null`（`:685-687`）；lib `DefaultAnimationController.kt:97` 恒 false。**含义**：demo 端无法演示"app launch 期间 600ms 内禁止触摸"的关键体验防抖。
 
+> **⚠️未修复（AnimationFeatureHelper 默认 -1，小改）**
 **g.（中）`AnimationFeatureHelper` 默认值 -1 缺失**（§2.3-17）。原厂 6 个 int flag 默认 **-1** 表示"RUS 未下发"（`AnimationFeatureHelper.java:52-60`），业务侧可对 -1 走独立分支（如 `if (mAsyncEnable == -1 || mAsyncEnable == 1) ...`）；lib 直接给 1/0 生效值（`AnimationFeatureHelper.kt:14-19`）。**含义**：lib 丢失了"未配置"三态语义，业务侧"灰度前是否启用"判断会误判为"已启用"。`setInterruptThreshold` 内原厂 `isAdaptiveAnimation → 强制 1.0f` 钳制（`:126-128`）也无。
 
+> **⚠️未修复（canFinishRecent/canInterceptGesture 双重门控）**
 **h.（中）`canFinishRecent`/`canInterceptGesture` 漏双重门控**（§2.3-10）。原厂三段与（`isSupportStartingSurface() && supportInterruption() && timeGap <= N`，`AnimationSeqHelper.java:70, 75`），lib 只比时间窗。在支持 startup surface 但 RUS 未下发 async enable 的过渡设备上，lib 仍会触发 500/300ms 防抖路径，原厂则不进入防抖。
 
 **i.（中）`setOnAppExit` 无条件置位**（§2.3-7）。原厂三键导航 + 横屏 + 低档机动画模式三重门槛（`:885-892`）；lib `AnimationController.kt:157-161` 无条件 `isLandScapeGesture = true`、`isNavModeLandScapeOnAppExit = true`、`isBetweenAppExitTransitionEndAndFinish = true`。第一层决策树（`delayStartActivityIfNeed` 第一分支）的命中条件 `isLandScapeGesture || isSplitScreenGesture || (isNavModeLandScapeOnAppExit && isBetweenAppExitTransitionEndAndFinish)` 在 lib 里**永远命中**——任何进入该方法的调用都会进入"横屏退出"挂起路径，行为偏离原厂。

@@ -150,7 +150,7 @@
 
 ## ③ 行为差异风险点
 
-### 🐞 #1 【BUG 级】`revertRecentsAnimation` 未 override → swipe-cancel 状态机断裂
+### 🐞 #1 【BUG 级】✅已修复（60bd048）— `revertRecentsAnimation` 未 override → swipe-cancel 状态机断裂
 
 **lib 证据**：`AnimationController.kt` 全文件 249 行无 `revertRecentsAnimation`；基类 `DefaultAnimationController.kt:64` 仅 `open fun revertRecentsAnimation(anim: CustomRectFSpringAnim) {}`。
 
@@ -178,7 +178,7 @@ override fun revertRecentsAnimation(anim: CustomRectFSpringAnim) {
 
 注：lib 没有 `mCurrentAnim` 字段，需不需要补可单独决策；若 demo 不调 `removeTask*` 可省。
 
-### 🐞 #2 【BUG 级】`cleanUpRecentsAnim` 不调 `checkAllAnimationFinished()` → 状态卡死 + 回调永不发
+### 🐞 #2 【BUG 级】✅已修复（60bd048）— `cleanUpRecentsAnim` 不调 `checkAllAnimationFinished()` → 状态卡死 + 回调永不发
 
 **lib 证据**：`AnimationController.kt:82-88`：
 ```kotlin
@@ -223,7 +223,7 @@ override fun cleanUpRecentsAnim(): Boolean {
 }
 ```
 
-### ⚠️ #3 【语义级】`appLaunchAnimStartOrEnd` start 路径副作用丢失 → `forbidTouch()` 长期 false
+### ⚠️ #3 【语义级】⚠️未修复（中，8-12行）— `appLaunchAnimStartOrEnd` start 路径副作用丢失 → `forbidTouch()` 长期 false
 
 **lib 证据**：`AnimationController.kt:90-114` start 分支只做 `appLaunchAnims.add` + switch；无 `mOpenWindowAnimRunning=true`。
 
@@ -235,7 +235,7 @@ override fun cleanUpRecentsAnim(): Boolean {
 
 **修复成本**：**2-3 行** —— 加 `var openWindowAnimRunning: Boolean = false` 字段 + start/end 路径置位 + `forbidTouch()` override 把这个字段读进来。
 
-### ⚠️ #4 【语义级】`isAppWindowAnimRunning` 与 `forbidTouch` 基类 no-op 联动丢失
+### ⚠️ #4 【语义级】⚠️未修复（与 #3 合并修）— `isAppWindowAnimRunning` 与 `forbidTouch` 基类 no-op 联动丢失
 
 **lib 证据**：`DefaultAnimationController.kt:41, 98` 全恒 false。
 
@@ -249,7 +249,7 @@ override fun cleanUpRecentsAnim(): Boolean {
 
 **修复成本**：与 #1 合并修。
 
-### ℹ️ #5 【观察】SWIPE_UP_TO_CAPSULE / SWIPE_UP_TO_SPLIT_OR_FLOATING 永远不进 switch 输入
+### ℹ️ #5 【观察】✔️保持简化 — SWIPE_UP_TO_CAPSULE / SWIPE_UP_TO_SPLIT_OR_FLOATING 永远不进 switch 输入
 
 两个状态在 lib 和原厂都仅当"外部主动发射给 listener"的载体存在（`OplusBaseSwipeUpHandler.java:1987/1998/8882/8891`），Controller 的 5 个 switch 都不识别它们。这是有意设计 —— "taskbar 提示性状态" vs "controller 真正转移的状态"。lib 完整保留这两个枚举值 + 双 boolean 取值（`AnimationState.kt:18-19`），**对齐无误**。
 
@@ -261,21 +261,21 @@ override fun cleanUpRecentsAnim(): Boolean {
 
 | 优先级 | 修复项 | 成本 | 收益 | 依赖 |
 |---|---|---|---|---|
-| **P0** | #2 `cleanUpRecentsAnim` 补 `checkAllAnimationFinished()` | 1 行 | 修"回调永不发 + 状态卡死"组合 bug | 无 |
-| **P0** | #1 `revertRecentsAnimation` 补 3-way switch | 5 行 + 文档 | 修 swipe-cancel 状态机断裂 | 无 |
-| P1 | #3 `mOpenWindowAnimRunning` 字段 + start/end 置位 + `forbidTouch()` 引入 | 8-12 行 | 恢复 600ms 触摸拦截窗口 | 仅当 demo 关心触摸拦截 |
-| P2 | `appLaunchAnimStartOrEnd` end 路径补 `mHandler.sendEmptyMessage(101)` 的"标记释放"语义 | 3-5 行 | 完整对齐 RELEASE_TOUCH 计时 | 需先实现 #3 |
+| **P0** | ✅已修复（60bd048） — #2 `cleanUpRecentsAnim` 补 `checkAllAnimationFinished()` | 1 行 | 修"回调永不发 + 状态卡死"组合 bug | 无 |
+| **P0** | ✅已修复（60bd048） — #1 `revertRecentsAnimation` 补 3-way switch | 5 行 + 文档 | 修 swipe-cancel 状态机断裂 | 无 |
+| P1 | ⚠️未修复（中，8-12行） — #3 `mOpenWindowAnimRunning` 字段 + start/end 置位 + `forbidTouch()` 引入 | 8-12 行 | 恢复 600ms 触摸拦截窗口 | 仅当 demo 关心触摸拦截；不在已知 commit 范围 |
+| P2 | ⚠️未修复（小，3-5行） — `appLaunchAnimStartOrEnd` end 路径补 `mHandler.sendEmptyMessage(101)` 的"标记释放"语义 | 3-5 行 | 完整对齐 RELEASE_TOUCH 计时 | 需先实现 #3；不在已知 commit 范围 |
 
 ### 🟡 建议保持简化的（行为差异 < 实现成本）
 
 | # | 简化项 | 理由 |
 |---|---|---|
-| 1 | `MultiAppAnimMergeHelper` 全套（`setRecentsAnimEndState` / `multiAppOpenAnimStart` / `checkMainThread` / `UI_HELPER_EXECUTOR`） | lib `OplusAnimManager.kt` 已自砍这 4 个 helper（review 03 §2.2-#7），无 merge 上下文 |
-| 2 | `AnimationSuccessListener`（AnonymousClass1）整套 | demo 用 `AsyncAnimCallbacks` 触发回调路径，不依赖 `removeTask*` 守卫 |
-| 3 | `mRemoveTasksMaps` 的 typed `RemoteAnimationTargetCompat` / `RecentsAnimationController` | lib 用 `Any` 抽象，类型壳对齐即可 |
-| 4 | `mForbidSwipeUpWhileStartingLandApp` + `DisplayController.getNavigationMode()` 三按钮守卫 | 缺 `LauncherAnimConfig` / `ScreenUtils.isLargeDisplayDeviceInLarge()` 多源配置，demo 用不到 |
-| 5 | `mRemoteMergeFinishCallback` 异步派发 | demo 不需要 UI_HELPER_EXECUTOR 线程池 |
-| 6 | `reset()` 不清 `mCurrentAnim` / `mClickAppView` / `mSwipingUpActivityPkg` | lib 根本没追踪这些字段，无残留可清 |
+| 1 | ✔️保持简化 — `MultiAppAnimMergeHelper` 全套（`setRecentsAnimEndState` / `multiAppOpenAnimStart` / `checkMainThread` / `UI_HELPER_EXECUTOR`） | lib `OplusAnimManager.kt` 已自砍这 4 个 helper（review 03 §2.2-#7），无 merge 上下文 |
+| 2 | ✔️保持简化 — `AnimationSuccessListener`（AnonymousClass1）整套 | demo 用 `AsyncAnimCallbacks` 触发回调路径，不依赖 `removeTask*` 守卫 |
+| 3 | ✔️保持简化 — `mRemoveTasksMaps` 的 typed `RemoteAnimationTargetCompat` / `RecentsAnimationController` | lib 用 `Any` 抽象，类型壳对齐即可 |
+| 4 | ✔️保持简化 — `mForbidSwipeUpWhileStartingLandApp` + `DisplayController.getNavigationMode()` 三按钮守卫 | 缺 `LauncherAnimConfig` / `ScreenUtils.isLargeDisplayDeviceInLarge()` 多源配置，demo 用不到 |
+| 5 | ✔️保持简化 — `mRemoteMergeFinishCallback` 异步派发 | demo 不需要 UI_HELPER_EXECUTOR 线程池 |
+| 6 | ✔️保持简化 — `reset()` 不清 `mCurrentAnim` / `mClickAppView` / `mSwipingUpActivityPkg` | lib 根本没追踪这些字段，无残留可清 |
 
 ---
 
@@ -310,3 +310,9 @@ override fun cleanUpRecentsAnim(): Boolean {
 - **60bd048** — revertRecentsAnimation override 已加（CLOSE→REVERSE_OPEN、MULTI_CLOSE→MULTI_REVERSE_OPEN）；cleanUpRecentsAnim 现在调 checkAllAnimationFinished
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+- **#1 revertRecentsAnimation / #2 cleanUpRecentsAnim → checkAllAnimationFinished**
+  — 经独立验证原已保存在 `AnimationController.kt:78-86, 82-92`（cleanUpRecentsAnim 回 `checkAllAnimationFinished`）
+- **#3/#4 mOpenWindowAnimRunning + forbidTouch**
+  — lib 仍 `DefaultAnimationController.forbidTouch()` 恒 false；该项在 `DefaultAnimationController.kt:98` 部分未被实现；不在本批范围，保持未修复。
+- **#5 SWIPE_UP_TO_* 分支**
+  — 经验证为有意设计（taskbar 提示性状态与 controller 状态分离），保持简化。

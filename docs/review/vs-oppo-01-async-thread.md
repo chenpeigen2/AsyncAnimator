@@ -169,55 +169,65 @@
 
 ### 🔴 BUG 级
 
-1. **【BUG】`HandlerTickScheduler` 与 `AnimationHandler` 的"空则停"语义不一致**
+> **❌已过期（215ecb5 删 Scheduled/HandlerTickScheduler，只剩 ChoreographerTickScheduler）**
+1. ✅已修复（dbde195/215ecb5） — **【BUG】`HandlerTickScheduler` 与 `AnimationHandler` 的"空则停"语义不一致**（ScheduledTickScheduler/HandlerTickScheduler 已删，只留 ChoreographerTickScheduler 走真 Choreographer VSYNC；本条 §③-14 也合并消除）
    - 原厂（`vendored androidx AnimationHandler`）：每帧结束检查"还有 callback 才续帧"（`@hide` 路径同样如此），列表清空即自然停帧。
    - lib 的 `HandlerTickScheduler`（`animthread/HandlerTickScheduler.kt:65-77`）复刻了"空则停"（`:74-77`），但**默认的 `ScheduledTickScheduler`（JVM 仿真路径）是常驻定频循环，无 callback 也继续空转**（review 04 §2.3-7）。
    - 影响：JVM 单测场景下，`ScheduledTickScheduler` 持续按 16ms tick，无回调也空转；同时 `HandlerTickScheduler` 在 demo 场景下与默认 scheduler 行为不一致会让同一测试在两种 scheduler 下观察到不同的 `frameCount` 增长曲线。
    - 触发：所有未显式调用 `AnimationHandler.installThreadScheduler(HandlerTickScheduler(…))` 的 lib 调用点；即默认 JUnit 测试全部命中。
 
-2. **【BUG】`AnimationHandler` 缺延迟启动机制**
+> **✔️保持简化（当前 demo 无 delay 调用方，复刻 MultiDynamicAnimation 时才需要）**
+2. ⚠️未修复（小，~15 行 `AnimationHandler` 加 `mDelayedCallbackStartTime` + `isCallbackDue`；当前 demo 无 delay 需求） — **【BUG】`AnimationHandler` 缺延迟启动机制**
    - 原厂 vendored `dynamicanimation` 版有 `mDelayedCallbackStartTime` + `addAnimationFrameCallback(cb, delay)` + `isCallbackDue`（dyn `:16, 123-133, 135-145`）；框架版同样带 delay 参数（`MultiDynamicAnimation.java:127` 以 `0L` 调用）。
    - lib `AnimationHandler.addAnimationFrameCallback` 无 delay 形参（`AnimationHandler.kt:51` 注释明示"无 delay"）。
    - 影响：将来复刻 `MultiDynamicAnimation.startAnimationInternal` 路径时缺签名；当前 demo 不触发。
 
 ### 🟠 高
 
-3. **`SfVsyncFrameCallbackProvider` 不可达 + UX 线程提权丢失 → 帧源与原厂不同**
+> **✔️保持简化（hidden API）+ dbde195 已用公开 Choreographer 对齐 VSYNC**
+3. ✔️保持简化 — **`SfVsyncFrameCallbackProvider` 不可达 + UX 线程提权丢失 → 帧源与原厂不同**（choreographer vs SF-vsync 实测同相位，`ChoreographerTickScheduler` 已够用）
    - lib `HandlerTickScheduler`（`animthread/HandlerTickScheduler.kt:67-80`）是 `postDelayed(16ms)` 自走时钟：固定 60Hz，无 vsync 对齐（90/120Hz 屏帧率错配）。
    - 实际真机 trace（`docs/animation-trace-validation.md` §5）显示原厂 launcher.anim 与主线程**同对齐 VSYNC-app**——SF-vsync 帧源在该设备未体现。两线程帧相位一致的运行时收益不依赖 SF-vsync。
    - 综合：lib 仿真场景无影响；真机性能数字不可与原厂互推。
 
-4. **`LauncherBooster.getCpu().setUxThreadValue` 缺失**
+> **✔️保持简化（OPPO 私有 LauncherBooster/UAF）**
+4. ✔️保持简化 — **`LauncherBooster.getCpu().setUxThreadValue` 缺失**（OPPO 私有 API；`runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }` 兜底已够 demo）
    - 原厂 `OplusExecutors.java:171`：注册为 UX 线程后，调度器把该线程视为 UI 关键线程（提权 / 绑大核 / 限小核）。
    - lib 仅做 `Process.setThreadPriority(myTid, PRIORITY)` 兜底（`AnimationControlThread.kt:53`），无 OPPO 私有调度增强。
    - 影响：原厂在 CPU 满载场景下仍能保持 8ms 帧间隔；lib 在同场景下帧间隔抖动更大（具体数值取决于 ROM 默认调度策略）。
 
-5. **`CustomRectFSpringAnim` 占位 + 线程切换协议整体缺失**
+> **⚠️未修复（907 行缺口见 vs-oppo-16；937dd23 用 androidx 弹簧演示了部分语义）**
+5. ⚠️未修复（大，~200 行 start/cancel/skipToEnd/reverseToOpen + 6 自由度弹簧 + `mMultiDynamicAnimation`；非本批目标，留待后续轮次） — **`CustomRectFSpringAnim` 占位 + 线程切换协议整体缺失**
    - 原厂 907 行的窗口矩形弹簧 + `mMultiDynamicAnimation` + 线程纠偏协议全部不移植（详 §②-C-2 + §②-B-3）。
    - 影响：lib 无法演示"异步启动动画 + cancel 下一帧生效 + 双轨结束"这一 v4 §4 强调的核心语义；Demo 6 / Demo 9 / Demo 10 在 `addRecentsAnim(CustomRectFSpringAnim(…), null, arrayOf())` 后看不到任何动画行为。
    - 复现条件：所有依赖 `CustomRectFSpringAnim` 句柄的代码路径。
 
-6. **`AsyncAnimCallbacks` 派发用异步消息而非 sync 消息**（已修复 review 01 §②C-3）
+> **✅已修复（LooperExecutor.postAsync + Message.setAsynchronous）**
+6. ✅已修复（0e8a472 + review 01 §②C-3 旧修） — **`AsyncAnimCallbacks` 派发用异步消息而非 sync 消息**（`LooperExecutor.postAsync` 走 `Message.setAsynchronous(true)`；JVM 兜底走就地执行）
    - 验证：`LooperExecutor.postAsync` 用 `Message.setAsynchronous(true)`（`LooperExecutor.kt:39-46`），对齐 `Utilities.postAsyncCallback`（`Utilities.java:631-637`）。
    - 残余风险：JVM 单测下 `handler == null` 走"就地执行"（`LooperExecutor.kt:42`），与真机"async 消息"语义不同；demo 跑真机时与单测行为可能不一致。
 
 ### 🟡 中
 
+> **⚠️未修复（3 vs 7 值，demo 有意简化；迁移需映射表）**
 7. **`CustomRectFSpringAnim.AnimType` 枚举值不一致**
    - 原厂 7 值（`CustomRectFSpringAnim.java:115-123`）：`OPEN_FROM_HOME` / `REMOTE_CLOSE_TO_HOME` / `REMOTE_CLOSE_TO_HOME_ASSISTANT` / `GESTURE_TO_DRAG` / `SWIPE_TO_HOME` / `SWIPE_TO_HOME_ASSISTANT` / `REVERSE_TO_OPEN`。
    - lib 3 值（`CustomRectFSpringAnim.kt:13-17`）：`SWIPE_TO_HOME` / `RECENTS_TRANSITION` / `APP_LAUNCH`——其中后两个原厂不存在。
    - 影响：调用方迁移需做映射表；`REVERSE_TO_OPEN` 等核心转场类型缺失，演示回桌面反向动画的入口需要 stub。
 
+> **✔️有意保留（Kotlin 非空，行为改进非分歧）**
 8. **`AsyncValueAnimator` 收到非 null animator**（详 §②-C-4）
    - 原厂 listener 收到 `null`（`AsyncValueAnimator.java:64, 70, 83`），`NullableAnimatorListener` 类的可空容忍因此得名。
    - lib 收到真实 animator（`AsyncValueAnimator.kt:25-37`）。
    - 影响：依赖"animator 为 null 时分支"的业务代码迁移时需调整；属行为改进但确为分歧点。
 
+> **✔️保持简化（27 executor 只留 2 个）**
 9. **`Executors` 只暴露 2 个单例，14 个事务/加载线程砍掉**
    - 原厂 27 个 executor 含事务族（URGENT/WALLPAPER/TASK_VIEW，-8/-4）、加载族（MODEL/UI_HELPER，-4）、预关闭（PRECLOSE，-8）、UX 任务（UX_TASK，-19）、Recents（RECENTS_ICON/THUMBNAIL，-4）。
    - lib 仅 `MAIN_EXECUTOR` + `ANIM_CONTROL_EXECUTOR`（`Executors.kt:11-14`）。
    - 影响：demo 无法演示"事务与动画线程的解耦"——v4 §5 描述的三段式收尾（同步收尾 UI 线程 / 异步收尾 UX_TASK_EXECUTOR / onComplete MAIN_EXECUTOR）只能复刻第一段。
 
+> **✔️保持简化（纯日志装饰）**
 10. **`AsyncAnimCallbacks.mAnimType` / `setAnimType(AnimType)` 砍掉**
     - 原厂用于 CustomRectFSpringAnim 反查 animType 写 log（`CustomRectFSpringAnim.java:791` `mAsyncAnimCallbacks.setAnimType(animType)`）。
     - lib 砍掉后 CustomRectFSpringAnim 占位类用不上，纯日志装饰丢失。
@@ -225,21 +235,26 @@
 
 ### 🟢 低
 
+> **✔️不回移（executeBlockWait 是原厂 ANR 风险）**
 11. **`OplusLooperExecutor` 四扩展（`executeAtFront`/`executeWithUx`/`executeBlockWait`/`executeDelay`）未复刻**
     - `executeBlockWait` 是 v4 §9.3 点名的主线程 5s 硬等 ANR 风险，原厂自己也不该这么写；不回移是正确决定。
     - 其余三个是增强能力，业务用不到。
 
+> **⚠️未修复（~10 行；LooperExecutor 非 ExecutorService）**
 12. **`LooperExecutor` 不再 `extends AbstractExecutorService`、缺访问器、缺 `shutdown()` 契约**
     - 详 §②-C-3。
     - 影响：业务侧需要 ExecutorService 持有或 shutdown 调用时无法直接替换；本演示库用不到。
 
+> **⚠️未修复（低风险启动窗口）**
 13. **JVM 单测兜底掩盖配置错误**
     - 真机上若 `Looper.getMainLooper()` 意外为 null（进程早期），原厂直接 NPE 暴露；lib 退化为就地执行、动画跑在错误线程上。
     - 触发条件：极少（仅在进程启动窗口期内调用）。
 
+> **❌已过期（同 #1，类已删）**
 14. **`ScheduledTickScheduler` 常驻空转 + `HandlerTickScheduler` 空则停**
     - 同 §③-1，但单测可见的语义差异。
 
+> **✔️有意增强（6bbe9a1 把 end 回调 marshal 回主线程）**
 15. **trace 桥接的 `AsyncSpringAnim.addEndListener` 把 end 回调 marshal 回主线程**
     - 原厂 `OplusAsyncSpringAnimWrapper` 不封装 end（只有 `addOnUpdateListener`，`OplusAsyncSpringAnimWrapper.java:24`），end 在 SpringAnimation 自带 callback 里 fire 回调线程（与 SpringAnimation.start 线程一致）。
     - lib 强制 marshal 回主线程（`AsyncSpringAnim.kt:38-44`），业务代码不再需要自己判线程。
@@ -253,27 +268,27 @@
 
 | # | 改动 | 理由 | 风险消除 |
 |---|---|---|---|
-| 1 | **统一两个 scheduler 的"空则停"语义**（`ScheduledTickScheduler.kt:56-61` 加空转保护：tick 时 callbacks 为空则自动 stop，下次 `postFrameCallback` 时 restart） | 让两种 scheduler 行为一致；消除 demo 在两种配置下 `frameCount` 增长曲线不一致的问题 | §③-1, §③-14 |
-| 2 | **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
-| 3 | **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
-| 4 | **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
-| 5 | **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
-| 6 | **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
-| 7 | **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
+| 1 | ✅已修复（215ecb5：删两个 scheduler，ChoreographerTickScheduler 唯一且空则停） — **统一两个 scheduler 的"空则停"语义**（`ScheduledTickScheduler.kt:56-61` 加空转保护：tick 时 callbacks 为空则自动 stop，下次 `postFrameCallback` 时 restart） | 让两种 scheduler 行为一致；消除 demo 在两种配置下 `frameCount` 增长曲线不一致的问题 | §③-1, §③-14 |
+| 2 | ⚠️未修复（~5 行 ofFloat(isAsync) 工厂，demo 无调用点） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
+| 3 | ✔️不修（Kotlin 非空安全有意改进） — **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
+| 4 | ⚠️未修复（线程切换协议大改，见 vs-oppo-16） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
+| 5 | ⚠️未修复（~5 行枚举补 7 值） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
+| 6 | ⚠️未修复（~10 行访问器/shutdown 契约） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
+| 7 | ⚠️未修复（demo 无调用方，复刻 MultiDynamicAnimation 时补） — **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
 
 ### 4.2 建议保持简化
 
 | # | 简化项 | 理由 |
 |---|---|---|
-| 1 | `SfVsyncFrameCallbackProvider` 不做反射硬挂 | 框架 @hide API，反射在非 OPPO ROM 上行为不定；真机 trace 显示两线程同相位也能获得全部收益（`docs/animation-trace-validation.md` §5） |
-| 2 | `LauncherBooster` UX 标记 / UAF 绑核不移植 | OPPO 私有调度增强，无公开等价物；不影响动画正确性只影响调度优先级 |
-| 3 | `OplusLooperExecutor` 四扩展不移植 | `executeWithUx` 依赖私有 API；`executeBlockWait` 是 v4 §9.3 点名 ANR 风险，原厂自己也不该这么写 |
-| 4 | 其余 25 个 executor 不移植 | 14 个事务/加载线程与异步动画演示主题无关，全量复刻只会稀释库的焦点 |
-| 5 | `LogUtils.i` / `Debug.getCallers` 调试日志不移植 | 纯 OEM 调试设施，lib `Trace` 替代已够 |
-| 6 | `Utilities.postAsyncCallback` 抽象不照搬 | lib 把 async 消息做成 `LooperExecutor.postAsync` 成员方法，调用点更短、行为等价 |
-| 7 | `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 暂不回移 | 弹簧积分层 + 事务写表层职责，硬塞进占位类会让 demo 目标失焦；待 v4 §8.2 续行/弹簧整体回移时一起处理（review 04 §4.2） |
-| 8 | `CustomRectFSpringAnim` 的 6 自由度弹簧、RectTransformHelper、IconLayerUpdater 等不移植 | 同上，"弹簧积分层 + 事务写表层"职责在 demo 库定位之外 |
-| 9 | `Companion.mAnimType` 字段不补 | 纯日志装饰；lib 的 Trace tag 已覆盖可观测性需求 |
+| 1 | ✔️保持简化（清单即保持简化） — `SfVsyncFrameCallbackProvider` 不做反射硬挂 | 框架 @hide API，反射在非 OPPO ROM 上行为不定；真机 trace 显示两线程同相位也能获得全部收益（`docs/animation-trace-validation.md` §5） |
+| 2 | ✔️保持简化（清单即保持简化） — `LauncherBooster` UX 标记 / UAF 绑核不移植 | OPPO 私有调度增强，无公开等价物；不影响动画正确性只影响调度优先级 |
+| 3 | ✔️保持简化（清单即保持简化） — `OplusLooperExecutor` 四扩展不移植 | `executeWithUx` 依赖私有 API；`executeBlockWait` 是 v4 §9.3 点名 ANR 风险，原厂自己也不该这么写 |
+| 4 | ✔️保持简化（清单即保持简化） — 其余 25 个 executor 不移植 | 14 个事务/加载线程与异步动画演示主题无关，全量复刻只会稀释库的焦点 |
+| 5 | ✔️保持简化（清单即保持简化） — `LogUtils.i` / `Debug.getCallers` 调试日志不移植 | 纯 OEM 调试设施，lib `Trace` 替代已够 |
+| 6 | ✔️保持简化（清单即保持简化） — `Utilities.postAsyncCallback` 抽象不照搬 | lib 把 async 消息做成 `LooperExecutor.postAsync` 成员方法，调用点更短、行为等价 |
+| 7 | ✔️保持简化（清单即保持简化） — `MultiDynamicAnimation` / `SpringHolder` / `SpringForce` / `SpringAnimReflectUtils` 暂不回移 | 弹簧积分层 + 事务写表层职责，硬塞进占位类会让 demo 目标失焦；待 v4 §8.2 续行/弹簧整体回移时一起处理（review 04 §4.2） |
+| 8 | ✔️保持简化（清单即保持简化） — `CustomRectFSpringAnim` 的 6 自由度弹簧、RectTransformHelper、IconLayerUpdater 等不移植 | 同上，"弹簧积分层 + 事务写表层"职责在 demo 库定位之外 |
+| 9 | ✔️保持简化（清单即保持简化） — `Companion.mAnimType` 字段不补 | 纯日志装饰；lib 的 Trace tag 已覆盖可观测性需求 |
 | 10 | JVM 单测兜底（`handler == null` 退化）保留 | lib 自加契约，对单测友好；建议在 `LooperExecutor.kt` 类注释里明示"原厂无此路径，handler 永不 null，JVM 单测兜底是 lib 扩展" |
 
 ---

@@ -23,3 +23,7 @@ demo/build/
 gradle/gradle-daemon-jvm.properties
 .kotlin/
 .fix_*.py
+.fix_*.py
+docs/review/_marktool.py
+__pycache__/
+*.pyc

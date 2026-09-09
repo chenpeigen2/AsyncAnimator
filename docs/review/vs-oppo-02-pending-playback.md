@@ -98,44 +98,57 @@
 ## ③ 行为差异风险点（按严重度排序）
 
 ### R1. `forEndCallback(Consumer<Boolean>)` 的 success 判定 ★
+> **✔️无差异（文档已自证：threshold 判定逐字对齐）**
 **严重度：高。** 原厂 `EndStateCallbackWrapper.onAnimationEnd` 检查 `animator instanceof ValueAnimator && ((ValueAnimator) animator).getAnimatedFraction() <= 0.5f` → 报 `false`（`AnimatorListeners.java:34-40`）。lib `AnimatorListeners.kt:30` 的判定 `va == null || va.animatedFraction > 0.5f` 已**逐字对齐**——**与既有 review 02 §③-1 结论相反**。**复核结果：R1 在当前 lib 已对齐**，手势收尾"半程前 cancel→报未成功"语义保留。`animatedFraction` 在 `end()` 时返回的是动画**结束那一刻**的归一化进度，而非 1.0——这正是原厂用 0.5 阈值判断"自然播完 vs 中途 cancel"的关键。**但**该判定把"播完但停在 ≤0.5 位置"也判失败——这是原厂 quirk，lib 一并保留。
 *修正前情*：review 02 §③-1 把 R1 列为"lib 无条件报 true"，但通读当前 lib 代码（`AnimatorListeners.kt:25-37`）确认阈值判定已实现。
 
 ### R2. `isDispatchStartPending` 字段语义反转 ★
+> **⚠️未修复（死字段潜藏；补 getter 前语义反转不暴露）**
 **严重度：中（潜藏）。** 原厂 `start()` 置 `mIsDispatchStartPending = false`（`:379`），仅 `dispatchOnStart()` 置 true（`:248`）。语义："true = 已派发 start 给所有 listener 但 AnimatorSet 还没真的开始"——给 `dispatchOnStart` 用作幂等闸门。lib `start()` 置 **true**（`AnimatorPlaybackController.kt:110`），与原厂相反。当前 lib 字段 `private` 且无 getter，外部无读取方（`isIsDispatchStartPending` 未实现）——**死字段**。一旦将来补 getter（手势链路需要：`OplusBaseSwipeUpHandler` 等点位都会读），语义反转会直接把外部判断颠倒。
 
 ### R3. addFloat 产物可进 Holder 链（既有 review 02 §③-3 的判定需更新）★
+> **✅已修复（60bd048：buildAnimator 返回 ValueAnimator，addFloat 进 Holder 链）**
 **严重度：低（既有结论需修正）。** 既有 review 02 §③-3 把"addFloat 产物进不了 Holder 链"列为高风险。**通读 lib 当前代码**：lib 内嵌 `ObjectAnimator.buildAnimator()` **返回 `ValueAnimator`**（`PendingAnimation.kt:149`，注释 `:142-147` 自述"此前 lib 返回匿名 Animator，会被 Holder 收集静默丢弃"——属于已修复历史 bug）。`addHoldersRecur` 的 `is ValueAnimator ->` 分支（`AnimatorPlaybackController.kt:188`）正常收 Holder，整条 addFloat → add → playTogether → Holder 链可工作。**既有 review 描述的是旧版本代码**，当前风险已消除。**仍存在的隐患**：`PendingAnimation.kt:75` 的 Holder 构造器 `animator as ValueAnimator` 强转——若调用方传非 ValueAnimator 会 ClassCastException；addHoldersRecur 已在 else 分支抛 `RuntimeException("Unknown animation type $anim")`（`:192`），所以非 ValueAnimator 走不到 Holder 构造器，强转是安全的（前提是调用方不绕过 `add` 直接 `addToHolders`）。
 
 ### R4. progressAnimator 时长不一致
+> **✔️无差异（文档已自证：add() 内部覆写时长）**
 **严重度：中。** 原厂 `buildAnim` 用 `add(valueAnimator)` 把 progressAnimator 时长覆写为 `mDuration`（`PendingAnimation.java:91-95 → :189-193`，即 `add(Animator, SpringProperty)` 内 `animator.setDuration(mDuration)`）；lib 用 `addWithoutDuration(valueAnimator)` + 显式 `setDuration(durationMs)`（`PendingAnimation.kt:86-88`），等价但路径不同——lib 的 valueAnimator 是**新构造的临时对象**，未持任何外部引用，时长覆写是"先 set 再 add"，顺序与原厂完全相同。**功能等价**——既有 review 02 §③-4 的"progressAnimator 保持 ValueAnimator 默认 300ms"描述不准确：lib `:91` 实际是 `ValueAnimator.ofFloat(0f, 1f).setDuration(durationMs)` 后才 `add`，正确。复核：与既有结论**相反**，无差异。
 
 ### R5. setFloat 不显式设时长
+> **✔️无差异（add() 兜底 durationMs；仅 API 说谎）**
 **严重度：低。** 原厂 `setFloat`：`ObjectAnimator.ofFloat(...).setDuration(mDuration).setInterpolator(ip).add(...)`（`PendingAnimation.java:127-134`）——先 setDuration 再 setInterpolator 再 add。lib `setFloat`：`ObjectAnimator.ofFloat(...).setInterpolator(ip).add(oa.buildAnimator())`（`PendingAnimation.kt:68-77`）——**只 setInterpolator**，时长由 `add(Animator)` 兜底（`add(Animator)` 内 `child.duration = durationMs`，`:46`）。两条路径都最终把 duration 设为 `durationMs`，但**顺序**不同：原厂 ObjectAnimator 自己持时长 → 加进 AnimatorSet；lib ObjectAnimator 子对象 va 持默认 300ms → add() 把 va.duration 改为 durationMs。**API 行为等价**（因 add 内部覆写）；唯一差异是：**若调用方在 add 之前主动读 `oa.duration`，lib 给的是默认值 300ms，原厂给的是 mDuration**。属于"API 说谎"而非语义差异。
 
 ### R6. addHoldersRecur 的 else 分支（既有 review 02 §②-遗漏 6 误述）
+> **✔️已对齐（else 抛 RuntimeException 与原厂一致）**
 **严重度：低（既有结论需修正）。** 既有 review 02 §②-遗漏 6 描述"lib 两者皆无，静默跳过（`AnimatorPlaybackController.kt:186-191`）"。**通读当前 lib 代码**（`:186-194`）：else 分支是 `throw RuntimeException("Unknown animation type $anim")`（`:192`），注释 `:190-191` 自述"原厂抛 RuntimeException ... 不认识的动画类型显式失败，而不是静默丢弃出 Holder 链"——**与原厂一致**。既有 review 描述的是更早版本；当前已对齐。
 
 ### R7. dispatch 不递归嵌套 AnimatorSet
+> **⚠️未修复（当前无嵌套 AnimatorSet 触发面）**
 **严重度：低。** lib `dispatchToListeners` 只拍平 `anims` 一层（`AnimatorPlaybackController.kt:161-165`）。原厂 `callListenerCommandRecursively → callAnimatorCommandRecursively` 递归进嵌套 `AnimatorSet`（`AnimatorPlaybackController.java:184-203`）。当前 lib 构造路径不会产生嵌套 AnimatorSet（`add` 走 `anim.playTogether(child)` 平铺），**暂无触发面**；一旦补 `add(animator: Animator)` 改用 `anim.play(animator)` + 业务传嵌套 AnimatorSet，dispatch 会漏内层 listener。
 
 ### R8. cancel 跟踪挂在第一个子动画而非 AnimatorSet 本体
+> **⚠️未修复（60bd048 只修 root dispatch，cancel 仍挂第一个子动画）**
 **严重度：中。** 原厂 cancel listener 挂 **AnimatorSet 本体**（`AnimatorPlaybackController.java:135-156` 处的 `animatorSet.addListener(...)`，监听 `AnimatorSet.cancel()`），且同时维护 `mIsDispatchStartPending`；lib 挂在 `anims[0]`（**第一个子动画**，`AnimatorPlaybackController.kt:57`）。若**直接 cancel AnimatorSet 而非子动画**，原厂能置 `mTargetCancelled=true` 阻断后续 `setPlayFraction`（`:365-369`），lib 不会触发——`setPlayFraction` 会继续往已取消的 AnimatorSet 的子动画写进度。AnimatorSet.cancel 内部是否会回调子动画 listener？答案是**会**——AnimatorSet 在 cancel 时会逐子动画 cancel 并触发子动画 listener，但时序依赖 AnimatorSet 实现。属于"测试覆盖不到就静默出错"的类型。
 
 ### R9. PendingAnimation.setFloat 不支持 null target（Kotlin 类型系统）
+> **✔️保持（Kotlin 类型系统非空）**
 **严重度：低。** 原厂 `setFloat(T t8, FloatProperty<T> fp, ...)` 标注非空但 `@SuppressLint({"OLintNullPointCheckForParameter"})`（`PendingAnimation.java:127`）显式容许 null；lib 签名 `setFloat(target: T, property: FloatProperty<T>?, value: Float, ...)` 把 `property` 标 `?` 但 `target` 仍非空（Kotlin 泛型不支持 nullable target）。null target 在原厂会被 NPE 跳过（line 128 短路 `property==null`；target 在 `property.get(target)` 处 NPE），lib 同位置 `property.get(target)` 也 NPE。**等价**——但若业务用反射绕过类型系统传 null target，原厂的反射代理兼容路径 lib 没有（Kotlin 编译期就会拦）。
 
 ### R10. addFloat 构造 ObjectAnimator 时不持原插值器引用
+> **✔️保持简化（无 getInterpolator，演示用不到）**
 **严重度：低。** lib 内嵌 `ObjectAnimator.setInterpolator(ip)` 把 ip 写到内部 va（`PendingAnimation.kt:126-128`），但**构造器外**无法读回 ip（没暴露 `getInterpolator`）。原厂 `ObjectAnimator` 继承 `ValueAnimator`，`getInterpolator` 是 public API，业务可能读。属于演示场景用不到的 API 面差异。
 
 ### R11. clampDuration 的零值边界
+> **✔️无差异（coerceIn 与 Math.min 等价）**
 **严重度：低。** 原厂 `clampDuration`：`(long) (duration * f)` ≤ 0 返回 0L，否则 `Math.min(..., duration)`（`AnimatorPlaybackController.java:222-229`）。lib `clampDuration`：`duration * f`.toLong() 后 `coerceIn(0L, duration)`（`AnimatorPlaybackController.kt:125-126`）。两条路径在 `f = 0` 时都返回 0；`f < 0` 时都返回 0；`f > 1` 时原厂返回 duration（被 Math.min 钳），lib 也返回 duration。**等价**——`coerceIn(0L, duration)` 与 `Math.min((long)f10, duration)` 在浮点转 long 后行为一致。
 
 ### R12. Holder 的 `mapper` 字段公开性
+> **✔️无差异（mapper var 与原厂 public 字段等价）**
 **严重度：低。** 原厂 `public ProgressMapper mapper = ProgressMapper.DEFAULT;`（`AnimatorPlaybackController.java:42`）——任何调用方都能改 mapper。lib `var mapper: ProgressMapper = DEFAULT_PROGRESS_MAPPER`（`AnimatorPlaybackController.kt:78`）——同样 public。**等价**——但 lib `mapper` 是 `var`，原厂是 `public` 字段（也是 var）。完全一致。
 
 ---
 
+> ⚠️ ④ 建议表各行待逐条打标（对应风险项状态见 ③ R 项 打标）。
 ## ④ 回移建议
 
 ### 4.1 值得补进 lib（性价比高）

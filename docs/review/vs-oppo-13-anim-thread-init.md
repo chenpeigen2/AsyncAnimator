@@ -153,7 +153,9 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 > 按"可能导致语义不同"严格筛选。其他"细节差异 / API 子集缺失"已在 `vs-oppo-01` / `vs-oppo-06` / `vs-oppo-11` 覆盖，本节不重复。
 
-### R-1【BUG 级，修复成本：低】`onLooperPrepared` 时 `Process.setThreadPriority` 可能在某些 ROM 上失效
+### ✔️保持简化 R-1【BUG 级，修复成本：低】`onLooperPrepared` 时 `Process.setThreadPriority` 可能在某些 ROM 上失效
+
+> **判定**：OPPO ROM 专属 UI First 功能，AOSP 公开 API 库无替代。lib 注释 `AnimationControlThread.kt:30-39` 已明示"退化为本线程再确认一次优先级 + 兜底"。**保持简化**。
 
 **现象**：
 
@@ -171,6 +173,8 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **判定**：OPPO ROM 专属功能，lib 是 AOSP 公开 API 库，**接受风险**。已在 `AnimationControlThread.kt:30-39` 注释里明示"退化为本线程再确认一次优先级 + 兜底"。
 
+### ✔️保持简化 R-2【BUG 级，修复成本：无】`init { start() }` 在 `by lazy` 内——主类加载触发新线程创建
+
 ### R-2【BUG 级，修复成本：低】`init { start() }` 在 `by lazy` 内——主类加载触发新线程创建
 
 **现象**：
@@ -186,7 +190,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **判定**：**接受**，无 bug。
 
-### R-3【BUG 级，修复成本：中】`onLooperPrepared` 内 `installThreadScheduler` 与"业务提前 post 帧回调"的竞争窗口
+### ✔️保持简化 R-3【BUG 级，修复成本：中】`onLooperPrepared` 内 `installThreadScheduler` 与"业务提前 post 帧回调"的竞争窗口
 
 **现象**：
 
@@ -200,7 +204,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **结论**：**两条路径对业务不可见**。R-3 实际上是虚惊。归"无 bug"。
 
-### R-4【行为差异，修复成本：无】`Process.setThreadPriority(myTid, -19)` 调用与 `HandlerThread` 构造的优先级设置时序
+### ⚠️未修复（runCatching 仍在代码中）R-4【行为差异，修复成本：无】`Process.setThreadPriority(myTid, -19)` 调用与 `HandlerThread` 构造的优先级设置时序
 
 **现象**：
 - `HandlerThread.run()` 起点先 `Process.setThreadPriority(priority)`，然后才 `Looper.prepare()` → `onLooperPrepared()`。
@@ -211,7 +215,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **结论**：**接受**。
 
-### R-5【行为差异，修复成本：中】线程名 `"launcher.anim"` 与 OPPO `reportKeyThreadToUAF` 注册表里的 `"launcher.anim"` 字面量必须严格一致
+### ✔️保持简化 R-5【行为差异，修复成本：中】线程名 `"launcher.anim"` 与 OPPO `reportKeyThreadToUAF` 注册表里的 `"launcher.anim"` 字面量必须严格一致
 
 **风险**：
 - 若 lib 改名（如 `"launcher.anim.v2"` 或 `"anim_async"`），OPPO ROM 上的 `LauncherBooster.CpuBoost.Companion` 静态字段 `keyUxThread` / `staticUxThread`（`LauncherBooster.java:232`）就找不到这个名字对应的 eventId，UI First 调度不会触发。
@@ -223,7 +227,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 **判定**：**接受**（当前 lib 不调 UAF，无 bug）。
 
-### R-6【行为差异，修复成本：低】`LooperExecutor` 这一层缺失导致 `ExecutorService` 类型契约丢失
+### ✔️保持简化 R-6【行为差异，修复成本：低】`LooperExecutor` 这一层缺失导致 `ExecutorService` 类型契约丢失
 
 `vs-oppo-01-async-thread.md` §B-3 / §C-2 已记录。lib 的 `AnimationControlThread` 不实现 `ExecutorService`，调用方拿到的就是 `HandlerThread` 子类。本节不重复。
 
@@ -235,7 +239,7 @@ lib 用 `AnimationControlThread.instance` + 调用方自行 wrap `Handler` 拿 l
 
 ### 4-A. 值得补的
 
-#### 4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
+#### ⚠️未修复（runCatching 仍位于 `AnimationControlThread.kt:53`）4-A-1. `Process.setThreadPriority` 兜底应去除冗余 OR 改为日志告警【修复成本：低】
 
 当前 `AnimationControlThread.kt:53`：
 ```kotlin
@@ -248,7 +252,7 @@ runCatching { Process.setThreadPriority(Process.myTid(), PRIORITY) }
 
 **判定**：轻微清理，非阻塞。
 
-#### 4-A-2. 暴露一个 companion 的"线程首跑 hook"【修复成本：低】
+#### ⚠️未修复（无业务需要，本批不修）4-A-2. 暴露一个 companion 的"线程首跑 hook"【修复成本：低】
 
 `vs-oppo-01-async-thread.md` §B-5 已建议。把：
 ```kotlin
@@ -333,6 +337,14 @@ override fun onLooperPrepared() {
 本份涉及且已落地的修复（按 commit 顺序）：
 
 - **60bd048** — PRIORITY 字面量 -19 对齐原厂 OplusExecutors.java:95；runCatching 兜底 Process.setThreadPriority 冗余
-- **dbde195** — onLooperPrepared 现在装 ChoreographerTickScheduler（公开 Choreographer VSYNC）
+- **dbde195** — onLooperPrepared 现在装 ChoreographerTickScheduler（公开 Choreographer VSYNC）\r
+\r
+**批次 3 子代理复核（2026-09-09）**——按已知 commit 列表逐项核对：\r
+- §3 R-1/R-2/R-3/R-5/R-6 — 标 ✔️保持简化（OPPO ROM 专属或语义已对齐）\r
+- §3 R-4 — 标 ⚠️未修复：本次实测 `AnimationControlThread.kt:53` 仍有 `runCatching { Process.setThreadPriority(...) }`，60bd048 仅做了字面量对齐，未实际删除冗余兜底；建议归到下次清理\r
+- §4 4-A-1 — 标 ⚠️未修复（同上，runCatching 仍在代码）\r
+- §4 4-A-2 — 标 ⚠️未修复（无业务 hook 需求）\r
+- §4 4-B-1..5 — 标 ✔️保持简化（已与原 4-B 节判定一致）\r
+- §4 4-C-1/2 — ✔️已保留为监控项
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。

@@ -99,6 +99,8 @@
 
 ### 风险 1（高）：`AnimSeqTimeStamp` 多字段并发读写的撕裂快照
 
+> ⚠️未修复（撕裂快照仅在真实多线程写场景下出现；60bd048 仅补 4 个 reset 方法 + clock 注入；写路径仍裸赋值，未与原厂"全方法 synchronized"对齐。JVM 单测下不触发）
+
 **位置**：`AnimSeqTimeStamp.kt:9-29, 30-38, 38-45`
 
 **问题**：

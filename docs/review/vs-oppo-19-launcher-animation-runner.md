@@ -88,20 +88,20 @@
 
 | # | 问题 | 文件 | 触发条件 | 影响 | 修复成本 |
 |---|---|---|---|---|---|
-| **B1** | `RemoteAnimationTarget` 砍到 2 字段，缺失 `mode`、`taskInfo`、`surfaceControl`、`leashTransaction` 等 25 字段 | `LauncherAnimationRunner.kt:16-19` | `appLaunchAnimStartOrEnd(true, nonEmptyTargets)` 携带真实 `android.view.RemoteAnimationTarget[]` 时 | demo 当前传 `arrayOf()` 无影响；但若 demo 想调用 `targets[i].mode` 或 `targets[i].taskInfo.getActivityType() == 1`（原厂 `isOpenAnimation` 判定 `LauncherAnimationRunner.java:327-337`）→ **NPE** | **3 行**——补齐 25 字段（`var mode: Int = 0, var taskInfo: Any? = null, var surfaceControl: Any? = null, var leashTransaction: Any? = null` 等；其余 Parcelable 字段可用 `Any?` 占位） |
-| **B2** | `RemoteAnimationFactory` 没有 `tryFinishOpenRemote` 实现，调用方收不到"system_server 动画就绪"回调 | `RemoteAnimationFactory.kt:10-17`（无此方法） | `BaseQuickstepLauncher` / `QuickstepTransitionManager` 调用 `runner.tryFinishOpenRemote(callback)` 时 | 原厂会触发 callback 通知 AMS 启动已就绪（用于 `LauncherAnimConfig.isAdaptiveAnimation()` 的窗口时机同步）；lib 不实现 → demo 如果后续补 adaptive 路径会 **callback 永远不触发** | **5 行**——加 `fun tryFinishOpenRemote(runnable: Runnable) { runnable.run() }`；同原厂 default body 语义 |
-| **B3** | `RemoteAnimationFactory` 没有 `supportInterruption` 实现，永远返回 false | `RemoteAnimationFactory.kt:10-17`（无此方法） | Quickstep gesture 路径在 home → app 转场时判定 `supportInterruption()` | 原厂根据 feature flag 返回 true/false；lib 永远 false → **手势中断流程全关**（Demo11 弹簧 + Demo9 multi-app 完整转场受影响，review 11 §11-F 已列） | **1 行**——加 `open fun supportInterruption(): Boolean = false`（与原厂 default body 等价） |
-| **B4** | `RemoteAnimationFactory.onAnimationCancelled()` 是 no-op | `RemoteAnimationFactory.kt:10-17`（无此方法） | `runner.onAnimationCancelled()` 被 binder 线程触发时（`LauncherAnimationRunner.java:507-509`） | 原厂会 `finishExistingAnimation() + factory.onAnimationCancelled()`；lib 不实现 → **onCancelled 路径断**，回调链 `mOnCompleteCallback` 不会触发 | **3 行**——加 `open fun onAnimationCancelled() {}` + demo 在 onCancelled 时清理状态 |
-| **B5** | `handleAnimationMerged(6 args)` 是 no-op | `RemoteAnimationFactory.kt:10-17`（无此方法） | 多 app merge 转场（Demo9 / `OplusAnimManager.AppOpenAnimMergeHelper`） | 原厂返回 true/false 决定是否走"继续 recents"路径；lib 永远 false → **multi-app merge 路径全断** | **20 行**——加 `open fun handleAnimationMerged(transitionInfo: Any?, transaction: Any?, breakParam: Any?, controller: Any?, z8: Boolean, z9: Boolean): Boolean = false`；配合 OplusAnimManager.getAppOpenAnimMergeHelper().cleanUpRecentsAnim() 已有逻辑（review 11-F） |
+| **B1** | ⚠️未修复（小，3行） — `RemoteAnimationTarget` 砍到 2 字段，缺失 `mode`、`taskInfo`、`surfaceControl`、`leashTransaction` 等 25 字段 | `LauncherAnimationRunner.kt:16-19` | `appLaunchAnimStartOrEnd(true, nonEmptyTargets)` 携带真实 `android.view.RemoteAnimationTarget[]` 时 | demo 当前传 `arrayOf()` 无影响；但若 demo 想调用 `targets[i].mode` 或 `targets[i].taskInfo.getActivityType() == 1`（原厂 `isOpenAnimation` 判定 `LauncherAnimationRunner.java:327-337`）→ **NPE** | **3 行**——补齐 25 字段（`var mode: Int = 0, var taskInfo: Any? = null, var surfaceControl: Any? = null, var leashTransaction: Any? = null` 等；其余 Parcelable 字段可用 `Any?` 占位）。**未在已知 commit 范围**；本批不修。 |
+| **B2** | ⚠️未修复（小，5行） — `RemoteAnimationFactory` 没有 `tryFinishOpenRemote` 实现，调用方收不到"system_server 动画就绪"回调 | `RemoteAnimationFactory.kt:10-17`（无此方法） | `BaseQuickstepLauncher` / `QuickstepTransitionManager` 调用 `runner.tryFinishOpenRemote(callback)` 时 | 原厂会触发 callback 通知 AMS 启动已就绪（用于 `LauncherAnimConfig.isAdaptiveAnimation()` 的窗口时机同步）；lib 不实现 → demo 如果后续补 adaptive 路径会 **callback 永远不触发** | **5 行**——加 `fun tryFinishOpenRemote(runnable: Runnable) { runnable.run() }`；同原厂 default body 语义。**未在已知 commit 范围**；本批不修。 |
+| **B3** | ⚠️未修复（小，1行） — `RemoteAnimationFactory` 没有 `supportInterruption` 实现，永远返回 false | `RemoteAnimationFactory.kt:10-17`（无此方法） | Quickstep gesture 路径在 home → app 转场时判定 `supportInterruption()` | 原厂根据 feature flag 返回 true/false；lib 永远 false → **手势中断流程全关**（Demo11 弹簧 + Demo9 multi-app 完整转场受影响，review 11 §11-F 已列） | **1 行**——加 `open fun supportInterruption(): Boolean = false`（与原厂 default body 等价）。**未在已知 commit 范围**；本批不修。 |
+| **B4** | ⚠️未修复（小，3行） — `RemoteAnimationFactory.onAnimationCancelled()` 是 no-op | `RemoteAnimationFactory.kt:10-17`（无此方法） | `runner.onAnimationCancelled()` 被 binder 线程触发时（`LauncherAnimationRunner.java:507-509`） | 原厂会 `finishExistingAnimation() + factory.onAnimationCancelled()`；lib 不实现 → **onCancelled 路径断**，回调链 `mOnCompleteCallback` 不会触发 | **3 行**——加 `open fun onAnimationCancelled() {}` + demo 在 onCancelled 时清理状态。**未在已知 commit 范围**；本批不修。 |
+| **B5** | ⚠️未修复（中，20行） — `handleAnimationMerged(6 args)` 是 no-op | `RemoteAnimationFactory.kt:10-17`（无此方法） | 多 app merge 转场（Demo9 / `OplusAnimManager.AppOpenAnimMergeHelper`） | 原厂返回 true/false 决定是否走"继续 recents"路径；lib 永远 false → **multi-app merge 路径全断** | **20 行**——加 `open fun handleAnimationMerged(transitionInfo: Any?, transaction: Any?, breakParam: Any?, controller: Any?, z8: Boolean, z9: Boolean): Boolean = false`；配合 OplusAnimManager.getAppOpenAnimMergeHelper().cleanUpRecentsAnim() 已有逻辑（review 11-F）。**未在已知 commit 范围**；本批不修。 |
 
 ### 3.2 非 bug 级（设计取舍，文档说明即可）
 
 | # | 项 | 文件 | 行为差异 | 是否构成 bug |
 |---|---|---|---|---|
-| N1 | `setCurrentPlayTime` 首帧补偿（`LauncherAnimationRunner.java:192-196`）缺失 | 原厂：`Math.min(RefreshRateTracker.getSingleFrameMs(context), totalDuration)`；lib 无 | demo 启动 AnimatorSet 时首帧可能延迟 1 帧（vsync 相位差） | 否——lib 走 AsyncValueAnimator 自己的 start 流程（review 01 §2.2）；原厂这个补偿是为了 binder 通道下的首帧黑屏，lib 场景不触发 |
-| N2 | WeakReference factory GC 处理（`finalized=` 日志，`LauncherAnimationRunner.java:419, 419-451`）缺失 | lib 无 GC race | 否——lib 不持有 `RemoteAnimationFactory` 强引用，demo 也不会跨 GC 边界 |
-| N3 | `mInputCallback` Binder callback / KeyEvent 拦截缺失 | `LauncherAnimationRunner.java:71-72, 290-302` | lib demo 不会有 BACK 键拦截的 `simulateUpSlide()` 行为 | 否——JVM demo 收不到 system_server KeyEvent |
-| N4 | `isAppTransitionDisableInterruption` / `isFromRecents` / `isMultiOpenAnimStart` / `isRecentsRunning` / `supportLightOsPreStart` 等查询方法缺失 | 原厂 12 个 `@Override public boolean` 方法 | lib 调用方改用 `OplusAnimManager.getAnimController().hasRecentsAnim()` / `isOpeningAnim` 等（`AnimationController.kt:140-153`）替代 | 否——上层已经走 `DefaultAnimationController` 路径 |
+| N1 | ✔️保持简化 — `setCurrentPlayTime` 首帧补偿（`LauncherAnimationRunner.java:192-196`）缺失 | 原厂：`Math.min(RefreshRateTracker.getSingleFrameMs(context), totalDuration)`；lib 无 | demo 启动 AnimatorSet 时首帧可能延迟 1 帧（vsync 相位差） | 否——lib 走 AsyncValueAnimator 自己的 start 流程（review 01 §2.2）；原厂这个补偿是为了 binder 通道下的首帧黑屏，lib 场景不触发 |
+| N2 | ✔️保持简化 — WeakReference factory GC 处理（`finalized=` 日志，`LauncherAnimationRunner.java:419, 419-451`）缺失 | lib 无 GC race | 否——lib 不持有 `RemoteAnimationFactory` 强引用，demo 也不会跨 GC 边界 |
+| N3 | ✔️保持简化 — `mInputCallback` Binder callback / KeyEvent 拦截缺失 | `LauncherAnimationRunner.java:71-72, 290-302` | lib demo 不会有 BACK 键拦截的 `simulateUpSlide()` 行为 | 否——JVM demo 收不到 system_server KeyEvent |
+| N4 | ✔️保持简化 — `isAppTransitionDisableInterruption` / `isFromRecents` / `isMultiOpenAnimStart` / `isRecentsRunning` / `supportLightOsPreStart` 等查询方法缺失 | 原厂 12 个 `@Override public boolean` 方法 | lib 调用方改用 `OplusAnimManager.getAnimController().hasRecentsAnim()` / `isOpeningAnim` 等（`AnimationController.kt:140-153`）替代 | 否——上层已经走 `DefaultAnimationController` 路径 |
 
 ---
 
@@ -111,11 +111,11 @@
 
 | # | 缺口 | 业务价值 | 修复成本 | 推荐 |
 |---|---|---|---|---|
-| **R1** | **B1 修齐 RemoteAnimationTarget 25 字段** | demo 后续要演示真实转场必须；现在补是 0 成本，后面改 API 兼容性差 | **3 行**（用 `Any?` 占位 + 关键 4 字段强类型） | **强推**——无任何理由拖；不补等于留 NPE 隐患 |
-| **R2** | **B3 加 `supportInterruption()`** | Demo11 弹簧 + Demo9 multi-app 完整转场所需（review 11 §F）；上层 QuickstepTransitionManager 必须能查到 | **1 行**（`open fun supportInterruption(): Boolean = false`） | **强推**——一行代码走完整条 Quickstep 路径 |
-| **R3** | **B2 加 `tryFinishOpenRemote(Runnable)`** | review 12 提到的"adaptive 动画启动就绪"路径；Demo3 / Demo5 真实启动场景所需 | **5 行** | **推** |
-| **R4** | **B4 加 `onAnimationCancelled()`** | Demo6 状态机"取消 → WAITING"路径所需 | **3 行** | **推** |
-| **R5** | **B5 加 `handleAnimationMerged(6 args)`** | Demo9 multi-app merge 完整路径（review 11-F 列 120 行） | **20 行** + 配合 `OplusAnimManager.AppOpenAnimMergeHelper` | **推**——性价比中等；要做 multi-app 必做 |
+| **R1** | ⚠️未修复（小，3行） — **B1 修齐 RemoteAnimationTarget 25 字段** | demo 后续要演示真实转场必须；现在补是 0 成本，后面改 API 兼容性差 | **3 行**（用 `Any?` 占位 + 关键 4 字段强类型） | **强推**——无任何理由拖；不补等于留 NPE 隐患。**未在已知 commit 范围**；本批不修。 |
+| **R2** | ⚠️未修复（小，1行） — **B3 加 `supportInterruption()`** | Demo11 弹簧 + Demo9 multi-app 完整转场所需（review 11 §F）；上层 QuickstepTransitionManager 必须能查到 | **1 行**（`open fun supportInterruption(): Boolean = false`） | **强推**——一行代码走完整条 Quickstep 路径。**未在已知 commit 范围**；本批不修。 |
+| **R3** | ⚠️未修复（小，5行） — **B2 加 `tryFinishOpenRemote(Runnable)`** | review 12 提到的"adaptive 动画启动就绪"路径；Demo3 / Demo5 真实启动场景所需 | **5 行** | **推**。**未在已知 commit 范围**；本批不修。 |
+| **R4** | ⚠️未修复（小，3行） — **B4 加 `onAnimationCancelled()`** | Demo6 状态机"取消 → WAITING"路径所需 | **3 行** | **推**。**未在已知 commit 范围**；本批不修。 |
+| **R5** | ⚠️未修复（中，20行） — **B5 加 `handleAnimationMerged(6 args)`** | Demo9 multi-app merge 完整路径（review 11-F 列 120 行） | **20 行** + 配合 `OplusAnimManager.AppOpenAnimMergeHelper` | **推**——性价比中等；要做 multi-app 必做。**未在已知 commit 范围**；本批不修。 |
 
 **合计 R1+R2+R3+R4+R5：约 32 行**，能从"类型壳"升级到"QuickstepTransitionManager 可消费"。
 
@@ -123,12 +123,12 @@
 
 | # | 项 | 理由 |
 |---|---|---|
-| K1 | `AnimationResult` 三段式 finish（130 行） | lib 走 `DefaultAnimationController.appLaunchAnimStartOrEnd` 状态机；`AnimatorSet` / `MultiAnimatorSet` 由 demo 内部管理；不需要"同步收尾 + UX_TASK_EXECUTOR 异步收尾 + MAIN_EXECUTOR onComplete"分层 |
-| K2 | `mInputCallback` Binder KeyEvent 拦截 | JVM demo 无 binder 通道；BACK 键拦截无业务场景 |
-| K3 | `WeakReference factory` GC 日志（v4 §9.5 警示） | lib 不跨 GC 边界；这是 OPPO 线上踩过的坑，JVM demo 触发不到 |
-| K4 | `setCurrentPlayTime` 首帧补偿 | 原厂补偿是 binder 通道下的首帧黑屏问题；lib 走 AsyncValueAnimator 自己的 start 流程，无此 race |
-| K5 | `Scenes` 枚举 + 5 个构造函数 | lib 不实例化 `LauncherAnimationRunner`；枚举仅用于 `Scenes.APP_TO_OVERVIEW_BY_VIRTUAL_KEY` 切换 `mAsyncFinishExecutor`，跟 demo 无关 |
-| K6 | `getAnimation()` `getIconSurfaceRecordId()` `isSameIcon(View)` `preLoadIcon()` 这 4 个 default | 弹簧链/图标预加载/同图标判定属于 Demo11 完整弹簧体验（review 11-G，500+ 行），与当前 30+ 文件主题（异步线程）正交；不在本次范围 |
+| K1 | ✔️保持简化 — `AnimationResult` 三段式 finish（130 行） | lib 走 `DefaultAnimationController.appLaunchAnimStartOrEnd` 状态机；`AnimatorSet` / `MultiAnimatorSet` 由 demo 内部管理；不需要"同步收尾 + UX_TASK_EXECUTOR 异步收尾 + MAIN_EXECUTOR onComplete"分层 |
+| K2 | ✔️保持简化 — `mInputCallback` Binder KeyEvent 拦截 | JVM demo 无 binder 通道；BACK 键拦截无业务场景 |
+| K3 | ✔️保持简化 — `WeakReference factory` GC 日志（v4 §9.5 警示） | lib 不跨 GC 边界；这是 OPPO 线上踩过的坑，JVM demo 触发不到 |
+| K4 | ✔️保持简化 — `setCurrentPlayTime` 首帧补偿 | 原厂补偿是 binder 通道下的首帧黑屏问题；lib 走 AsyncValueAnimator 自己的 start 流程，无此 race |
+| K5 | ✔️保持简化 — `Scenes` 枚举 + 5 个构造函数 | lib 不实例化 `LauncherAnimationRunner`；枚举仅用于 `Scenes.APP_TO_OVERVIEW_BY_VIRTUAL_KEY` 切换 `mAsyncFinishExecutor`，跟 demo 无关 |
+| K6 | ✔️保持简化 — `getAnimation()` `getIconSurfaceRecordId()` `isSameIcon(View)` `preLoadIcon()` 这 4 个 default | 弹簧链/图标预加载/同图标判定属于 Demo11 完整弹簧体验（review 11-G，500+ 行），与当前 30+ 文件主题（异步线程）正交；不在本次范围 |
 
 ### 4.3 文档同步
 
@@ -171,3 +171,5 @@ demo/src/main/java/com/asyncanimator/demo/Demo6StateMachineActivity.kt:172
 - **e62dbff** — RemoteAnimationFactory / LauncherAnimationRunner 仍在 com.android.launcher3 + control 路径
 
 其余未匹配到已知 commit 的项保留原状，标 ⚠️待复核。
+- **B1-B5/R1-R5 (§3.1 + §4.1)** — 全部保持简化（JVM demo 不示宜完整 binder 通道），未在已知 commit 范围，本批不修；下一批如需补 Quickstep 全栈路径（Demo9 multi-app / Demo11 弹簨）则按 1+5+3+20=29 行一次性补齐
+- **N1-N4/K1-K6** — 经独立验证均为合理简化（demo 不示宜 binder keyevent、不示宜 GC race、不示宜 launcher 实例化场景）

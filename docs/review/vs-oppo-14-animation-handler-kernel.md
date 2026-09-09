@@ -109,7 +109,9 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 ## ③ 行为差异风险点（按严重度排序，🟥 = BUG-LEVEL）
 
-### 🟥 ① `doAnimationFrame` 快照 size vs 活取 size —— 本帧内 add 的新回调 visibility 不一致（BUG-LEVEL / 中）
+### ✅已修复（60bd048）🟥 ① `doAnimationFrame` 快照 size vs 活取 size —— 本帧内 add 的新回调 visibility 不一致（BUG-LEVEL / 中）
+
+> **验证**：`AnimationHandler.kt:96-100` 已改为 `while (i < animationCallbacks.size)` 每轮重读 size，与 vendor A/B 1:1 等价。本帧内 add 的回调可见。
 
 **证据**：
 
@@ -158,7 +160,9 @@ lib 文件 `AnimationHandler.kt` 共 175 行，**15 个顶层成员**：5 字段
 
 ---
 
-### 🟥 ② `installThreadScheduler` 三个 silent early return —— 调错顺序就沉默失败（BUG-LEVEL / 高）
+### ⚠️未修复（5 行 ≤30 行内可改；本批不修因 API 行为变化）🟥 ② `installThreadScheduler` 三个 silent early return —— 调错顺序就沉默失败（BUG-LEVEL / 高）
+
+> **验证**：`AnimationHandler.kt:153-158` 三个 silent return 仍在；测试覆盖为 0。
 
 **证据**：`AnimationHandler.kt:152-158`：
 
@@ -197,7 +201,9 @@ fun installThreadScheduler(scheduler: TickScheduler?) {
 
 ---
 
-### 🟥 ③ `replaceThreadScheduler` 比 vendor `setProvider` 激进，可能丢帧（BUG-LEVEL / 中）
+### ⚠️未修复（6 行 ≤30 行内可改；本批不修因影响运行时帧源切换契约）🟥 ③ `replaceThreadScheduler` 比 vendor `setProvider` 激进，可能丢帧（BUG-LEVEL / 中）
+
+> **验证**：`AnimationHandler.kt:110-118 + 167-170` 仍为激进协议（停旧 → 换新 → 重发 self-pulse）。
 
 **证据**：`AnimationHandler.kt:166-170 + 110-118`：
 
@@ -247,7 +253,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟡 ④ addAnimationFrameCallback 漏调 onNewCallbackAdded（设计分歧 / 低）
+### ✔️保持简化 🟡 ④ addAnimationFrameCallback 漏调 onNewCallbackAdded（设计分歧 / 低）
+
+> **判定**：vendor A `:26` 接口方法 + `:57-58, 97-98` 空实现，**vendor 自身也未用上**（B5 已记录）。接口最小化是 lib 有意取舍。
 
 **证据**：
 
@@ -298,7 +306,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟡 ⑤ lib `removeCallback` 漏 `mDelayedCallbackStartTime.remove` —— 复刻 B 路径时的隐患（中）
+### ✔️保持简化（依赖 C3 未做；与 C3 同批处置）🟡 ⑤ lib `removeCallback` 漏 `mDelayedCallbackStartTime.remove` —— 复刻 B 路径时的隐患（中）
+
+> **判定**：当前 lib 无 `mDelayedCallbackStartTime` 字段（C3），所以"漏调"是因为对应字段不存在。C3 未做 = 本项无需单修。
 
 **证据**：
 
@@ -340,7 +350,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟡 ⑥ `addAnimationFrameCallback` 把 `scheduler.start()` + `postFrameCallback(::onTick)` 拆为两步 —— 隐式 start/stop 边界模糊（中）
+### ✔️保持简化 🟡 ⑥ `addAnimationFrameCallback` 把 `scheduler.start()` + `postFrameCallback(::onTick)` 拆为两步 —— 隐式 start/stop 边界模糊（中）
+
+> **判定**：lib `TickScheduler` 接口注释明示 start/stop 显式化（vs-oppo-15 §B-1），新写 `TickScheduler` 实现者只要按接口注释落实"空则停"即可。
 
 **证据**：
 
@@ -368,7 +380,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟢 ⑦ `cleanUpList` 用 `removeAll { it == null }` 高阶函数 —— reverse loop 行为消失（低 / 形式）
+### ✔️保持简化 🟢 ⑦ `cleanUpList` 用 `removeAll { it == null }` 高阶函数 —— reverse loop 行为消失（低 / 形式）
+
+> **判定**：lib 单线程使用，list 不会被并发修改，无 CME 风险；语义等价 + 性能在 demo 规模无差。
 
 **证据**：
 
@@ -410,7 +424,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟢 ⑧ `doAnimationFrame` 不内联 cleanUpList —— 调用顺序依赖 onTick 正确实现（低 / 形式）
+### ✔️保持简化 🟢 ⑧ `doAnimationFrame` 不内联 cleanUpList —— 调用顺序依赖 onTick 正确实现（低 / 形式）
+
+> **判定**：lib 当前所有调用方都是 `onTick → doAnimationFrame → cleanUpList`，无直接调 `doAnimationFrame` 的调用面。
 
 **证据**：
 
@@ -428,7 +444,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟢 ⑨ `animationCount` 实例属性 vs `getAnimationCount` 静态方法 —— Java 调用面差异（低 / 形式）
+### ⚠️未修复（3 行 @JvmStatic；本批不修因无 Java 调用面）🟢 ⑨ `animationCount` 实例属性 vs `getAnimationCount` 静态方法 —— Java 调用面差异（低 / 形式）
+
+> **判定**：lib 全部 Kotlin 调用，`AnimationHandler.CominstanceAnimation.getAnimationCount()` 已可用；dumpsys / log 工具无 lib 用户。
 
 **证据**：
 
@@ -457,7 +475,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟢 ⑩ `getInstance` lazy init 不带锁 vs lib `instance` getter 不带锁（低 / 形式）
+### ✔️保持简化 🟢 ⑩ `getInstance` lazy init 不带锁 vs lib `instance` getter 不带锁（低 / 形式）
+
+> **判定**：ThreadLocal 自身保证 per-thread 单例 + atomic set，行为与 vendor A/B 1:1。
 
 **证据**：
 
@@ -473,7 +493,9 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-### 🟢 ⑪ A 路径 vs B 路径的语义分叉被 lib 单类合并 —— 复刻 B 路径时的隐患（低）
+### ✔️保持简化 🟢 ⑪ A 路径 vs B 路径的语义分叉被 lib 单类合并 —— 复刻 B 路径时的隐患（低）
+
+> **判定**：lib 单 `AnimationHandler` 偏向 A 路径（无 delay / 无 dispatcher / 有 testHandler / 三元 instance），B 路径专属仅 future dynamicanimation 复刻时需要；review 11 §B-1 已建议保持。
 
 **证据**：
 
@@ -492,15 +514,15 @@ private fun swapScheduler(s: TickScheduler) {
 
 | # | 项 | 成本 | ROI | 说明 |
 |---|---|---|---|---|
-| 1 | 🟥 修 `installThreadScheduler` silent early return → fail-loud | 5 行 + 单测 | 高 | 三处静默失败是隐藏陷阱；测试覆盖率为 0。改为 `throw IllegalStateException` 比 silent 安全 |
-| 2 | 🟥 修 `doAnimationFrame` 快照 size → 活取 size | 3 行 + 5 行单测 | 高 | 与 vendor A/B 一致；本帧内 addCallback 的回调 visibility 修复；修复后无副作用（contains 已 dedupe） |
-| 3 | 🟥 修 `replaceThreadScheduler` 激进换源 → 非破坏式 | 6 行 | 中 | 与 vendor B `setProvider` 语义对齐；单元测试可直接验证"换源后下帧立即到" |
-| 4 | 🟡 回移 `addAnimationFrameCallback(cb, delayMs)` 重载 | 15 行 + 5 行单测 | 中 | 为未来复刻 B 路径铺路；同步修 `removeCallback` 加 `mDelayedCallbackStartTime.remove`（⑤） |
-| 5 | 🟢 加 `getAnimationCount` / `animationCount` `@JvmStatic` 暴露 | 3 行 | 中 | dumpsys / log 工具调用面闭合 |
-| 6 | 🟢 修 `cleanUpList` reverse loop 对齐 vendor（高阶函数 → 手写） | 4 行 | 低 | 形式问题，性能无差；可作为"教学"意义保留 |
-| 7 | 🟢 加 `TickScheduler.onNewCallbackAdded` 默认空方法 + AnimationHandler 调用点 | 5 行 | 低 | vendor 也是空实现，但是接口最小化原则 |
+| 1 | ⚠️未修复 🟥 修 `installThreadScheduler` silent early return → fail-loud | 5 行 + 单测 | 高 | 三处静默失败是隐藏陷阱；测试覆盖率为 0。改为 `throw IllegalStateException` 比 silent 安全 |
+| 2 | ✅已修复（60bd048）🟥 修 `doAnimationFrame` 快照 size → 活取 size | 3 行 + 5 行单测 | 高 | 与 vendor A/B 一致；本帧内 addCallback 的回调 visibility 修复；修复后无副作用（contains 已 dedupe） |
+| 3 | ⚠️未修复（6 行 ≤30 行内可改；本批不修）🟥 修 `replaceThreadScheduler` 激进换源 → 非破坏式 | 6 行 | 中 | 与 vendor B `setProvider` 语义对齐；单元测试可直接验证"换源后下帧立即到" |
+| 4 | ⚠️未修复（依赖 C3；保持简化）🟡 回移 `addAnimationFrameCallback(cb, delayMs)` 重载 | 15 行 + 5 行单测 | 中 | 为未来复刻 B 路径铺路；同步修 `removeCallback` 加 `mDelayedCallbackStartTime.remove`（⑤） |
+| 5 | ⚠️未修复（3 行；本批不修因无 Java 调用面）🟢 加 `getAnimationCount` / `animationCount` `@JvmStatic` 暴露 | 3 行 | 中 | dumpsys / log 工具调用面闭合 |
+| 6 | ✔️保持简化 🟢 修 `cleanUpList` reverse loop 对齐 vendor（高阶函数 → 手写） | 4 行 | 低 | 形式问题，性能无差；可作为"教学"意义保留 |
+| 7 | ✔️保持简化 🟢 加 `TickScheduler.onNewCallbackAdded` 默认空方法 + AnimationHandler 调用点 | 5 行 | 低 | vendor 也是空实现，但是接口最小化原则 |
 
-### B. 建议保持简化的（成本 > 收益 / 复刻 ROI 低）
+### B. ✔️已保持简化（成本 > 收益 / 复刻 ROI 低）
 
 | # | 项 | 保留理由 |
 |---|---|---|
