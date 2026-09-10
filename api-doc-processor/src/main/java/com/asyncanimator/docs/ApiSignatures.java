@@ -57,12 +57,13 @@ final class ApiSignatures {
         String constraints = bounds(declaration.getTypeParameters());
         String prefix = modifiers(declaration);
         if (declaration instanceof KSClassDeclaration type) {
+            if (type.getClassKind() == ClassKind.ENUM_ENTRY) return name;
             String kind = switch (type.getClassKind()) {
                 case INTERFACE -> "interface";
                 case OBJECT -> "object";
                 case ENUM_CLASS -> "enum class";
                 case ANNOTATION_CLASS -> "annotation class";
-                case ENUM_ENTRY -> throw new IllegalArgumentException("Enum entries are not supported API declarations");
+                case ENUM_ENTRY -> throw new IllegalStateException("Enum entry was already rendered");
                 default -> "class";
             };
             String parents = list(type.getSuperTypes()).stream().map(ApiSignatures::type)

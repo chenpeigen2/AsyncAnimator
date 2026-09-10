@@ -39,6 +39,7 @@ class AsyncValueAnimator : ValueAnimator() {
      * 业务监听注册与主线程派发容器，不等同于平台 Animator 自带的原生监听集合。
      * 最终释放会清空其代次和注册项，宿主不应在释放后直接借此容器重新注册。
      */
+    @PublicApi
     val asyncAnimCallbacks = AsyncAnimCallbacks()
 
     private val isEnd = AtomicBoolean(false)
@@ -165,6 +166,8 @@ class AsyncValueAnimator : ValueAnimator() {
     @PublicApi
     fun removeAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.removeListener(l) }
 
+    /** 浮点动画工厂入口容器；创建不启动动画，返回实例遵守对应工厂的线程契约。 */
+    @PublicApi
     companion object {
 
         /**

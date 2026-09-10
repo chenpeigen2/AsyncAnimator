@@ -1,9 +1,12 @@
 package com.asyncanimator.core
 
+import com.asyncanimator.api.PublicApi
+
 /**
  * 按线程维护嵌套区段的轻量诊断工具，输出到 stderr。
  * 不是平台 Trace 或 Perfetto 接口，不能据此推断系统绘制或屏幕呈现时序。
  */
+@PublicApi
 object Trace {
 
     /**

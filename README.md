@@ -7,7 +7,7 @@
 ## 当前状态
 
 - **39/39 份 review 已按顺序验收**：适用建议已实现并验证，其余逐项说明不采纳或保留的理由。完成的是本地建议验收，不是完整 OPPO 系统移植。
-- **60 个测试类、527 个独立用例**：库 498 + Demo 6 + API 生成器 23；2026-09-10 库与 Demo 的 Debug/Release 四组及生成器测试通过。
+- **61 个测试类、540 个独立用例**：库 501 + Demo 6 + API 生成器 33；2026-09-10 库与 Demo 的 Debug/Release 四组及生成器测试通过。
 - **12 个 Demo 页面**：区分真实库接线和 Canvas 概念演示，不把动画计算间隔当屏幕呈现 FPS。
 - **未验证范围仍保留**：设备/Perfetto、干净 SDK 环境复现及 release 压缩/签名；Lint 因缺少离线依赖未完成；本次 Release AAR 验证同样受依赖下载阻塞。
 
@@ -52,13 +52,13 @@ AsyncAnimator/
 
 ## 对外 API 注解与自动文档
 
-使用`@PublicApi`显式标记对外声明，编译时由KSP收集签名及中文KDoc；仅标记的声明进入文档，类型标记不自动包含全部成员。误标非公开声明或缺少中文注释会导致生成失败。
+使用 `@PublicApi` 显式标记对外声明，编译时由 KSP 收集签名及中文 KDoc。当前覆盖 **30 个源码文件、389 个公开声明**，不再限于最初的 10 项示例。全库扫描会拒绝新增公开 API 漏标，类型上的标记不自动替成员补标；误标非公开声明或缺少中文注释也会导致生成失败。
 
 ```powershell
 .\gradlew.bat :lib:generatePublicApiDocs
 ```
 
-文档输出到`lib/build/docs/public-api/debug/public-api.md`和`release/public-api.md`，正常的对应变体Kotlin编译也会自动生成。初始标记范围、支持的声明类型与维护要求见[说明](docs/public-api.md)。
+文档输出到`lib/build/docs/public-api/debug/public-api.md`和`release/public-api.md`，正常的对应变体Kotlin编译也会自动生成。完整覆盖范围、内部实现排除边界与维护要求见[说明](docs/public-api.md)。
 
 ## 库实现与线程模型
 
@@ -192,16 +192,16 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 ### 全量验证结果
 
-以下来自 2026-09-10 对外 API 文档功能接入后的完整测试重跑及 XML 核对。此前逐类补测覆盖 42 个手写源码文件、74 个命名类型；本次另增 `PublicApi` 注解及文档产物测试。接口与私有嵌套类型通过真实消费者验证，不机械要求一类对应一个 Test 文件。
+以下来自 2026-09-10 对外 API 文档功能接入后的完整测试重跑及 XML 核对。此前逐类补测覆盖 42 个手写源码文件、74 个命名类型；本轮已将公开源码 API 文档补全为 389 项，增加全库漏标编译检查与跨模块文档回归。接口与私有嵌套类型通过真实消费者验证，不机械要求一类对应一个 Test 文件。
 
 | 范围 | 测试类 | 独立用例 | 验证结果 |
 |---|---:|---:|---|
-| lib | 56 | 498 | Debug/Release 各 498 通过，0 失败/错误/跳过 |
+| lib | 56 | 501 | Debug/Release 各 501 通过，0 失败/错误/跳过 |
 | demo | 1 | 6 | 各 6 通过，0 失败/错误/跳过 |
-| api-doc-processor | 3 | 23 | JVM 测试全部通过，0 失败/错误/跳过 |
-| 合计 | 60 | 527 | 同一批用例，不按构建变体翻倍 |
+| api-doc-processor | 4 | 33 | JVM 测试全部通过，0 失败/错误/跳过 |
+| 合计 | 61 | 540 | 同一批用例，不按构建变体翻倍 |
 
-本次 Demo Debug APK 构建成功，**127/127 个 Gradle 任务执行，耗时 5 分 42 秒**；已解包确认不包含 API Markdown 或 KSP 处理器。文档生成命令另经两次执行验证，第二次复用配置缓存。API 功能验证见[说明](docs/public-api.md)，本地忽略日志为 `.gradle/api-doc-verified-build.log`，不随仓库分发。此前[逐类补测清单](docs/testing/2026-09-10-lib-class-test-plan.md)与 39 份 review 保留为独立历史证据。
+本次 Demo Debug APK 构建成功，**127/127 个 Gradle 任务执行，耗时 15 分 43 秒**；已解包确认不包含 API Markdown 或 KSP 处理器。文档生成命令另经两次执行验证，第二次复用配置缓存。API 功能验证见[说明](docs/public-api.md)，本地忽略日志为 `.gradle/api-coverage-final-build.log`，不随仓库分发。此前[逐类补测清单](docs/testing/2026-09-10-lib-class-test-plan.md)与 39 份 review 保留为独立历史证据。
 
 复跑完整验证（依赖已缓存时）：
 
@@ -216,7 +216,7 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 ### 逐类测试覆盖明细
 
-库当前共有 **56 个测试类、498 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
+库当前共有 **56 个测试类、501 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
 
 <details>
 <summary>展开库测试类、用例数与覆盖内容</summary>
@@ -278,18 +278,18 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 | `PropertySetterTest` | 5 | 即时写入不读取起点、NO_ANIM/default、null/非有限透传及异常 |
 | `RecordInputInterpolatorTest` | 5 | 输入而非输出记录、默认/重复/非有限透传、抛错前记录及实例隔离 |
 | `RectSpringConfigTest` | 9 | 六轴参数/非法值、类型/设备/倍率策略、Tracking及Values/Frame防御副本 |
-| `PublicApiDocumentationTest` | 4 | 实际变体文档筛选/重载、中文契约/签名/相对路径、注解二进制保留、库资源排除文档 |
+| `PublicApiDocumentationTest` | 7 | 全模块/公开类型与成员、构造参数属性/枚举、内部实现排除、契约/重载、二进制保留与资源隔离 |
 | `SpringProjectionTest` | 6 | 独立数值积分对照四种阻尼、零时间/平衡、组合一致性/平移/收敛与force不变 |
 
 </details>
 
 Demo 模块另有 1 个纯 JVM 测试类，`TraceLogRedirectorTest`：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
 
-API 生成器另有 `ApiSignaturesTest`（11 项）、`ApiMarkdownTest`（4 项）、`PublicApiProcessorTest`（8 项），报告位于 `api-doc-processor/build/reports/tests/test/`。
+API 生成器另有 `ApiSignaturesTest`（12 项）、`ApiMarkdownTest`（5 项）、`PublicApiProcessorTest`（9 项）、`PublicApiCoverageTest`（7 项），报告位于 `api-doc-processor/build/reports/tests/test/`。
 
 测试数不是行覆盖率或分支覆盖率；仓库没有配置覆盖率阈值，本轮也未运行覆盖率工具。库/Demo 的 XML 与 HTML 报告分别位于各模块的 `build/test-results/test{Debug,Release}UnitTest/` 和 `build/reports/tests/test{Debug,Release}UnitTest/`。
 
-Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 498 个用例中，不额外累计。
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 501 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 

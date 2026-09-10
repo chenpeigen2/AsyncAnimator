@@ -1,71 +1,91 @@
 # 对外 API 标记与编译期文档
 
-## 标记规则
+## 范围与完整性
 
-`com.asyncanimator.api.PublicApi` 是显式对外 API 标记。仅带该注解的声明进入生成文档，**类型上的注解不会自动开放全部成员**。声明仍须具有 Kotlin `public` 可见性；注解不改变访问控制、不替代二进制兼容性检查，也不自动添加 R8 保留规则。
+`com.asyncanimator.api.PublicApi` 标记本库可公开访问的源码 API，编译时由 KSP 生成 Markdown。此前仅标记 `AsyncValueAnimator` 的 10 项是不完整的示例范围，现已完成整个 `lib/src/main/java` 的公开声明扫描。
+
+当前收录 **30 个源码文件、389 个声明**：47 个类型（含伴生对象）、18 个显式公开构造器、154 个函数、145 个属性和 25 个枚举项。它们不是 389 个互不相关的功能，也不是 JVM 方法数量；重载、属性与类型分别计数。
+
+| 包 | 声明数 | 覆盖内容 |
+|---|---:|---|
+| `com.asyncanimator.anim` | 162 | 动画包装、监听、聚合器、矩形驱动接口、配置及帧快照 |
+| `com.asyncanimator.control` | 124 | 控制器及默认实现、场景、状态枚举、远程工厂接口、超时监听 |
+| `com.asyncanimator.manager` | 36 | 本地配置、订阅、快照与管理器公开开关 |
+| `com.asyncanimator.thread` | 23 | 执行器、共享线程入口及公开类型 |
+| `com.asyncanimator.seq` | 21 | 序列助手、默认实现与时间戳 |
+| `com.asyncanimator.core` | 9 | `LogUtils` 与 `Trace` 类型；不包含 internal Trace 操作 |
+| `com.asyncanimator.playback` | 8 | nullable 监听接口及适配器；不包含 internal 播放内核 |
+| `com.android.launcher3` | 5 | 控制器签名引用的本地目标描述符；不是平台远程动画实现 |
+| `com.asyncanimator.api` | 1 | `PublicApi` 注解自身 |
+
+统计包含**源码显式声明**的公开成员，即使它们是覆盖父类的方法；不展开未重写的继承成员、隐式默认构造器、数据类 `copy` / `componentN` 或 `@JvmOverloads` 额外生成的 JVM 重载。生成成员由所属类型的语言契约与 KDoc 说明，不伪造独立源码标记。
+
+`internal`、`private`、`protected`、局部声明和不可公开访问的外层类型下的声明不收录。`AnimationHandler`、`TickScheduler`、`PendingAnimation`、`AnimatorPlaybackController` 等仍为内部实现；本次没有改变可见性或扩大运行时访问权限。
+
+## 标记方式
 
 ```kotlin
 import com.asyncanimator.api.PublicApi
 
-/** 应用显式提交的动画请求；不自行切换线程。 */
+/** 请求参数快照；构造不启动动画，属性可跨线程读取。 */
 @PublicApi
-class AnimationRequest {
-    /** 返回请求的描述，调用方可在任意线程读取返回字符串。 */
+data class AnimationRequest @PublicApi constructor(
+    /** 请求的诊断名称；调用方负责保持业务含义一致。 */
+    @property:PublicApi
+    val name: String
+) {
+    /** 返回该请求的诊断名称，不修改状态。 */
     @PublicApi
-    fun describe(): String = "animation"
+    fun describe(): String = name
 }
 ```
 
-支持类型（类、接口、对象）、函数、构造器、属性和类型别名。函数重载须分别标记；不包含继承方法、数据类生成方法或 `@JvmOverloads` 生成的额外 JVM 重载。属性使用 `@PublicApi`，而不是 `@get:` / `@set:`；文档记录属性类型及非公开 setter。
+- 类型、函数重载、显式公开构造器、属性、类型别名、枚举项分别标记；类型上的标记不会自动替所有成员补标。
+- 构造参数中的公开属性推荐使用 `@property:PublicApi`，枚举项直接使用 `@PublicApi`；不使用 `@get:` / `@set:` 标记替代属性契约。
+- 每项提供中文 KDoc；构造器可复用所属类型的构造契约，其他成员有各自的中文说明。
+- 注解采用 `BINARY` 保留策略，不是运行时反射注册表，不提供 R8 保留规则或二进制兼容性保证。
 
-本次先标记 `AsyncValueAnimator` 的类型、执行器属性、生命周期与监听入口、两个浮点工厂，共10个声明。其他现有 `public` 声明没有被批量升级为已标记 API。
+## 防漏机制
+
+库的 KSP 配置启用 `publicApi.requireComplete=true`。处理器独立遍历**全部手写源码**，而不只查询已有注解：新增公开类型、函数、属性、构造器或枚举项漏标，会产生 `Public API is missing @PublicApi` 编译错误。公开属性不会因为主构造器为 `internal` 而被漏掉。
+
+已有标记被删除但声明仍公开，也会失败。只有删除声明本身或按实际设计调整可见性后，才会从文档移除；不能为绕过文档校验随意把接口改为 `internal`。生成的 `BuildConfig`、外部依赖与合成成员不在该校验范围内。
+
+误标非公开声明、缺少中文 KDoc 或最终无法解析类型时同样失败。**仅使用成功构建的文档**，失败构建可能留下上一次成功产物。
+
+处理器未开启完整性选项时仍支持显式选择模式和零项输出，但本库没有使用该模式，不能据此声称漏标是正常行为。
 
 ## 编译与输出
 
 ```powershell
-# 单独生成两个变体的文档（运行 KSP，不要求打包 APK）
+# 单独生成 Debug 与 Release 文档
 .\gradlew.bat :lib:generatePublicApiDocs
 
-# 普通 Kotlin 编译也会自动生成对应变体文档
+# 正常 Kotlin 编译也自动生成对应变体文档
 .\gradlew.bat :lib:compileDebugKotlin
 .\gradlew.bat :lib:compileReleaseKotlin
 
-# 生成器测试 + lib 回归/文档产物测试；lib:test 已依赖生成器测试
+# 生成器测试 + 库回归及实际文档产物测试
 .\gradlew.bat :lib:test
 ```
 
-可阅读的输出：
+输出文件：
 
 - `lib/build/docs/public-api/debug/public-api.md`
 - `lib/build/docs/public-api/release/public-api.md`
 
-KSP原始资源位于`lib/build/generated/ksp/<variant>/resources/public-api.md`。这些文件是构建产物，不提交Git；`clean`后重新生成。文档在库 Java 资源处理阶段排除，并配置最终打包排除项；使用方无须额外设置。处理器仅在构建期依赖，不进入库运行时。**只使用成功构建后的文档**，失败构建可能保留上一次成功产物。
+文档首先汇总各源码目录的声明数，再列出限定名、签名、中文 KDoc 和源码相对路径/行号。重载、泛型、可空性、扩展接收者、变长参数及非公开 setter 均保留；按名称和签名稳定排序，不写入机器绝对路径或时间戳。
 
-文档包含限定名、签名、中文KDoc和源码相对路径/行号；按限定名和签名稳定排序，保留重载、可空性、泛型、扩展接收者、变长参数和默认值存在性。KSP不提供默认表达式，因此`= …`仅表示“有默认值”，不能作为可执行的默认代码。KDoc正文（含示例和标签）原样保留，不解析其链接为网页跳转。时间戳与机器绝对路径不写入文档。
+KSP 不提供参数默认表达式，`= …` 仅表示存在默认值；枚举项记录名称和契约，不把其构造实参伪造成可调用签名。KDoc 正文和标签保留，不将其中的链接转换为导航网页。输出是 Markdown，不是 Dokka HTML 站点。
 
-## 编译期校验
+KSP 原始文件位于 `lib/build/generated/ksp/<variant>/resources/public-api.md`，通过 Sync 任务复制到文档目录。生成文档不提交 Git，`clean` 后重新生成；库 Java 资源处理阶段排除 Markdown，使用方不需要额外配置打包排除项。
 
-- 标记的声明或其外层类型为`private` / `internal` / `protected`时，生成任务失败。
-- 局部声明、无法支持的声明类型或没有源码位置的声明不能作为文档API。
-- 每条API必须有中文KDoc；构造器可复用所属类型的构造契约。其他成员不自动继承类注释。
-- 无法解析的类型延后至下一轮；最终仍未解析则失败，不生成不完整签名。
-- 删除标记或修改注释会重新生成聚合文档；删除全部标记时输出“API声明数：0”，而不是保留旧目录。
+## 维护与验证
 
-## 构建实现与维护
+`api-doc-processor/` 是独立的构建期 Java/KSP 模块，不作为运行时依赖。维持项目 Kotlin `2.0.21` 与 KSP `2.0.21-1.0.28`，没有升级 AGP 或 SDK。首次构建需准备依赖缓存，再使用 `--offline`。
 
-`api-doc-processor/`为独立Java/JVM KSP处理器模块：Java实现避免为构建工具另行引入Kotlin编译插件，业务库仍使用Kotlin。`META-INF/services`注册处理器，KSP负责解析真正的注解符号（包括别名导入），不使用正则表达式猜测源码声明。
+新增 API 时更新源码、中文 KDoc 及对应测试。完整性检查负责发现未标记声明；`PublicApiDocumentationTest` 另外检查所有模块和公开顶层类型、代表性成员、构造参数属性、枚举、重载及内部实现排除，不能再仅断言“固定 10 项”。
 
-项目固定Kotlin `2.0.21`，配套KSP `2.0.21-1.0.28`，没有为此功能升级AGP、SDK或库运行时依赖。版本在`gradle/libs.versions.toml`集中管理；升级Kotlin时需同步确认KSP匹配并重跑生成/回归测试。首次构建需要解析新增KSP依赖，缓存准备好后可加`--offline`。
+本轮完整性扩充（2026-09-10）已完成生成器 33 项、库 Debug/Release 各 501 项、Demo Debug/Release 各 6 项测试，均无失败、错误或跳过。实际编译验证了新文件/新成员/公开构造参数属性/枚举项漏标，以及已有标记删除的失败路径，补标并恢复后文档为 389 项。42 个原库实现文件经过 Kotlin PSI 语法树词法对比，排除注解、注释、导入排序和可选构造器关键字后实现一致。完整构建 127 个任务执行成功；文档与打包隔离的最终核对见 README。源码注解和文档测试不替代真机帧时序、Perfetto、系统转场或完整 Lint 验证。
 
-新增API时同时更新实现、中文KDoc和对应测试；在`PublicApiDocumentationTest`中更新显式API范围断言。生成器测试覆盖签名、可见性、重载、缺失注释、多轮处理和稳定输出；这不替代设备帧时序或系统转场验证。
-
-## 本次验证（2026-09-10）
-
-- 生成器 3 个测试类、23 项测试通过；库 Debug/Release 各 498 项、Demo Debug/Release 各 6 项通过，均无失败、错误或跳过。
-- 实际 KSP 编译验证了注解别名导入、泛型/构造器/属性/类型别名/扩展重载；修改 KDoc 后文档刷新，删除全部标记后输出 0 项，恢复后输出 10 项。
-- 非公开外层类型中的标记和缺少中文 KDoc 均触发预期编译失败；Debug/Release 生成文档内容一致。
-- 完整重跑 127 个 Gradle 任务并构建 Demo Debug APK；解包确认不含文档或生成器，库编译 JAR 保留 `PublicApi` 注解。新增库资源排除回归测试，避免向使用方泄漏 Markdown。
-- 默认配置缓存模式下文档命令连续执行成功，第二次复用配置缓存。
-- 构建与测试期间核对源码及构建配置哈希，避免把验证中的源码变更当作已验证结果。未执行真机、Perfetto 或本功能的完整 Lint 验证。
-
-额外的 Release AAR 打包验证未完成：离线环境缺少 `intellij-core` / `kotlin-compiler` 31.9.0，联网补充依赖时下载反复重试，等待超过 12 分钟后主动停止。未关闭注解提取或 Lint 检查来绕过问题；不能据此宣称 AAR 验证通过。
+Release AAR 打包此前因离线缺少 `intellij-core` / `kotlin-compiler` 31.9.0、联网下载反复重试而未完成；没有关闭注解提取或 Lint 来绕过。本轮不将该历史阻塞状态改写为已通过。

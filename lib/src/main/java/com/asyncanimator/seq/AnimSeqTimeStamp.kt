@@ -1,6 +1,7 @@
 package com.asyncanimator.seq
 
 import android.os.SystemClock
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 
 /**
@@ -8,6 +9,7 @@ import com.asyncanimator.core.LogUtils
  * null 表示未记录，零是有效时刻；写入和清理使用对象锁，单字段通过 volatile 发布。
  * 连续读取多个 gap 不构成跨字段原子快照，也不自动与其他进程同步。
  */
+@PublicApi
 object AnimSeqTimeStamp {
 
     @Volatile
@@ -43,6 +45,7 @@ object AnimSeqTimeStamp {
      * 在对象锁内读取一次 clock，记录最近完成 Recents 的时刻，供 500ms 窗口判断使用。
      * 零毫秒是有效事件时间；clock 失败会向外传播且不会抹掉旧值。
      */
+    @PublicApi
     @Synchronized
     fun updateLastRecentFinishTime() {
         lastRecentFinishTime = clock()

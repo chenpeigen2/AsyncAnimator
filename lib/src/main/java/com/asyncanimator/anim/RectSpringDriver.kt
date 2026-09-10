@@ -7,6 +7,7 @@ import androidx.dynamicanimation.animation.FloatValueHolder
 import androidx.dynamicanimation.animation.FrameCallbackScheduler
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.AnimationHandler
 import com.asyncanimator.core.TickScheduler
 import kotlin.math.max
@@ -18,6 +19,7 @@ import kotlin.math.min
  * 圆角必须有限非负，透明度须在0到1且有限，初始六轴速度须有限；构造本身不启动或获取帧源。
  * 仅currentFrame作为volatile不可变快照供跨线程读取，其他活动运行操作须由所属线程串行调用。
  */
+@PublicApi
 class RectSpringDriver internal constructor(
     startRect: RectF,
     targetRect: RectF,
@@ -38,6 +40,7 @@ class RectSpringDriver internal constructor(
      * startRect/targetRect立即复制校验；配置、圆角、透明度和速度决定初始物理状态，onUpdate在启动线程接收帧。
      * 帧源在start时才解析，调用方若操作View必须自行满足UI线程约束。
      */
+    @PublicApi
     @JvmOverloads constructor(
         startRect: RectF,
         targetRect: RectF,
@@ -60,12 +63,14 @@ class RectSpringDriver internal constructor(
      * 最近发布的不可变帧，首次start前为null，初始化、重定向和tick时更新，外部只读。
      * 允许跨线程读取，结束或dispose后仍保留最后快照；读取不会触发onUpdate或推进弹簧。
      */
+    @PublicApi
     @Volatile var currentFrame: RectSpringFrame? = null
         private set
     /**
      * 声明六轴驱动可在动画线程使用统一帧源和AndroidX调度器，恒返回true。
      * 这不保证onUpdate中的任意业务写入都线程安全，调用方仍需约束View等线程绑定对象。
      */
+    @PublicApi
     override val supportsAnimationThread: Boolean get() = true
 
     init {
@@ -214,6 +219,7 @@ class RectSpringDriver internal constructor(
      * 已释放或已运行时抛出状态异常；初始化/订阅失败会尝试静默清理本轮，清理成功后重抛原Throwable，清理失败不另行合并。
      * onActualEnd在运行真正结束清理后由所有者线程调用；onUpdate也在此线程执行，View写入需调用方自行安排。
      */
+    @PublicApi
     override fun start(onActualEnd: () -> Unit) {
         check(!disposed) { "Rect spring driver is disposed" }
         check(current == null) { "Rect spring driver is already running" }
@@ -243,22 +249,26 @@ class RectSpringDriver internal constructor(
      * 在活动运行所属线程登记首个取消请求，无运行时无操作，跨线程操作会失败。
      * 不立即停轴或调用结束钩子，下一次tick处理物理清理；上层负责即时逻辑取消通知。
      */
+    @PublicApi
     override fun cancel() { ownedRun()?.let { if (it.stop == null) it.stop = Stop.CANCEL } }
     /**
      * 在活动运行所属线程登记首个到终点请求，不覆盖先前取消或结束请求。
      * 下一次tick会发布终点快照并清理；无运行时无操作，本次返回不保证已提交最终帧。
      */
+    @PublicApi
     override fun skipToEnd() { ownedRun()?.let { if (it.stop == null) it.stop = Stop.END } }
     /**
      * 在活动运行所有者线程清空物理结束钩子，无运行时无操作。
      * 不停止弹簧、不移除帧订阅，也不改变当前帧快照。
      */
+    @PublicApi
     override fun clearEndCallback() { ownedRun()?.callback = null }
 
     /**
      * 在运行所有者线程永久标记释放并立即静默清理活动运行，不等待下一次帧信号。
      * 取消各轴、移除统一帧回调并执行已排队清理回调；不调用实际结束钩子，后续start会失败。
      */
+    @PublicApi
     override fun dispose() {
         val run = ownedRun()
         disposed = true
@@ -269,6 +279,7 @@ class RectSpringDriver internal constructor(
      * 先校验并复制目标矩形、校验非负有限圆角，再在所有者上反转当前运行。
      * 按打开策略选择尺寸坐标和弹簧参数，透明度目标置1；无运行或已经请求停止时不重定向。
      */
+    @PublicApi
     override fun reverseToOpen(target: RectF, endRadius: Float) {
         retarget(checkedRect(target), checkedRadius(endRadius), reverse = true)
     }
@@ -277,6 +288,7 @@ class RectSpringDriver internal constructor(
      * 校验并复制新的正尺寸目标，在所有者线程保留六轴速度重设终点。
      * endRadius为空保留当前圆角目标，否则要求非负有限；普通重定向不改变宽/高模式、弹簧策略或既有反转状态。
      */
+    @PublicApi
     @JvmOverloads fun updateEndTargetRectF(target: RectF, endRadius: Float? = null) {
         retarget(checkedRect(target), endRadius?.let(::checkedRadius), reverse = false)
     }
@@ -327,6 +339,7 @@ class RectSpringDriver internal constructor(
      * 间隔须非负；根据系统动画倍率缩放预测时间，并保留延迟轴、已结束轴和首帧预热的当前状态。
      * END请求投影到终点，CANCEL保留当前值；假设目标/策略不变，预测不保证未来真实帧时序一致。
      */
+    @PublicApi
     @JvmOverloads fun copyNextAnimState(deltaMillis: Long = 16): RectSpringFrame {
         require(deltaMillis >= 0)
         val run = requireNotNull(ownedRun()) { "Prediction requires an active run" }
@@ -367,6 +380,7 @@ class RectSpringDriver internal constructor(
      * 新目标须是有限正尺寸矩形，deltaMillis非负且当前运行存在；尺寸坐标模式变化时用导数公式转换速度。
      * 不会取消本驱动，调用方应释放旧句柄再启动返回驱动；新的onUpdate属于后继运行的所有者线程。
      */
+    @PublicApi
     @JvmOverloads fun createContinuation(
         target: RectF, deltaMillis: Long = 16, onUpdate: (RectSpringFrame) -> Unit
     ): RectSpringDriver {

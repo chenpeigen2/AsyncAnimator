@@ -19,6 +19,11 @@ public class PublicApiProcessorTest {
 
     /** 构建服务替身会记录文件名和聚合依赖，模拟每次编译独立的输出目录。 */
     private PublicApiProcessor processor() {
+        return processor(false);
+    }
+
+    /** 按库构建选项启用完整性校验，默认模式仍只校验显式标记。 */
+    private PublicApiProcessor processor(boolean requireComplete) {
         KSPLogger logger = (KSPLogger) Proxy.newProxyInstance(KSPLogger.class.getClassLoader(),
             new Class<?>[]{KSPLogger.class}, (self, method, args) -> {
                 if (method.getName().equals("error")) errors.add((String) args[0]);
@@ -37,7 +42,7 @@ public class PublicApiProcessorTest {
                 return null;
             });
         return new PublicApiProcessor(new SymbolProcessorEnvironment(
-            Map.of("publicApi.sourceRoot", ROOT.toString()), new KotlinVersion(2, 0, 21), generator, logger));
+            Map.of("publicApi.sourceRoot", ROOT.toString(), "publicApi.requireComplete", Boolean.toString(requireComplete)), new KotlinVersion(2, 0, 21), generator, logger));
     }
 
     /** 返回当前轮已解析的显式标记，并确认处理器使用注解限定名而非简单名字匹配。 */
@@ -145,4 +150,18 @@ public class PublicApiProcessorTest {
         assertEquals(0, writes);
         assertTrue(errors.get(0).contains("sourceRoot"));
     }
+    /** 严格模式从全部源码发现遗漏，即使注解查询完全为空也必须令编译失败且不输出文档。 */
+    @Test public void strictModeRejectsUnannotatedSourceApi() {
+        KSFunctionDeclaration missing = function("forgotten");
+        KSFile source = proxy(KSFile.class, Map.of("getFilePath", ROOT.resolve("Api.kt").toString(),
+            "getDeclarations", sequence(List.of(missing))));
+        Resolver resolver = proxy(Resolver.class, Map.of("getAllFiles", sequence(List.of(source)),
+            "getSymbolsWithAnnotation", sequence(List.of())));
+        PublicApiProcessor processor = processor(true);
+        processor.process(resolver);
+        processor.finish();
+        assertTrue(errors.stream().anyMatch(error -> error.contains("missing @PublicApi") && error.contains("forgotten")));
+        assertEquals(0, writes);
+    }
+
 }

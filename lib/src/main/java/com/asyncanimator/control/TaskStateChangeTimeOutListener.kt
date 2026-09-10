@@ -2,6 +2,7 @@ package com.asyncanimator.control
 
 import android.os.Handler
 import android.os.Looper
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import java.util.concurrent.atomic.AtomicReference
 
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 动作和释放通知分别原子消费，定时器在主线程执行、事件在调用线程执行；无主Looper时仅保留事件入口。
  * 不校验duration的正负，调度行为委托Handler；释放不等待已开始的动作，异常不被静默吞掉。
  */
+@PublicApi
 class TaskStateChangeTimeOutListener internal constructor(
     private val type: Type,
     duration: Long,
@@ -22,15 +24,23 @@ class TaskStateChangeTimeOutListener internal constructor(
      * 创建独立的一次性超时监听，不附加所有者清理动作或线程访问限制。
      * duration为Handler延迟毫秒数，构造即尝试计时；事件或定时器先到者执行option，调用方需最终dispose未消费实例。
      */
+    @PublicApi
     constructor(type: Type, duration: Long, option: () -> Unit) : this(type, duration, option, {})
 
     /**
      * 可等待的任务状态类别：特殊横屏场景退出、转场完成、应用到概览续行完成。
      * 仅同类型事件能触发该监听，类别本身不订阅系统事件，由宿主显式桥接。
      */
+    @PublicApi
     enum class Type {
+        /** 横屏特殊退出场景的事件通道；事件与定时器竞争一次性消费动作。 */
+        @PublicApi
         ON_LAND_SCAPE_SCENE_EXIT,
+        /** 转场完成事件通道；只消费本类型的待处理动作，不是平台完成信号本身。 */
+        @PublicApi
         ON_TRANSITION_FINISH,
+        /** 应用进入概览续行事件通道；由宿主事件或超时触发一次性动作。 */
+        @PublicApi
         ON_APP_TO_OVERVIEW_CONTINUATION
     }
 
@@ -68,6 +78,7 @@ class TaskStateChangeTimeOutListener internal constructor(
      * 先检查访问约束，仅type与注册类型一致时竞争消费动作，不匹配不改变定时器。
      * duration参数保留接口形状但不参与匹配或重新计时；事件动作同步在调用线程执行，异常保持可见。
      */
+    @PublicApi
     fun onTimeOut(type: Type, duration: Long) {
         checkAccess()
         if (type == this.type) {
@@ -79,6 +90,7 @@ class TaskStateChangeTimeOutListener internal constructor(
      * 先检查访问约束，再丢弃尚未消费的动作、移除定时消息并发出一次释放通知。
      * 可重复调用且不会执行挂起动作；不是执行中动作的完成屏障，已经被其他线程取得的动作仍可能运行。
      */
+    @PublicApi
     fun dispose() {
         checkAccess()
         pendingAction.set(null)

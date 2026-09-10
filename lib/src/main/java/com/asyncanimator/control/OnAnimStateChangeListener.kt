@@ -1,9 +1,12 @@
 package com.asyncanimator.control
 
+import com.asyncanimator.api.PublicApi
+
 /**
  * 可供 Kotlin 和 Java 以单方法接口使用的状态监听契约。
  * 监听器接收非空的旧/新状态及可空任务上下文；实例身份和生命周期由注册方管理。
  */
+@PublicApi
 fun interface OnAnimStateChangeListener {
 
     /**
@@ -13,5 +16,6 @@ fun interface OnAnimStateChangeListener {
      * @param runningTask 控制器当前保存的任务上下文，可为 null；监听器不取得其所有权。
      * 调用线程与异常策略由控制器决定；注销监听时应保留并传回原注册实例。
      */
+    @PublicApi
     fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?)
 }

@@ -68,6 +68,8 @@ dependencies {
 
 // 文档作为变体编译的产物生成；不引入运行时处理器依赖。
 ksp {
+    // 全库公开源码声明必须显式标记，新增 API 不能静默遗漏文档。
+    arg("publicApi.requireComplete", "true")
     arg("publicApi.sourceRoot", layout.projectDirectory.dir("src/main/java").asFile.absolutePath)
 }
 

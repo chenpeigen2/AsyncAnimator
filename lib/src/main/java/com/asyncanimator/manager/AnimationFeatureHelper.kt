@@ -1,8 +1,9 @@
 package com.asyncanimator.manager
 
-import java.util.Collections
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.Executors
+import java.util.Collections
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
@@ -11,6 +12,7 @@ import kotlin.reflect.KProperty
  * 标量支持单字段可见性，批量 snapshot 使用同一锁；列表以不可修改的整体快照替换。
  * 不接入远程服务，不自动控制动画线程，也不自动重建管理器工厂。
  */
+@PublicApi
 object AnimationFeatureHelper {
 
     private val lock = Any()
@@ -35,15 +37,43 @@ object AnimationFeatureHelper {
      * @property onePxCardDisableList 按卡片标识禁用单像素策略的快照列表。
      * @property adaptiveAnimationEnabled 宿主明确提交的自适应动画策略。
      */
-    data class Snapshot(
-        val asyncEnable: Int, val rtUnlockEnable: Int, val multiAppBlockEnable: Int,
-        val iconBlurEnable: Int, val onePxEnable: Int, val interruptThreshold: Float,
-        val limtSize: Int, val onePxPkgDisableList: List<String>, val onePxCardDisableList: List<Int>,
+    @PublicApi
+    data class Snapshot @PublicApi constructor(
+        /** 异步配置值，负值表示未配置，零可表示显式禁用。 */
+        @property:PublicApi
+        val asyncEnable: Int,
+        /** 实时解锁相关配置值，由宿主解释。 */
+        @property:PublicApi
+        val rtUnlockEnable: Int,
+        /** 多应用阻断相关配置值，由宿主解释。 */
+        @property:PublicApi
+        val multiAppBlockEnable: Int,
+        /** 图标模糊配置值。 */
+        @property:PublicApi
+        val iconBlurEnable: Int,
+        /** 单像素策略配置值。 */
+        @property:PublicApi
+        val onePxEnable: Int,
+        /** 中断阈值，自适应策略开启时配置入口将其设为 1。 */
+        @property:PublicApi
+        val interruptThreshold: Float,
+        /** 宿主提供的大小限制数值，容器不解释单位。 */
+        @property:PublicApi
+        val limtSize: Int,
+        /** 按包名禁用单像素策略的快照列表。 */
+        @property:PublicApi
+        val onePxPkgDisableList: List<String>,
+        /** 按卡片标识禁用单像素策略的快照列表。 */
+        @property:PublicApi
+        val onePxCardDisableList: List<Int>,
+        /** 宿主明确提交的自适应动画策略。 */
+        @property:PublicApi
         val adaptiveAnimationEnabled: Boolean
     ) {
         /**
          * 从该快照自身的自适应标志推导半径动画开关，不读取之后变化的全局配置。
          */
+        @PublicApi
         val radiusAnimationEnable: Boolean get() = !adaptiveAnimationEnabled
     }
 
@@ -51,6 +81,7 @@ object AnimationFeatureHelper {
      * 在配置锁内取得全部标量、列表及自适应标志的一致快照。
      * 经更新入口发布的列表已经防御复制并不可修改，因此可共享其引用；连续读单独属性不能替代这一原子快照。
      */
+    @PublicApi
     fun snapshot(): Snapshot = synchronized(lock) {
         Snapshot(asyncEnable, rtUnlockEnable, multiAppBlockEnable, iconBlurEnable, onePxEnable,
             interruptThreshold, limtSize, onePxPkgDisableSnapshot, onePxCardDisableSnapshot,
@@ -62,6 +93,7 @@ object AnimationFeatureHelper {
      * 有主Handler时通知排入主线程普通消息，无Handler降级时就地执行；回调应读取最新snapshot，而非假设对应历史更新负载。
      * 关闭句柄会取消未开始的该订阅通知；已经取走并开始执行的回调无法撤回，业务执行时不持有配置锁。
      */
+    @PublicApi
     fun addRemoteUpdateListener(callback: () -> Unit): AutoCloseable {
         val registration = Registration(callback)
         synchronized(lock) { registrations.add(registration) }
@@ -77,6 +109,7 @@ object AnimationFeatureHelper {
      * 在配置锁内按引用身份移除同一 callback 的全部注册，并清空其可调用引用。
      * 已经排队但尚未取得动作的通知将跳过这些条目；仅想释放一次注册时应关闭对应句柄。
      */
+    @PublicApi
     fun removeRemoteUpdateListener(callback: () -> Unit) = synchronized(lock) {
         registrations.removeAll {
             if (it.callback === callback) {
@@ -93,6 +126,7 @@ object AnimationFeatureHelper {
      * 清空所有订阅及其动作引用，供全局配置所有者结束时释放监听。
      * 保留已发布配置并允许以后重新注册；单个页面应关闭自己的句柄，而非调用此全局清理入口。
      */
+    @PublicApi
     fun onDestroy() = synchronized(lock) {
         registrations.forEach { it.callback = null }
         registrations.clear()
@@ -123,6 +157,7 @@ object AnimationFeatureHelper {
      * 更新宿主提供的自适应策略并发布通知，开启时把中断阈值强制设为 1。
      * 关闭策略不会恢复此前阈值，需后续配置更新显式提供；重复设置也会触发通知，不自动查询系统策略。
      */
+    @PublicApi
     fun setAdaptiveAnimationEnabled(enabled: Boolean) = publish {
         adaptiveAnimationEnabled = enabled
         if (enabled) interruptThreshold = 1.0f
@@ -132,48 +167,56 @@ object AnimationFeatureHelper {
      * 返回当前自适应策略的反值，表示是否允许半径动画。
      * 只读取已发布标志，不修改阈值或通知监听器；需要与其他配置一致读取时使用 snapshot。
      */
+    @PublicApi
     fun getRadiusAnimationEnable(): Boolean = !adaptiveAnimationEnabled
 
     /**
      * 异步能力配置标量，负值表示尚未配置；具体启用含义由宿主解释。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var asyncEnable by SyncedVar(lock, -1)
         private set
     /**
      * 实时解锁相关配置标量，默认-1表示未提供，容器不连接系统解锁服务。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var rtUnlockEnable by SyncedVar(lock, -1)
         private set
     /**
      * 多应用阻断策略标量，默认-1，具体策略由读取它的宿主实现。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var multiAppBlockEnable by SyncedVar(lock, -1)
         private set
     /**
      * 图标模糊策略标量，默认-1，本属性不直接创建或更新模糊效果。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var iconBlurEnable by SyncedVar(lock, -1)
         private set
     /**
      * 单像素策略标量，默认-1；只由完整配置更新写入，精简更新保留现值。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var onePxEnable by SyncedVar(lock, -1)
         private set
     /**
      * 中断阈值，默认1；自适应策略开启时更新入口强制写1，不验证宿主其他阈值范围。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var interruptThreshold by SyncedVar(lock, 1.0f)
         private set
     /**
      * 宿主大小限制配置，默认-1，容器不推测其单位或合法范围。
      * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
      */
+    @PublicApi
     var limtSize by SyncedVar(lock, -1)
         private set
 
@@ -186,16 +229,19 @@ object AnimationFeatureHelper {
     /**
      * 判断 asyncEnable 是否为非负值；显式禁用的零也属于已配置，不等同于异步功能已开启。
      */
+    @PublicApi
     val isAsyncConfigured: Boolean get() = asyncEnable >= 0
 
     /**
      * 读取最近发布的包名禁用列表；返回只读快照，不允许通过强制转换就地修改。
      */
+    @PublicApi
     val onePxPkgDisableList: List<String> get() = onePxPkgDisableSnapshot
 
     /**
      * 读取最近发布的卡片禁用列表；后续更新整体替换引用，不会修改读者已持有的旧列表。
      */
+    @PublicApi
     val onePxCardDisableList: List<Int> get() = onePxCardDisableSnapshot
 
     /**
@@ -204,6 +250,7 @@ object AnimationFeatureHelper {
      * null 列表表示保留，空列表表示清空；复制期间调用方不可并发修改输入集合。
      * 自适应策略开启时 threshold 被覆盖为 1，其余标量不在此入口校验取值范围。
      */
+    @PublicApi
     fun simulateRemoteUpdate(async: Int, rtUnlock: Int, multiApp: Int, iconBlur: Int,
                              onePx: Int, threshold: Float, limtSize: Int,
                              onePxPkgDisableList: List<String>?, onePxCardDisableList: List<Int>?) {
@@ -223,6 +270,7 @@ object AnimationFeatureHelper {
      * 使用与完整更新相同的锁和通知流程，不通过读取旧列表再回写来拼接配置，避免覆盖并发更新。
      * 自适应策略开启时忽略传入 threshold 并维持阈值 1。
      */
+    @PublicApi
     fun simulateRemoteUpdate(async: Int, rtUnlock: Int, multiApp: Int, iconBlur: Int,
                              threshold: Float, limtSize: Int) = publish {
         updateScalars(async, rtUnlock, multiApp, iconBlur, threshold, limtSize)

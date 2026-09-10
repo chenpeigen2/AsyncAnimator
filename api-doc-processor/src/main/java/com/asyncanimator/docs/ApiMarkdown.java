@@ -2,6 +2,8 @@ package com.asyncanimator.docs;
 
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
 
 /** 把不可变 API 快照渲染为可重复生成的 UTF-8 Markdown，不写入时间戳或绝对路径。 */
 final class ApiMarkdown {
@@ -14,6 +16,18 @@ final class ApiMarkdown {
             .append("只收录显式标记的声明；类型标记不自动包含成员、继承成员或生成方法。\n")
             .append("签名中的 `= …` 表示参数有默认值，不代表实际默认表达式。类型名称使用限定名。\n\n")
             .append("API 声明数：").append(entries.size()).append("\n\n");
+        Map<String, Integer> directories = new TreeMap<>();
+        for (ApiEntry entry : entries) {
+            int separator = entry.source().lastIndexOf('/');
+            String directory = separator < 0 ? "." : entry.source().substring(0, separator);
+            directories.merge(directory, 1, Integer::sum);
+        }
+        if (!directories.isEmpty()) {
+            out.append("| 源码目录 | API 声明数 |\n|---|---:|\n");
+            directories.forEach((directory, count) -> out.append("| `").append(directory.replace("`", ""))
+                .append("` | ").append(count).append(" |\n"));
+            out.append("\n");
+        }
         entries.stream().sorted(Comparator.comparing(ApiEntry::key)).forEach(entry -> {
             out.append("## ").append(entry.name().replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("`", "")).append("\n\n");
             out.append("来源：`").append(entry.source().replace("`", "")).append(":")

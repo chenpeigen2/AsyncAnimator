@@ -2,6 +2,7 @@ package com.asyncanimator.thread
 
 import android.os.HandlerThread
 import android.os.Process
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.AnimationHandler
 import com.asyncanimator.core.ChoreographerTickScheduler
 
@@ -10,6 +11,7 @@ import com.asyncanimator.core.ChoreographerTickScheduler
  * 普通任务在调度器准备后运行；构造优先级为 -19，但不保证设备上的调度结果或帧性能。
  * 只安装本库的线程内帧源，不替换平台或 AndroidX 动画内部调度，View 操作仍须遵守主线程约束。
  */
+@PublicApi
 class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, PRIORITY) {
 
     /**
@@ -24,6 +26,7 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
      * 安装失败直接传播，不能静默换源；帧源直到首次请求帧才绑定 Choreographer。
      * 随后尽力重设当前线程优先级，失败只记警告；这无法捕获 HandlerThread 更早阶段的初始化异常。
      */
+    @PublicApi
     override fun onLooperPrepared() {
         AnimationHandler.installThreadScheduler(ChoreographerTickScheduler())
 
@@ -31,11 +34,14 @@ class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, 
             .onFailure { android.util.Log.w(THREAD_NAME, "setThreadPriority($PRIORITY) failed: ${it.message}") }
     }
 
+    /** 共享动画线程及执行器的访问入口；首次访问可能触发线程与帧源初始化。 */
+    @PublicApi
     companion object {
 
         /**
          * 动画线程的固定名称，用于线程识别、日志和调试，不代表额外系统调度能力。
          */
+        @PublicApi
         const val THREAD_NAME = "launcher.anim"
 
         /**

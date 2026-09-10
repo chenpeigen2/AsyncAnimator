@@ -19,10 +19,12 @@ final class PublicApiProcessor implements SymbolProcessor {
     private final Map<String, ApiEntry> entries = new TreeMap<>();
     private final Map<String, KSFile> sources = new TreeMap<>();
     private final Set<String> deferredNames = new TreeSet<>();
+    private final boolean requireComplete;
     private boolean failed;
 
     /** 构造只保存本次编译服务与源码根路径，不扫描文件或生成输出。 */
     PublicApiProcessor(SymbolProcessorEnvironment environment) {
+        requireComplete = Boolean.parseBoolean(environment.getOptions().get("publicApi.requireComplete"));
         generator = environment.getCodeGenerator();
         logger = environment.getLogger();
         String root = environment.getOptions().get("publicApi.sourceRoot");
@@ -33,6 +35,11 @@ final class PublicApiProcessor implements SymbolProcessor {
     @Override
     public List<KSAnnotated> process(Resolver resolver) {
         for (KSFile file : ApiSignatures.list(resolver.getAllFiles())) sources.put(file.getFilePath(), file);
+        if (requireComplete) {
+            for (KSDeclaration missing : PublicApiCoverage.missingAnnotations(sources.values(), sourceRoot)) {
+                error("Public API is missing @PublicApi: " + ApiSignatures.qualifiedName(missing), missing);
+            }
+        }
         List<KSAnnotated> deferred = new ArrayList<>();
         deferredNames.clear();
         for (KSAnnotated symbol : ApiSignatures.list(resolver.getSymbolsWithAnnotation(ANNOTATION, false))) {

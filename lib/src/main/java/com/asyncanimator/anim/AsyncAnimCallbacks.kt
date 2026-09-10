@@ -1,10 +1,11 @@
 package com.asyncanimator.anim
 
 import android.animation.Animator
+import com.asyncanimator.api.PublicApi
+import com.asyncanimator.core.LogUtils
+import com.asyncanimator.core.Trace
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
-import com.asyncanimator.core.Trace
-import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.Executors
 
 /**
@@ -12,6 +13,7 @@ import com.asyncanimator.thread.Executors
  * 注册表和事件代次受同一锁保护，业务回调在锁外执行；主线程外投递使用异步消息。
  * 逻辑结束与实际结束分开派发，后者仅通知具备相应入口的监听器，不自动取消底层动画。
  */
+@PublicApi
 class AsyncAnimCallbacks {
 
     private val listenerLock = Any()
@@ -22,6 +24,7 @@ class AsyncAnimCallbacks {
      * 在监听锁内更新可选动画类型，供随后创建的事件记录诊断上下文。
      * 不选择动画引擎，不改变监听器集合或事件代次，已排队事件继续使用投递前捕获的类型。
      */
+    @PublicApi
     fun setAnimType(type: CustomRectFSpringAnim.AnimType) = synchronized(listenerLock) {
         animType = type
     }
@@ -39,6 +42,7 @@ class AsyncAnimCallbacks {
      * 在监听锁内登记非空监听器，相等实例已存在时不重复追加。
      * 允许在回调中重入注册；当前已取得的派发快照不会增加新成员，后续交付才会看到它。
      */
+    @PublicApi
     fun addListener(l: NullableAnimatorListener?) {
         synchronized(listenerLock) {
             if (l != null && !animListeners.contains(l)) animListeners.add(l)
@@ -49,6 +53,7 @@ class AsyncAnimCallbacks {
      * 在监听锁内把第一个匹配条目置为空槽，不存在时无操作。
      * 之后取快照会统一压缩空槽；本次调用不能撤回已经进入派发快照的监听器。
      */
+    @PublicApi
     fun removeListener(l: NullableAnimatorListener?) {
         synchronized(listenerLock) {
             val idx = animListeners.indexOf(l)
@@ -67,6 +72,7 @@ class AsyncAnimCallbacks {
      * 排队旧事件和重入释放后尚未执行的旧快照项会被丢弃；已开始的回调无法撤回。
      * 容器本身允许随后重新注册，但本方法不取消底层动画，也不使一次性动画包装重新可用。
      */
+    @PublicApi
     fun dispose() = synchronized(listenerLock) {
         generation++
         animListeners.clear()

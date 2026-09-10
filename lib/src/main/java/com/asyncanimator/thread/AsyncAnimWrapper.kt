@@ -1,9 +1,12 @@
 package com.asyncanimator.thread
 
+import com.asyncanimator.api.PublicApi
+
 /**
  * 提供主线程与独立动画线程转发入口的基础封装。
  * 子类自行决定哪些操作需要转发；本类只安排任务，不安装具体动画引擎的帧源或接管 View 写入。
  */
+@PublicApi
 open class AsyncAnimWrapper {
 
     /**

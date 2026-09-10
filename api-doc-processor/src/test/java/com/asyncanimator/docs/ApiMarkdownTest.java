@@ -33,4 +33,14 @@ public class ApiMarkdownTest {
             "public constructor()", "公开构造器。", "Owner.kt", 1)));
         assertTrue(text.contains("## sample.Owner.&lt;init&gt;"));
     }
+    /** 目录概览按源码路径汇总并保留重载计数，帮助发现遗漏整个模块的文档。 */
+    @Test public void summarizesAllSourceDirectories() {
+        String text = ApiMarkdown.render(List.of(
+            new ApiEntry("a.first", "fun first()", "首个接口。", "a/Api.kt", 1),
+            new ApiEntry("a.second", "fun second()", "第二接口。", "a/Api.kt", 2),
+            new ApiEntry("b.third", "fun third()", "另一模块。", "b/Api.kt", 1)));
+        assertTrue(text.contains("| `a` | 2 |"));
+        assertTrue(text.contains("| `b` | 1 |"));
+    }
+
 }

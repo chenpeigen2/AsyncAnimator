@@ -1,8 +1,9 @@
 package com.asyncanimator.manager
 
-import com.asyncanimator.control.checkControllerMainThread
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.control.AnimationController
 import com.asyncanimator.control.DefaultAnimationController
+import com.asyncanimator.control.checkControllerMainThread
 import com.asyncanimator.seq.AnimationSeqHelper
 import com.asyncanimator.seq.DefaultAnimationSeqHelper
 
@@ -11,6 +12,7 @@ import com.asyncanimator.seq.DefaultAnimationSeqHelper
  * 首次对象初始化时创建实际实现，关闭后读取返回新的降级实例，再启用时创建新的实际实现。
  * 配置容器的数据变更不会自动切换或重建本工厂，类型名称与现有调用接口保持不变。
  */
+@PublicApi
 object OplusAnimManager {
 
     @Volatile
@@ -32,11 +34,13 @@ object OplusAnimManager {
      * 返回本库声明的中断能力占位值，当前固定为 true。
      * 不读取本地工厂开关、系统设置或远程配置；是否返回实际控制器应查询 interruptionEnabled。
      */
+    @PublicApi
     fun supportInterruption(): Boolean = true
 
     /**
      * 读取当前实际控制器；关闭时每次返回新的降级实例，不缓存或共享降级监听注册表。
      */
+    @PublicApi
     val animController: DefaultAnimationController
         get() = animationControllerImpl ?: DefaultAnimationController()
 
@@ -65,6 +69,7 @@ object OplusAnimManager {
      * 启用时只补建缺失实例，重复启用保持身份；关闭时先摘除引用，再销毁旧控制器并确保清理旧序列任务。
      * 工厂开关不销毁独立配置订阅，能力声明也不会因此变为 false。
      */
+    @PublicApi
     @set:Synchronized
     var interruptionEnabled: Boolean
         get() = animationControllerImpl != null

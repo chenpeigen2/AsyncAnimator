@@ -97,4 +97,11 @@ public class ApiSignaturesTest {
         values.put("getType", type("kotlin.Int", false));
         assertEquals("public typealias Count = kotlin.Int", ApiSignatures.render(proxy(KSTypeAlias.class, values)));
     }
+    /** 枚举常量是调用方可引用的公开声明，名称保留而不伪造成可构造类型。 */
+    @Test public void rendersEnumEntry() {
+        Map<String, Object> values = declaration("OPEN");
+        values.put("getClassKind", ClassKind.ENUM_ENTRY);
+        assertEquals("OPEN", ApiSignatures.render(proxy(KSClassDeclaration.class, values)));
+    }
+
 }

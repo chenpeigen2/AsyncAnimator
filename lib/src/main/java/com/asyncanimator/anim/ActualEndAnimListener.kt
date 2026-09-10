@@ -1,6 +1,7 @@
 package com.asyncanimator.anim
 
 import android.animation.Animator
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 
 /**
@@ -8,6 +9,7 @@ import com.asyncanimator.playback.NullableAnimatorListenerAdapter
  * 只有派发方显式调用该入口才会收到事件；普通 onAnimationEnd 不会自动转换成实际结束。
  * 经 AsyncAnimCallbacks 派发时通知回到主线程，直接调用时仍由调用方决定线程。
  */
+@PublicApi
 open class ActualEndAnimListener : NullableAnimatorListenerAdapter() {
 
     /**
@@ -15,5 +17,6 @@ open class ActualEndAnimListener : NullableAnimatorListenerAdapter() {
      * @param animator 此次事件对应的非空动画实例。
      * 不会自动触发逻辑结束或取消，也不会自行确认底层帧循环已停止；派发方负责信号真实性和调用线程。
      */
+    @PublicApi
     open fun onAnimActualEnd(animator: Animator) {}
 }

@@ -3,7 +3,7 @@
 本库是 OPPO ColorOS 15 Launcher（`com.android.launcher` 15.8.24）"独立动画线程"方案的 Kotlin 重实现 / 演示库。
 与原厂代码的逐类对比见 `docs/review/vs-oppo-01` ~ `34` + `SUMMARY-vs-oppo*.md`（类对应表、保真度评估、有意简化与已知差异）。
 
-本文是常用 API 与生命周期指南，不是穷举的可见性/ABI 清单。以源码修饰符为准；Kotlin `internal` 不对 demo Kotlin 源码开放，也不是 Java 安全边界。帧调度/Pending/APC/续行内核保持 internal，公开 LogUtils 和 nullable listener 族不能因包名被归为内部。
+本文是常用 API 与生命周期指南，不是穷举的可见性/ABI 清单。完整的公开源码声明通过 `@PublicApi` 编译生成（当前 389 项），范围与命令见 [对外 API 文档](public-api.md)。以源码修饰符为准；Kotlin `internal` 不对 demo Kotlin 源码开放，也不是 Java 安全边界。帧调度/Pending/APC/续行内核保持 internal，公开 LogUtils 和 nullable listener 族不能因包名被归为内部。
 
 ## 整体分层
 
