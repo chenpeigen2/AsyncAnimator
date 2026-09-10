@@ -402,4 +402,143 @@ class RectSpringDriverTest {
         assertFalse(force.isAtEquilibrium(target, 94f))
     }
 
+
+    @Test fun testFirstStopWinsAndPreviewMatchesCancelVersusEndWithoutPublishingIt() {
+        for (cancelFirst in listOf(false, true)) {
+            val updates = mutableListOf<RectSpringFrame>()
+            val d = driver(onUpdate = updates::add)
+            var ends = 0
+            d.start { ends++ }; step(); step()
+            val before = d.currentFrame!!
+            val count = updates.size
+            if (cancelFirst) { d.cancel(); d.skipToEnd() } else { d.skipToEnd(); d.cancel() }
+            val predicted = d.copyNextAnimState()
+            assertSame(before, d.currentFrame)
+            assertEquals(count, updates.size)
+            assertEquals(0, ends)
+            if (cancelFirst) {
+                assertRect(before.rect, predicted.rect)
+                assertEquals(before.velocities, predicted.velocities)
+            } else {
+                assertRect(target, predicted.rect)
+                assertEquals(RectSpringValues(), predicted.velocities)
+                assertEquals(1f, predicted.progress, 0f)
+            }
+            step()
+            assertEquals(1, ends)
+            assertEquals(count + if (cancelFirst) 0 else 1, updates.size)
+            assertTrue(clock.callbacks.isEmpty())
+        }
+    }
+
+    @Test fun testClearCallbackRetainsPhysicalPlaybackAndDisposeIsFinal() {
+        val d = driver()
+        d.start { fail("cleared callback") }
+        d.clearEndCallback()
+        d.skipToEnd(); step()
+        assertRect(target, d.currentFrame!!.rect)
+        assertTrue(clock.callbacks.isEmpty())
+        d.dispose(); d.dispose(); d.cancel(); d.skipToEnd(); d.clearEndCallback()
+        assertThrows(IllegalStateException::class.java) { d.start {} }
+        assertThrows(IllegalArgumentException::class.java) { d.copyNextAnimState() }
+        assertThrows(IllegalArgumentException::class.java) { d.createContinuation(target) {} }
+    }
+
+    @Test fun testDuplicateStartAndInvalidRetargetDoNotReplaceRunningStateOrCompletion() {
+        val d = driver(); var ends = 0
+        d.start { ends++ }; step(); step()
+        val before = d.currentFrame
+        assertThrows(IllegalStateException::class.java) { d.start { fail("replacement callback") } }
+        assertThrows(IllegalArgumentException::class.java) { d.updateEndTargetRectF(RectF()) }
+        assertThrows(IllegalArgumentException::class.java) { d.updateEndTargetRectF(target, Float.NaN) }
+        assertThrows(IllegalArgumentException::class.java) { d.reverseToOpen(target, -1f) }
+        assertThrows(IllegalArgumentException::class.java) { d.copyNextAnimState(-1) }
+        assertSame(before, d.currentFrame)
+        assertEquals(1, clock.callbacks.size)
+        d.skipToEnd(); step()
+        assertEquals(1, ends)
+    }
+
+    @Test fun testSchedulingFailureDetachesAllNativeRegistrationsAndAllowsRetry() {
+        val before = nativeListeners()
+        val failure = IllegalStateException("frame registration")
+        var reject = true
+        val source = object : TickScheduler by clock {
+            override fun postFrameCallback(callback: TickScheduler.FrameCallback?) {
+                if (reject) throw failure
+                clock.postFrameCallback(callback)
+            }
+        }
+        val d = RectSpringDriver(start, target, CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME,
+            RectSpringConfig(), 0f, 0f, 1f, 1f, RectSpringValues(), {}, { source }).also(drivers::add)
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            d.start { fail("failed start must not complete successfully") }
+        })
+        assertEquals(before, nativeListeners())
+        assertTrue(clock.callbacks.isEmpty())
+        reject = false
+        var ends = 0
+        d.start { ends++ }; d.skipToEnd(); step()
+        assertEquals(1, ends)
+        assertEquals(before, nativeListeners())
+    }
+
+    @Test fun testThrowingTerminalUpdateStillCompletesAndReleasesOnSkip() {
+        val before = nativeListeners()
+        val failure = AssertionError("terminal update")
+        val d = driver(onUpdate = { throw failure })
+        var ends = 0
+        d.start { ends++ }; d.skipToEnd()
+        assertSame(failure, assertThrows(AssertionError::class.java) { step() })
+        assertEquals(1, ends)
+        assertTrue(clock.callbacks.isEmpty())
+        assertEquals(before, nativeListeners())
+    }
+
+    @Test fun testReentrantDisposeFromUpdateDoesNotDeliverCompletionOrAnotherFrame() {
+        val before = nativeListeners()
+        lateinit var d: RectSpringDriver
+        var updates = 0
+        d = driver(onUpdate = { updates++; d.dispose() })
+        d.start { fail("disposal is silent") }
+        step(); step()
+        assertEquals(1, updates)
+        assertTrue(clock.callbacks.isEmpty())
+        assertEquals(before, nativeListeners())
+    }
+
+    @Test fun testZeroDurationScaleStartsDelayedAlphaAndFinishesAtTarget() {
+        val previous = ValueAnimator.getDurationScale()
+        val d = driver(RectSpringConfig(alphaStartDelayMillis = 10000))
+        var ends = 0
+        try {
+            ValueAnimator.setDurationScale(0f)
+            d.start { ends++ }
+            repeat(3) { step() }
+            assertEquals(1, ends)
+            assertRect(target, d.currentFrame!!.rect)
+            assertEquals(1f, d.currentFrame!!.values.alpha, 0f)
+            assertTrue(clock.callbacks.isEmpty())
+        } finally { d.dispose(); ValueAnimator.setDurationScale(previous) }
+    }
+
+    @Test fun testInvalidRadiusAlphaAndEachVelocityComponentFailBeforeNativeRegistration() {
+        val before = nativeListeners()
+        fun construct(radius: Float = 0f, alpha: Float = 1f, velocity: RectSpringValues = RectSpringValues()) =
+            RectSpringDriver(start, target, startRadius = radius, startAlpha = alpha,
+                initialVelocity = velocity, onUpdate = {})
+        for (invalid in listOf(-1f, Float.NaN, Float.POSITIVE_INFINITY)) {
+            assertThrows(IllegalArgumentException::class.java) { construct(radius = invalid) }
+        }
+        for (invalid in listOf(-0.1f, 1.1f, Float.NaN, Float.NEGATIVE_INFINITY)) {
+            assertThrows(IllegalArgumentException::class.java) { construct(alpha = invalid) }
+        }
+        for (index in 0..5) {
+            val velocity = RectSpringValues.from(FloatArray(6).also { it[index] = Float.NaN })
+            assertThrows(IllegalArgumentException::class.java) { construct(velocity = velocity) }
+        }
+        assertEquals(before, nativeListeners())
+        assertTrue(clock.callbacks.isEmpty())
+    }
+
 }

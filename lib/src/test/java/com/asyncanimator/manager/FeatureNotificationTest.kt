@@ -149,4 +149,71 @@ class FeatureNotificationTest {
         writer.join(5000); assertFalse(writer.isAlive)
         failure.get()?.let { throw it }
     }
+
+    @Test fun testDuplicateCallbackHandlesAreIndependentAndRemoveClearsAllIdenticalRegistrations() {
+        var calls = 0
+        val callback = { calls++; Unit }
+        val first = f.addRemoteUpdateListener(callback)
+        val second = f.addRemoteUpdateListener(callback)
+        update(1)
+        first.close()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, calls)
+        val third = f.addRemoteUpdateListener(callback)
+        update(2)
+        f.removeRemoteUpdateListener(callback)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, calls)
+        first.close(); second.close(); third.close()
+    }
+
+    @Test fun testMainPublicationIsAlwaysQueuedAndDoesNotReplayToLateSubscribers() {
+        val seen = mutableListOf<Int>()
+        f.addRemoteUpdateListener { seen.add(f.snapshot().asyncEnable) }
+        update(1); update(2)
+        var lateCalls = 0
+        f.addRemoteUpdateListener { lateCalls++ }
+        assertTrue(seen.isEmpty())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(2, 2), seen) // Notification, not a historical payload stream.
+        assertEquals(0, lateCalls)
+        update(2) // Equal configuration still publishes one notification per registration.
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf(2, 2, 2), seen)
+        assertEquals(1, lateCalls)
+    }
+
+    @Test fun testNullListsKeepSnapshotButEmptyListsExplicitlyClearIt() {
+        update(4)
+        val before = f.snapshot()
+        f.simulateRemoteUpdate(-1, 0, 1, 2, 0, 0.4f, 3, null, null)
+        val kept = f.snapshot()
+        assertSame(before.onePxPkgDisableList, kept.onePxPkgDisableList)
+        assertSame(before.onePxCardDisableList, kept.onePxCardDisableList)
+        assertFalse(f.isAsyncConfigured)
+        f.simulateRemoteUpdate(0, 0, 0, 0, 0, 0.1f, 0, emptyList(), emptyList())
+        assertTrue(f.isAsyncConfigured) // Configured-disabled is not unconfigured.
+        assertTrue(f.snapshot().onePxPkgDisableList.isEmpty())
+        assertTrue(f.snapshot().onePxCardDisableList.isEmpty())
+        assertEquals(listOf("4"), before.onePxPkgDisableList)
+        assertEquals(4, before.copy(asyncEnable = 9).onePxEnable)
+        assertEquals(4, before.asyncEnable)
+    }
+
+    @Test fun testFatalObserverErrorIsNotSwallowedAndRegistrationCanStillBeClosed() {
+        val failure = AssertionError("fatal observer")
+        val bad = f.addRemoteUpdateListener { throw failure }
+        var calls = 0
+        f.addRemoteUpdateListener { calls++ }
+        update(1)
+        assertSame(failure, assertThrows(AssertionError::class.java) {
+            shadowOf(Looper.getMainLooper()).idle()
+        })
+        assertEquals(0, calls)
+        bad.close()
+        update(2)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, calls)
+    }
+
 }

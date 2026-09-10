@@ -159,4 +159,72 @@ class TaskStateChangeTimeOutListenerTest {
         } finally { System.setErr(original); logs.setLogLevel(level) }
     }
 
+
+    @Test fun testAllTypePairsMatchOnlyTypeAndIgnoreEventDuration() {
+        assertEquals(listOf("ON_LAND_SCAPE_SCENE_EXIT", "ON_TRANSITION_FINISH",
+            "ON_APP_TO_OVERVIEW_CONTINUATION"), TaskStateChangeTimeOutListener.Type.entries.map { it.name })
+        for (expected in TaskStateChangeTimeOutListener.Type.entries) {
+            var calls = 0
+            val listener = TaskStateChangeTimeOutListener(expected, 1000) { calls++ }
+            try {
+                TaskStateChangeTimeOutListener.Type.entries.filter { it != expected }.forEach {
+                    listener.onTimeOut(it, Long.MAX_VALUE)
+                }
+                assertEquals(0, calls)
+                listener.onTimeOut(expected, Long.MIN_VALUE)
+                assertEquals(1, calls)
+            } finally { listener.dispose() }
+        }
+    }
+
+    @Test fun testTimerFiresAtExactDeadlineOnMainWithDisposalAfterAction() {
+        val calls = mutableListOf<String>()
+        val listener = TaskStateChangeTimeOutListener(type, 100, {
+            assertSame(android.os.Looper.getMainLooper(), android.os.Looper.myLooper())
+            calls.add("action")
+        }, { calls.add("dispose") })
+        try {
+            val main = org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            main.idleFor(java.time.Duration.ofMillis(99))
+            assertTrue(calls.isEmpty())
+            main.idleFor(java.time.Duration.ofMillis(1))
+            assertEquals(listOf("action", "dispose"), calls)
+            listener.onTimeOut(type, 0)
+            assertEquals(2, calls.size)
+        } finally { listener.dispose() }
+    }
+
+    @Test fun testReentrantDisposeAndMatchingEventCannotRunClaimedActionTwice() {
+        val calls = mutableListOf<String>()
+        lateinit var listener: TaskStateChangeTimeOutListener
+        listener = TaskStateChangeTimeOutListener(type, 100, {
+            calls.add("action-enter")
+            listener.onTimeOut(type, 0)
+            listener.dispose()
+            calls.add("action-exit")
+        }, { calls.add("dispose"); listener.dispose() })
+        listener.onTimeOut(type, 0)
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            .idleFor(java.time.Duration.ofMillis(100))
+        assertEquals(listOf("action-enter", "dispose", "action-exit"), calls)
+    }
+
+    @Test fun testIdenticalActionAndCleanupFailureDoesNotSelfSuppress() {
+        val failure = AssertionError("shared failure")
+        val listener = TaskStateChangeTimeOutListener(type, 100, { throw failure }, { throw failure })
+        assertSame(failure, assertThrows(AssertionError::class.java) { listener.onTimeOut(type, 0) })
+        assertTrue(failure.suppressed.isEmpty())
+        listener.dispose()
+    }
+
+    @Test fun testRejectedConstructionDoesNotScheduleTimerOrDisposeUnownedAction() {
+        val failure = IllegalStateException("access denied")
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            TaskStateChangeTimeOutListener(type, 1,
+                { fail("not constructed") }, { fail("not owned") }, { throw failure })
+        })
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper())
+            .idleFor(java.time.Duration.ofMillis(100))
+    }
+
 }

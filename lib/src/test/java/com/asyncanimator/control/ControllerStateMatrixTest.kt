@@ -147,4 +147,101 @@ class ControllerStateMatrixTest {
         assertFalse(c.isAppWindowAnimRunning)
     }
 
+
+    @Test fun testEveryClassificationQueryAcrossAllStatesDoesNotDependOnRecentsCount() {
+        val opening = setOf(AnimationState.OPEN, AnimationState.REVERSE_OPEN,
+            AnimationState.MULTI_OPEN, AnimationState.MULTI_REVERSE_OPEN)
+        val closing = setOf(AnimationState.CLOSE, AnimationState.MULTI_CLOSE)
+        for (withRecents in listOf(false, true)) {
+            c.reset()
+            if (withRecents) c.addRecentsAnim(rect(), null, null)
+            for (state in AnimationState.entries) {
+                seed(state)
+                assertEquals("opening $state", state in opening, c.isOpeningAnim)
+                assertEquals("closing $state", state in closing, c.isClosingAnimAndAnimClosed)
+                assertEquals(state == AnimationState.MULTI_OPEN, c.isMultiOpen)
+                assertEquals(state == AnimationState.MULTI_CLOSE, c.isMultiClose)
+                assertEquals(withRecents, c.hasRecentsAnim)
+                assertEquals(!withRecents, c.allRecentsAnimationEnd)
+            }
+        }
+    }
+
+    @Test fun testDuplicateFactoryRegistrationsRequireOneEndPerStart() {
+        val f = factory()
+        c.appLaunchAnimStartOrEnd(false, f, null)
+        c.appLaunchAnimStartOrEnd(false, f, null)
+        var ends = 0
+        c.appLaunchAnimFinishCallback = { ends++ }
+        c.appLaunchAnimStartOrEnd(true, factory(), null) // Unknown identity must not consume f.
+        assertFalse(c.cleanUpRecentsAnim())
+        c.appLaunchAnimStartOrEnd(true, f, null)
+        assertFalse(c.cleanUpRecentsAnim())
+        assertEquals(0, ends)
+        c.appLaunchAnimStartOrEnd(true, f, null)
+        assertTrue(c.cleanUpRecentsAnim())
+        assertEquals(1, ends)
+        assertEquals(AnimationState.NONE, c.animState)
+    }
+
+    @Test fun testInvalidSceneTypesPreserveExistingGestureAndTimeoutOwnership() {
+        c.setOnceGestureProcessing(GestureScene(baseActivityPackage = "retained"))
+        val transition = c.transitionFinishTimeOutListener
+        assertThrows(IllegalArgumentException::class.java) { c.setOnceGestureProcessing(Any()) }
+        assertThrows(IllegalArgumentException::class.java) { c.setOnAppExit(Any()) }
+        assertEquals("retained", c.swipingUpActivityPkg)
+        assertTrue(c.onceGestureProcessing)
+        assertSame(transition, c.transitionFinishTimeOutListener)
+    }
+
+    @Test fun testThrowingLaunchPredicateClearsPreviousActionWithoutConsumingTimer() {
+        c.registerTransitionFinishTimeOutListener(1000)
+        val timer = c.transitionFinishTimeOutListener
+        c.delayStartActivityIfNeed(null, null, { true }) { fail("superseded pending action") }
+        val failure = IllegalStateException("launch decision")
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            c.delayStartActivityIfNeed(null, null, { throw failure }) { fail("failed decision") }
+        })
+        assertSame(timer, c.transitionFinishTimeOutListener)
+        assertFalse(c.forbidTouch())
+        c.dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH)
+        assertNull(c.transitionFinishTimeOutListener)
+    }
+
+    @Test fun testResetKeepsScenarioTimersButDestroyDisposesThemAndClearsObservers() {
+        c.registerSpecialSceneExitTimeOutListener(1000)
+        c.registerTransitionFinishTimeOutListener(1000)
+        c.registerOverviewContinuationTimeOutListener(1000)
+        val timers = listOf(c.specialSceneExitTimeOutListener, c.transitionFinishTimeOutListener,
+            c.overviewContinuationTimeOutListener)
+        var events = 0
+        c.addOnAnimStateChangeListener { _, _, _ -> events++ }
+        c.reset()
+        assertEquals(timers, listOf(c.specialSceneExitTimeOutListener,
+            c.transitionFinishTimeOutListener, c.overviewContinuationTimeOutListener))
+        assertEquals(1, events)
+        c.destroy(); c.destroy(); c.reset()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertEquals(1, events)
+        assertNull(c.specialSceneExitTimeOutListener)
+        assertNull(c.transitionFinishTimeOutListener)
+        assertNull(c.overviewContinuationTimeOutListener)
+    }
+
+    @Test fun testDefaultTabletProviderUsesRealContextSmallestWidthBoundary() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val config = context.resources.configuration
+        val previous = config.smallestScreenWidthDp
+        try {
+            for (width in listOf(599, 600, 800)) {
+                c.destroy()
+                config.smallestScreenWidthDp = width
+                c.setOnceGestureProcessing(GestureScene(landscape = true))
+                c.registerSpecialSceneExitTimeOutListener(1000)
+                assertEquals("sw${width}dp", width < 600,
+                    c.delayStartActivityIfNeed(context, null, null) {})
+            }
+        } finally { config.smallestScreenWidthDp = previous }
+    }
+
 }

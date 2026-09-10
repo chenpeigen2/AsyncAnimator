@@ -182,7 +182,7 @@ internal class OplusValueAnimator<T>(
                 anim.param.currentFraction = it.inputed
             }
             val f = anim.param.currentFraction
-            if (f < 0f || f >= 1f) {
+            if (!f.isFinite() || f < 0f || f >= 1f) {
                 LogUtils.i("OplusValueAnimator", "continuation rejected: fraction=$f")
                 Trace.traceBegin(Trace.TAG_VIEW, "Continuation-fail f=$f")
                 Trace.traceEnd(Trace.TAG_VIEW)

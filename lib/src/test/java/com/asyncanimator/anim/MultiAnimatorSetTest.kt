@@ -389,4 +389,106 @@ class MultiAnimatorSetTest {
         assertEquals(listOf(7, 8), ids)
     }
 
+
+    @Test fun testUnknownStopMasksFailBeforeChangingLiveOrIdleState() {
+        val g = group()
+        for (mask in listOf(-1, 8, 15, Int.MIN_VALUE)) {
+            assertThrows(IllegalArgumentException::class.java) { g.cancel(mask) }
+            assertThrows(IllegalArgumentException::class.java) { g.end(mask) }
+        }
+        g.play(value()); g.start()
+        assertThrows(IllegalArgumentException::class.java) { g.cancel(8) }
+        assertFalse(g.hasRequestCancel)
+        assertTrue(g.isRunning)
+    }
+
+    @Test fun testListenerDeduplicationAndSnapshotRemovalRespectNextEvent() {
+        val g = group()
+        val calls = mutableListOf<String>()
+        val second = object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) { calls.add("second-start") }
+            override fun onAnimationEnd(animator: Animator) { fail("removed for future events") }
+        }
+        g.addListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) {
+                assertSame(g.animatorSet, animator)
+                assertEquals(27, animationId)
+                calls.add("first-start"); g.removeListener(second)
+            }
+            override fun onAnimationEnd(animator: Animator) { calls.add("first-end") }
+        })
+        g.animationId = 27
+        g.addListener(second); g.addListener(second)
+        g.start()
+        assertEquals(listOf("first-start", "second-start", "first-end"), calls)
+    }
+
+    @Test fun testDestroyFromStartObserverStopsRemainingObserversAndAllLaunches() {
+        val g = group()
+        val main = value(); val async = value(); val rect = RectDriver()
+        g.play(main); g.play(true, async); g.play(CustomRectFSpringAnim(type, rect))
+        g.addListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) { g.destroy() }
+        })
+        g.addListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) { fail("destroyed generation") }
+            override fun onAnimationEnd(animator: Animator) { fail("destroy is silent") }
+        })
+        g.start(); flushAsync(); flushMain()
+        assertFalse(main.isStarted); assertFalse(async.isStarted)
+        assertEquals(0, rect.starts)
+        assertFalse(g.isRunning)
+    }
+
+    @Test fun testNativeStartFailureDestroysGroupAndReleasesPreviouslyStartedTrack() {
+        val g = group()
+        val main = value()
+        val failure = IllegalStateException("native start")
+        val broken = object : CustomRectFSpringAnim.Driver {
+            override fun start(onActualEnd: () -> Unit) { throw failure }
+            override fun cancel() {}
+            override fun skipToEnd() {}
+            override fun clearEndCallback() {}
+        }
+        g.play(main); g.play(CustomRectFSpringAnim(type, broken))
+        assertSame(failure, assertThrows(IllegalStateException::class.java) { g.start() })
+        assertFalse(main.isStarted)
+        assertFalse(g.isRunning)
+        assertThrows(IllegalStateException::class.java) { g.start() }
+    }
+
+    @Test fun testRepeatedCancelNotifiesOnceWhileWaitingForPhysicalRectEnd() {
+        val g = group(); val rect = RectDriver()
+        val calls = mutableListOf<String>()
+        g.addListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationCancel(animator: Animator) { calls.add("cancel") }
+            override fun onAnimationEnd(animator: Animator) { calls.add("end") }
+        })
+        g.play(CustomRectFSpringAnim(type, rect)); g.start()
+        g.cancel(); g.cancel(); g.end()
+        assertEquals(listOf("cancel"), calls)
+        assertTrue(g.isRunning)
+        rect.finish(); flushMain()
+        assertEquals(listOf("cancel", "end"), calls)
+        assertFalse(g.isRunning)
+    }
+
+    @Test fun testLateNonLiveAnimatorAndReplacementRectAreIgnoredWithoutStartingThem() {
+        val g = group(); val first = RectDriver(); val other = RectDriver()
+        val original = CustomRectFSpringAnim(type, first)
+        val replacement = CustomRectFSpringAnim(type, other)
+        try {
+            g.play(original); g.play(replacement)
+            assertSame(original, g.rectFSpringAnim)
+            g.start()
+            val ignored = value()
+            g.play(ignored, false); g.play(true, ignored)
+            g.play(replacement)
+            assertFalse(ignored.isStarted)
+            assertTrue(g.animatorSet.childAnimations.isEmpty())
+            assertTrue(g.asyncAnimatorSet.childAnimations.isEmpty())
+            assertEquals(0, other.starts)
+        } finally { replacement.dispose() }
+    }
+
 }

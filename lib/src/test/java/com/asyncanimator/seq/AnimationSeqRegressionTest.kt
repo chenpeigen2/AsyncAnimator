@@ -113,4 +113,80 @@ class AnimationSeqRegressionTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
         assertEquals(listOf("first", "second"), calls)
     }
+
+    @Test fun testNullDelayedRequestReplacesOldActionWithoutDeliveringIt() {
+        AnimSeqTimeStamp.updateLastRecentFinishTime()
+        helper.delayFinishRecents { fail("replaced by null") }
+        assertTrue(helper.delayFinishRecents(null))
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        var calls = 0
+        helper.delayFinishRecents { calls++ }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(1, calls)
+    }
+
+    @Test fun testDelayedExceptionConsumesOldActionButPreservesReentrantSuccessor() {
+        val failure = IllegalStateException("delayed action")
+        val calls = mutableListOf<String>()
+        AnimSeqTimeStamp.updateLastRecentFinishTime()
+        helper.delayFinishRecents {
+            calls.add("first")
+            helper.delayFinishRecents { calls.add("second") }
+            throw failure
+        }
+        assertSame(failure, assertThrows(IllegalStateException::class.java) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        })
+        assertEquals(0, com.asyncanimator.core.Trace.depth)
+        assertEquals(listOf("first"), calls)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(listOf("first", "second"), calls)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        assertEquals(2, calls.size)
+    }
+
+    @Test fun testImmediateExceptionAlsoSupersedesPreviouslyQueuedRequest() {
+        AnimSeqTimeStamp.updateLastRecentFinishTime()
+        helper.delayFinishRecents { fail("old delayed request") }
+        now += 501
+        val failure = AssertionError("immediate action")
+        assertSame(failure, assertThrows(AssertionError::class.java) {
+            helper.delayFinishRecents { throw failure }
+        })
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1))
+        var calls = 0
+        assertFalse(helper.delayFinishRecents { calls++ })
+        assertEquals(1, calls)
+    }
+
+    @Test fun testHelpersOwnIndependentQueuesAndSequenceCounters() {
+        val second = AnimationSeqHelper()
+        try {
+            helper.updateNextFinishSeqIdIfNeed(null)
+            assertEquals(1L, helper.getNextFinishSeqId(null))
+            assertEquals(0L, second.getNextFinishSeqId(null))
+            second.updateNextFinishSeqIdIfNeed(null)
+            assertEquals(1L, second.getNextFinishSeqId(null))
+            val calls = mutableListOf<String>()
+            AnimSeqTimeStamp.updateLastRecentFinishTime()
+            helper.delayFinishRecents { calls.add("first") }
+            second.delayFinishRecents { calls.add("second") }
+            helper.clearFinishRecentsRunnable()
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+            assertEquals(listOf("second"), calls)
+        } finally { second.clearFinishRecentsRunnable() }
+    }
+
+    @Test fun testResetInterceptStatePreservesFinishWindowAndQueuedFinish() {
+        AnimSeqTimeStamp.updateLastStartAppTime()
+        AnimSeqTimeStamp.updateLastRecentFinishTime()
+        var calls = 0
+        helper.delayFinishRecents { calls++ }
+        helper.resetInterceptState()
+        assertTrue(helper.canInterceptGesture)
+        assertFalse(helper.canFinishRecent)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(1, calls)
+    }
+
 }

@@ -7,7 +7,7 @@
 ## 当前状态
 
 - **39/39 份 review 已按顺序验收**：适用建议已实现并验证，其余逐项说明不采纳或保留的理由。完成的是本地建议验收，不是完整 OPPO 系统移植。
-- **45 个测试类、340 个独立用例**：库 334 + Demo 6，已有 Debug/Release 四组通过记录；Demo Debug APK 构建成功。
+- **56 个测试类、499 个独立用例**：库 493 + Demo 6，2026-09-10 Debug/Release 四组全量通过；Demo Debug APK 构建成功。
 - **12 个 Demo 页面**：区分真实库接线和 Canvas 概念演示，不把动画计算间隔当屏幕呈现 FPS。
 - **未验证范围仍保留**：设备/Perfetto、干净 SDK 环境复现及 release 压缩/签名；Lint 因缺少离线依赖未完成。
 
@@ -178,17 +178,17 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 库使用 JUnit 4、Robolectric 4.16 / API 36 测试运行时（也声明了 AssertJ 依赖）。`unitTests.isReturnDefaultValues = true` 仍保留，但 Android 行为用例已由 Robolectric 执行，Bundle 用例不再跳过。测试依赖不打入 APK。
 
-### 已有全量验证结果
+### 全量验证结果
 
-以下来自顺序验收最后一次成功构建及现存 XML，不表示每次 README 编辑都重新运行了测试：
+以下来自 2026-09-10 逐类补测后的完整重跑及 XML 核对。库内 42 个手写源码文件、74 个命名类型均已建立具体契约测试证据；本任务累计新增 159 个用例、11 个测试类（相对补测前的 334 项基线）。接口与私有嵌套类型通过真实消费者验证，不机械要求一类对应一个 Test 文件。
 
 | 范围 | 测试类 | 独立用例 | Debug / Release |
 |---|---:|---:|---|
-| lib | 44 | 334 | 各 334 通过，0 失败/错误/跳过 |
+| lib | 55 | 493 | 各 493 通过，0 失败/错误/跳过 |
 | demo | 1 | 6 | 各 6 通过，0 失败/错误/跳过 |
-| 合计 | 45 | 340 | 同一批用例，不按构建变体翻倍 |
+| 合计 | 56 | 499 | 同一批用例，不按构建变体翻倍 |
 
-Demo Debug APK 构建成功，**118/118 个 Gradle 任务执行，耗时 3 分 10 秒**。完整过程见[顺序验收记录](docs/review/2026-09-09-ordered-review-progress.md)；本地忽略日志为 `.gradle/review-ordered-39-final.log`，不随仓库分发。
+Demo Debug APK 构建成功，**118/118 个 Gradle 任务执行，耗时 4 分 23 秒**。逐类范围与验证记录见[补测清单](docs/testing/2026-09-10-lib-class-test-plan.md)；本地忽略日志为 `.gradle/lib-class-tests-01-09-final.log`，不随仓库分发。先前 39 份 review 的验收记录保留为独立历史证据。
 
 复跑完整验证（依赖已缓存时）：
 
@@ -201,67 +201,79 @@ Demo Debug APK 构建成功，**118/118 个 Gradle 任务执行，耗时 3 分 1
 
 首次环境未缓存依赖时不能使用 `--offline`；先按[构建环境说明](docs/build-environment.md)准备依赖。SDK/Gradle/私有注解和 Java API deprecation 提示仍存在；Lint 在 `extractDebugAnnotations` 因缺少 `intellij-core` / `kotlin-compiler` 31.9.0 离线依赖失败，未通过关闭检查绕过。
 
-### 测试覆盖明细
+### 逐类测试覆盖明细
 
-库当前共有 **44 个测试类、334 个用例**：
+库当前共有 **55 个测试类、493 个用例**：
 
 <details>
 <summary>展开库测试类、用例数与覆盖内容</summary>
 
 | 测试类 | 用例数 | 覆盖内容 |
 |---|---:|---|
-| `AnimationHandlerTest` | 10 | 手动帧钟/时间戳、显式移除、同帧增删/压缩顺序、re-add 单订阅与 ThreadLocal |
+| `AnimationHandlerTest` | 14 | 手动帧钟/时间戳、快照增删、100轮注册清理、同源多handler隔离与惰性帧源 |
 | `AnimationControllerTest` | 12 | 状态、Recents、超时替换及销毁清理 |
 | `AnimationControllerRegressionTest` | 13 | 四组完整状态矩阵、双集合收尾、三层决策及运行态 |
 | `LaunchDecisionReentrancyTest` | 7 | Supplier/provider 重入、reset/换槽/注销、嵌套请求、截止边界与日志 |
 | `AnimationLaunchDecisionTest` | 14 | 搜索入口、平板 OR 条件、实际续行状态、停止清理及场景归属 |
-| `TaskStateChangeTimeOutListenerTest` | 11 | 事件/定时器一次性消费、并发释放、双异常保留及日志门控 |
+| `TaskStateChangeTimeOutListenerTest` | 16 | 全type匹配、精确deadline、重入/并发消费、构造访问守卫与双异常/同一异常处理 |
 | `AnimatorPlaybackControllerTest` | 2 | 嵌套动画树递归派发、监听自注销 |
 | `PlaybackCompletionTest` | 9 | force finish、暂停重启、完成重入/异常、零时长和 pending 标志 |
-| `AsyncSpringAnimTest` | 4 | 真实 native cancel/skip 时序、首帧预热与零阻尼约束 |
-| `AsyncAnimCallbacksTest` | 2 | 稳定快照、注册幂等、并发增删 |
+| `AsyncSpringAnimTest` | 9 | 真实AndroidX cancel/skip/retarget/velocity、首帧/零阻尼、实际动画owner与main结束通知 |
+| `AsyncAnimCallbacksTest` | 8 | 稳定/交付时快照、捕获ID、并发增删、重入代次失效、锁外回调及异常恢复 |
 | `AsyncAnimatorContractTest` | 6 | Boolean 工厂、释放、旧代次/重入清理、独立逻辑与物理结束 |
 | `AnimationSeqHelperTest` | 7 | Bundle 序列号、时间窗口和基础清理 |
-| `AnimationSeqRegressionTest` | 6 | SeqId 配对、300/500ms 边界、独立 reset、延迟去重及重入 |
+| `AnimationSeqRegressionTest` | 11 | SeqId配对/独立owner、300/500ms、null替换、即时/延后异常、重入后继与reset隔离 |
 | `AnimationSchedulerHandoffTest` | 6 | 安装失败显式报错、旧脉冲失效、回调内换源/同源幂等、其他订阅者及测试覆盖隔离 |
-| `ChoreographerTickSchedulerTest` | 8 | 受控节奏、暂停/重启、异常/快照、锁外并发注册及无 Looper 兼容 |
+| `ChoreographerTickSchedulerTest` | 11 | 受控节奏/暂停重启、异常/快照/锁外增删、null操作、先发布clock与callback内stop |
 | `ChoreographerOwnerTest` | 1 | 首次帧源绑定、跨 Looper 重启仍由原 HandlerThread 派发 |
-| `LooperExecutorTest` | 5 | 异步消息、owner 内联、访问器及目标 HandlerThread 优先级 |
-| `PendingAnimationTest` | 13 | 起点捕获、嵌套继承、build 幂等、属性 seek 和取消 |
-| `InterpolatorsTest` | 6 | clamp/map/reverse/velocity 分支与边界 |
-| `AnimationSceneTest` | 9 | 设备/手势组合、1500/2500ms 自动注册、null 结束及包名清理 |
+| `LooperExecutorTest` | 8 | 异步消息、owner execute内联但post排队、null-handler三入口、异常恢复及目标优先级 |
+| `PendingAnimationTest` | 17 | 起点/时长继承、build幂等、seek/取消、负时长/无时长添加、完成标志与真实wrapper生命周期 |
+| `InterpolatorsTest` | 10 | clamp/map/reverse/velocity、NaN区间拒绝、越界不求值、内置曲线端点及单调性 |
+| `AnimationSceneTest` | 11 | 设备/手势组合、1500/2500ms、null结束/包名、场景默认与copy隔离 |
 | `RecentsFinishGateTest` | 5 | launch/Seq/logical-only 否决、ID 匹配及 feature-off |
-| `AnimSeqTimeStampTest` | 7 | 零时刻事件、reset、时钟异常、并发发布与诊断门控 |
+| `AnimSeqTimeStampTest` | 10 | 四字段零/未设置、单次clock采样、更新/reset隔离、Long精度、时钟异常及并发发布 |
 | `AnimationSeqFeatureGateTest` | 8 | 时间窗/序号写入门控、共享计数器、跨截止点排队及旧任务撤销 |
 | `AnimationBetweenStateTest` | 6 | Between setter、待启动查询、超时/reset 清理 |
-| `OplusValueAnimatorTest` | 11 | 续行值输出/复制、property 重绑、Int/Float 切换与时长委托/回退 |
-| `RectAnimationLifecycleTest` | 17 | 固定线程归属、逻辑/实际结束、反向目标、取消竞态、重入与销毁 |
-| `RectSpringDriverTest` | 25 | 真实六轴物理、tracking/参数/延迟、重定向/反向、纯预测与进度接续、后台 owner 及 native 资源清理 |
-| `MultiAnimatorSetTest` | 24 | 四轨/mask/live-add、真实后台、volatile 信号、观察者异常和新旧轮停止/ID 隔离 |
+| `OplusValueAnimatorTest` | 17 | 续行值/独立holders、NaN等非有限值拒绝、默认参数、typed空值、property异常与生命周期委派 |
+| `RectAnimationLifecycleTest` | 24 | 固定owner/ID/runId、双轨结束、first-stop、逻辑-only、默认/去重监听、真实Animator适配与teardown |
+| `RectSpringDriverTest` | 33 | 真实六轴、边界/retarget/预测/续行、first-stop、zero scale、调度失败回滚、异常与native资源清理 |
+| `MultiAnimatorSetTest` | 30 | 四轨/全部mask/live-add、无效输入、监听快照/重入destroy、start失败清理、旧轮隔离与physical barrier |
 | `TimeoutOwnershipTest` | 3 | 三场景 dispose 摘槽、重入 replacement 保留、timer 清理后不保留 Controller |
 | `TaskStateEventTest` | 3 | 公开事件桥、timer 去重、dispose/no-op、Demo6 真实状态链 |
 | `ControllerThreadContractTest` | 6 | 主线程入口、callback/observer、owned timeout 与 standalone/no-op 边界 |
 | `FeatureSnapshotTest` | 6 | 不可变列表、旧快照隔离、兼容更新竞态、复制失败不留半批配置 |
-| `TraceLogTest` | 9 | 变体门控、线程栈隔离、实际派发范围与异常/嵌套收尾 |
-| `AsyncValueAnimatorLifecycleTest` | 7 | 最终释放、排队/重入失效、固定 executor 与真实 HandlerThread 取消 |
+| `TraceLogTest` | 12 | 变体门控、ThreadLocal栈、实际交付与ID/type、嵌套/Error收尾及中途切换日志策略 |
+| `AsyncValueAnimatorLifecycleTest` | 11 | 最终释放、排队/重入异常清理、executor绑定、native/业务监听隔离与one-shot |
 | `ManagerBootstrapTest` | 1 | 八路冷首访共享同一 Controller/Seq 实现 |
-| `ManagerLifecycleTest` | 7 | 切换清理、主线程约束、配置/工厂边界、Recents 委派与 no-op |
+| `ManagerLifecycleTest` | 9 | 切换清理/重建、独立fallback、capability、配置/订阅边界与Recents委派 |
 | `JavaApiInteropTest` | 5 | 真实 Java 编译/执行：Boolean 工厂、getter/setter、SAM 与 Adapter 增删 |
 | `ExecutorInitializationTest` | 1 | MAIN 不启动动画线程、8 路并发首次访问得到同一执行器 |
 | `TouchGateTest` | 6 | 600ms/重新启动截止、end/reset/destroy、状态/挂起操作门控及线程归属 |
-| `FeatureNotificationTest` | 7 | 主线程通知、订阅释放/重入/异常隔离、Adaptive 策略与并发一致快照 |
-| `RemoteAnimationBoundaryTest` | 3 | 非空/null/empty 本地 targets、factory 所有权、feature-off 无副作用 |
-| `ControllerStateMatrixTest` | 7 | cleanup/非手势 end 全状态、枚举角色、旧回调/Seq 撤销、window 查询与触摸区别 |
+| `FeatureNotificationTest` | 11 | 主线程排队、重复callback独立handle、迟订阅、最新快照/空列表、异常边界及并发一致性 |
+| `RemoteAnimationBoundaryTest` | 5 | opaque targets默认/变更/null/empty、factory宿主所有权、reset/destroy及feature-off |
+| `ControllerStateMatrixTest` | 13 | 全状态转移/分类、重复factory、非法scene、真实sw600边界、predicate异常及reset/destroy区别 |
 | `ControllerCompletionTest` | 7 | 完成回调重入/异常与新轮隔离、idle 清理、非法 Recents 状态诊断 |
 | `AnimationThreadBootstrapTest` | 2 | 冷启动首条任务前安装帧源、owner/优先级与 Looper 提前发布时序 |
 
+| `AnimatorListenersTest` | 8 | 每次end与once-only、严格半程阈值、非ValueAnimator、sticky cancel、重入/异常消费 |
+| `AsyncAnimWrapperTest` | 4 | 主线程内联/worker投递、null、实际ANIM初始化/嵌套与业务异常 |
+| `DefaultAnimationControllerTest` | 8 | 全部默认query/no-op、fallback所有权、12×12通知、重复/null监听、重入/异常与线程约束 |
+| `DefaultAnimationSeqHelperTest` | 4 | fallback无ID分配、Bundle不变、同步action/null/重入/异常且不排队 |
+| `ListenerBaseContractTest` | 6 | nullable默认、adapter ID/取消、实际结束与逻辑/success分轨、真实dispatcher payload/异常 |
+| `LogUtilsTest` | 5 | 等级/flags、非法配置不变、精确线程/tag/UTF8输出、emit门控及跨线程发布 |
+| `PlaybackProgressContractTest` | 7 | Holder时长/mapper重置、raw与clamp、cancel/end更新门控、start/reverse/pause与Float update |
+| `PropertySetterTest` | 5 | 即时写入不读取起点、NO_ANIM/default、null/非有限透传及异常 |
+| `RecordInputInterpolatorTest` | 5 | 输入而非输出记录、默认/重复/非有限透传、抛错前记录及实例隔离 |
+| `RectSpringConfigTest` | 9 | 六轴参数/非法值、类型/设备/倍率策略、Tracking及Values/Frame防御副本 |
+| `SpringProjectionTest` | 6 | 独立数值积分对照四种阻尼、零时间/平衡、组合一致性/平移/收敛与force不变 |
+
 </details>
 
-Demo 模块另有 1 个纯 JVM 测试类，TraceLogRedirectorTest：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
+Demo 模块另有 1 个纯 JVM 测试类，`TraceLogRedirectorTest`：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
 
 测试数不是行覆盖率或分支覆盖率；仓库没有配置覆盖率阈值，本轮也未运行覆盖率工具。库/Demo 的 XML 与 HTML 报告分别位于各模块的 `build/test-results/test{Debug,Release}UnitTest/` 和 `build/reports/tests/test{Debug,Release}UnitTest/`。
 
-Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 334 个用例中，不额外累计。
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 493 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 
@@ -279,6 +291,7 @@ Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证
 - [原厂 trace 分析](docs/animation-trace-validation.md)：原厂行为的分析证据，不是当前 Demo 的性能测试报告。
 - [早期分析](docs/animation-thread-analysis.md)：保留的历史分析，线程结论请结合 v4 阅读。
 - [子线程 UI 更新讨论](docs/sub-thread-ui-update.md)：相关机制与限制讨论。
+- [lib 逐类测试清单](docs/testing/2026-09-10-lib-class-test-plan.md)：42 个源码文件、74 个命名类型的契约与测试证据、批次结果和缺陷回归。
 - [顺序验收清单](docs/review/2026-09-09-ordered-review-progress.md)：39/39 份建议处置、各轮代码与验证记录。
 - [基础专项 01–12](docs/review/SUMMARY-vs-oppo.md) / [深挖专项 13–34](docs/review/SUMMARY-vs-oppo-V2.md)：当前专项索引；旧版和 dated 记录作为历史证据，不当作现存缺陷列表。
 - [构建环境说明](docs/build-environment.md)：本机 SDK 兼容目录、依赖冲突、工具链与发布限制。

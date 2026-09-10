@@ -136,4 +136,77 @@ class AsyncValueAnimatorLifecycleTest {
             assertFalse(thread.isAlive)
         }
     }
+
+    @Test fun testExecutorCanBeReconfiguredBeforeBindingButNotAfterCompletion() {
+        val a = animator()
+        val original = a.executor
+        a.executor = LooperExecutor(null)
+        a.executor = original
+        assertSame(original, a.executor)
+        try {
+            a.start(); a.end()
+            a.executor = original
+            assertThrows(IllegalStateException::class.java) { a.executor = LooperExecutor(null) }
+        } finally { a.dispose() }
+    }
+
+    @Test fun testOneShotBusinessLifecycleDoesNotRearmWhenNativeAnimatorRestarts() {
+        val a = animator()
+        val business = mutableListOf<String>()
+        var nativeStarts = 0
+        a.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationStart(animation: Animator) { nativeStarts++ }
+        })
+        a.addAnimatorListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) { business.add("start") }
+            override fun onAnimationCancel(animator: Animator) { business.add("cancel") }
+            override fun onAnimationEnd(animator: Animator) { business.add("end") }
+        })
+        try {
+            a.start(); a.cancel(); a.end()
+            assertEquals(listOf("start", "cancel", "end"), business)
+            a.start(); a.end()
+            assertTrue(nativeStarts >= 2)
+            assertEquals(listOf("start", "cancel", "end"), business)
+        } finally { a.dispose() }
+    }
+
+    @Test fun testBusinessRegistrationRemovalAndNullsDoNotChangeNativeListeners() {
+        val a = animator()
+        var nativeStarts = 0
+        var businessStarts = 0
+        val listener = object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) { businessStarts++ }
+        }
+        a.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationStart(animation: Animator) { nativeStarts++ }
+        })
+        a.addAnimatorListener(null)
+        a.addAnimatorListener(listener)
+        a.addAnimatorListener(listener)
+        a.removeAnimatorListener(null)
+        a.removeAnimatorListener(listener)
+        try {
+            a.start()
+            assertEquals(1, nativeStarts)
+            assertEquals(0, businessStarts)
+            a.removeAnimatorListener(listener)
+        } finally { a.dispose() }
+    }
+
+    @Test fun testDisposalCleanupStillRunsWhenStartListenerDisposesThenThrows() {
+        val a = animator()
+        val failure = IllegalStateException("dispose then throw")
+        a.addAnimatorListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) {
+                a.dispose()
+                throw failure
+            }
+        })
+        assertSame(failure, assertThrows(IllegalStateException::class.java) { a.start() })
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(2))
+        assertFalse(a.isStarted)
+        assertTrue(a.listeners.isNullOrEmpty())
+        assertThrows(IllegalStateException::class.java) { a.start() }
+    }
 }

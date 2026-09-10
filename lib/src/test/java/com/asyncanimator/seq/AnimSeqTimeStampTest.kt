@@ -186,4 +186,36 @@ class AnimSeqTimeStampTest {
             finally { LogUtils.setLogLevel(previousLevel) }
         }
     }
+
+    @Test fun testEachUpdateAndRecordedGapSamplesClockExactlyOnce() {
+        var samples = 0
+        AnimSeqTimeStamp.clock = { samples++; 250L }
+        updates.forEachIndexed { index, update ->
+            val before = samples
+            update()
+            assertEquals(before + 1, samples)
+            assertEquals(0L, gaps[index]())
+            assertEquals(before + 2, samples)
+            resets[index]()
+            assertEquals(Long.MAX_VALUE, gaps[index]())
+            assertEquals(before + 2, samples)
+        }
+    }
+
+    @Test fun testRepeatedUpdateReplacesOnlyItsOwnLastEvent() {
+        updates.forEach { it() }
+        now = 170L
+        updates.forEachIndexed { index, update ->
+            update()
+            assertEquals(List(4) { if (it <= index) 0L else 70L }, gaps.map { it() })
+        }
+    }
+
+    @Test fun testLargeMonotonicTimestampsRemainLongPrecisionWithoutMillisTruncation() {
+        now = Long.MAX_VALUE - 1000
+        updates.forEach { it() }
+        now += 999
+        assertEquals(List(4) { 999L }, gaps.map { it() })
+    }
+
 }

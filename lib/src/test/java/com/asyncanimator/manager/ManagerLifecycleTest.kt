@@ -145,4 +145,40 @@ class ManagerLifecycleTest {
         assertTrue(seq.canFinishRecent)
         assertTrue(seq.canInterceptGesture)
     }
+
+    @Test fun testDisabledLookupsReturnIndependentFallbackOwnersAndKeepCapability() {
+        OplusAnimManager.interruptionEnabled = false
+        assertFalse(OplusAnimManager.interruptionEnabled)
+        assertTrue(OplusAnimManager.supportInterruption())
+        val first = OplusAnimManager.animController
+        val second = OplusAnimManager.animController
+        assertNotSame(first, second)
+        assertNotSame(OplusAnimManager.animationSeqHelper, OplusAnimManager.animationSeqHelper)
+        var calls = 0
+        first.addOnAnimStateChangeListener(object : com.asyncanimator.control.OnAnimStateChangeListener {
+            override fun onAnimStateChanged(oldState: com.asyncanimator.control.AnimationState,
+                newState: com.asyncanimator.control.AnimationState, runningTask: Any?) { calls++ }
+        })
+        second.onAnimStateChanged(com.asyncanimator.control.AnimationState.NONE,
+            com.asyncanimator.control.AnimationState.NONE, 1)
+        assertEquals(0, calls)
+        OplusAnimManager.cleanUpRecentsAnimation()
+        assertFalse(OplusAnimManager.interruptionEnabled)
+        assertSame(AnimationFeatureHelper, OplusAnimManager.featureHelper)
+    }
+
+    @Test fun testFactoryToggleDoesNotDestroyIndependentFeatureSubscribersOrConfiguration() {
+        val before = AnimationFeatureHelper.snapshot()
+        var calls = 0
+        val subscription = AnimationFeatureHelper.addRemoteUpdateListener { calls++ }
+        try {
+            OplusAnimManager.interruptionEnabled = false
+            OplusAnimManager.interruptionEnabled = true
+            assertEquals(before, AnimationFeatureHelper.snapshot())
+            AnimationFeatureHelper.setAdaptiveAnimationEnabled(before.adaptiveAnimationEnabled)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals(1, calls)
+        } finally { subscription.close() }
+    }
+
 }

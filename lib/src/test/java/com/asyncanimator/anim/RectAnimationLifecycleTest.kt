@@ -290,4 +290,128 @@ class RectAnimationLifecycleTest {
         assertFalse(rect.isRunning)
     }
 
+
+    @Test fun testFirstStopWinsForBothOrdersAndRetargetAfterStopIsIgnored() {
+        for (cancelFirst in listOf(false, true)) {
+            val driver = Driver(); val rect = rect(driver)
+            val events = listen(rect)
+            rect.start()
+            if (cancelFirst) { rect.cancel(); rect.skipToEnd() }
+            else { rect.skipToEnd(); rect.cancel() }
+            rect.reverseToOpen(RectF(0f, 0f, 10f, 10f), 2f) { fail("stopped run") }
+            assertEquals(listOf("start", if (cancelFirst) "cancel" else "end"), driver.names())
+            driver.finish()
+            assertEquals(if (cancelFirst) 4 else 3, events.size)
+            assertEquals("actual:-1:$cancelFirst", events.last())
+            assertFalse(rect.isReverseToOpen)
+        }
+    }
+
+    @Test fun testRunEventsAreImmutableAndSerialAdvancesOnlyForAcceptedStarts() {
+        val driver = Driver(); val rect = rect(driver)
+        val events = mutableListOf<CustomRectFSpringAnim.Event>()
+        rect.addListener(object : CustomRectFSpringAnim.Listener {
+            override fun onStart(animation: CustomRectFSpringAnim, event: CustomRectFSpringAnim.Event) {
+                assertSame(rect, animation); events.add(event)
+            }
+            override fun onActualEnd(animation: CustomRectFSpringAnim, event: CustomRectFSpringAnim.Event) {
+                events.add(event)
+            }
+        })
+        rect.animationId = 8
+        rect.start(); rect.start(); rect.cancel(); driver.finish()
+        rect.animationId = 9
+        rect.start(); driver.finish()
+        assertEquals(listOf(8, 8, 9, 9), events.map { it.animationId })
+        assertEquals(listOf(1L, 1L, 2L, 2L), events.map { it.runId })
+        assertEquals(listOf(false, true, false, false), events.map { it.cancelled })
+        assertEquals(events.first().copy(cancelled = true), events[1])
+        assertFalse(events.first().cancelled)
+    }
+
+    @Test fun testClearOwnerHookDoesNotSuppressListenersOrNativeCleanup() {
+        val driver = Driver(); val rect = rect(driver)
+        val events = listen(rect)
+        rect.start { fail("cleared owner hook") }
+        rect.clearEndCallback(); rect.clearEndCallback()
+        assertNotNull(driver.done)
+        driver.finish()
+        assertEquals(listOf("start", "clear"), driver.names())
+        assertEquals(listOf("start:-1:false", "end:-1:false", "actual:-1:false"), events)
+    }
+
+    @Test fun testDefaultListenerDedupAndRemovingAnotherListenerAffectCurrentAudience() {
+        val driver = Driver(); val rect = rect(driver)
+        val quiet = object : CustomRectFSpringAnim.Listener {}
+        rect.addListener(quiet); rect.addListener(quiet)
+        var starts = 0
+        val removed = object : CustomRectFSpringAnim.Listener {
+            override fun onStart(animation: CustomRectFSpringAnim, event: CustomRectFSpringAnim.Event) {
+                fail("membership is rechecked before delivery")
+            }
+        }
+        val first = object : CustomRectFSpringAnim.Listener {
+            override fun onStart(animation: CustomRectFSpringAnim, event: CustomRectFSpringAnim.Event) {
+                starts++; rect.removeListener(removed)
+            }
+        }
+        rect.addListener(first); rect.addListener(first); rect.addListener(removed)
+        rect.start(); driver.finish()
+        assertEquals(1, starts)
+    }
+
+    @Test fun testDisposableEngineReceivesFinalTeardownInsteadOfSeparateCancelAndClear() {
+        val calls = mutableListOf<String>()
+        val engine = object : CustomRectFSpringAnim.DisposableDriver {
+            override fun start(onActualEnd: () -> Unit) { calls.add("start") }
+            override fun cancel() { fail("dispose owns native cancellation") }
+            override fun skipToEnd() {}
+            override fun clearEndCallback() { fail("dispose owns native cleanup") }
+            override fun dispose() { calls.add("dispose") }
+        }
+        val rect = rect(engine)
+        rect.start(); rect.dispose(); rect.dispose()
+        assertEquals(listOf("start", "dispose"), calls)
+        assertThrows(IllegalStateException::class.java) { rect.animationId = 2 }
+        assertThrows(IllegalStateException::class.java) { rect.addListener(object : CustomRectFSpringAnim.Listener {}) }
+        rect.cancel(); rect.skipToEnd(); rect.justNotifyEndCallback()
+        assertEquals(listOf("start", "dispose"), calls)
+    }
+
+    @Test fun testAnimatorAdapterPreservesHostListenersAcrossRepeatedRunsAndDispose() {
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply { duration = 1000 }
+        var nativeEnds = 0
+        val nativeListener = object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) { nativeEnds++ }
+        }
+        animator.addListener(nativeListener)
+        val rect = CustomRectFSpringAnim(type, animator).also(rects::add)
+        var actualEnds = 0
+        repeat(2) {
+            rect.start { actualEnds++ }
+            assertEquals(2, animator.listeners!!.size)
+            rect.skipToEnd()
+            assertEquals(listOf(nativeListener), animator.listeners)
+        }
+        assertEquals(2, actualEnds)
+        rect.start { fail("dispose suppresses handle hook") }
+        rect.dispose()
+        assertEquals(3, nativeEnds)
+        assertEquals(listOf(nativeListener), animator.listeners)
+        assertFalse(animator.isStarted)
+    }
+
+    @Test fun testLogicalOnlyFlagResetsOnNextRunAndLaterCancelStillStopsDriver() {
+        val driver = Driver(); val rect = rect(driver)
+        val events = listen(rect)
+        rect.start(); rect.justNotifyEndCallback(); rect.cancel()
+        assertTrue(rect.isJustNotifyEndCallback)
+        assertEquals(listOf("start", "cancel"), driver.names())
+        driver.finish()
+        assertEquals(listOf("start:-1:false", "end:-1:false", "actual:-1:true"), events)
+        rect.start()
+        assertFalse(rect.isJustNotifyEndCallback)
+        assertFalse(rect.isReverseToOpen)
+    }
+
 }
