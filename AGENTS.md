@@ -3,6 +3,7 @@
 ## Project Structure & Module Organization
 - `lib/` is the Kotlin Android animation library. Sources live in `lib/src/main/java/com/asyncanimator/`, grouped into `core`, `thread`, `anim`, `playback`, `seq`, `control`, and `manager`; launcher integration also lives under `com/android/launcher3/`.
 - `lib/src/test/java/` contains JVM unit tests mirroring library packages.
+- `api-doc-processor/` is the build-only Java/KSP processor; its tests validate public API selection, signatures, and Markdown generation.
 - `demo/` is the Android demo app: activities are under `demo/src/main/java/com/asyncanimator/demo/`, with layouts, drawables, and strings in `demo/src/main/res/`.
 - `docs/` contains usage, architecture, trace validation, and review records. Prefer `animation-thread-analysis-v4.md` over older architectural conclusions.
 - Dependency versions and aliases are centralized in `gradle/libs.versions.toml`.
@@ -11,7 +12,8 @@
 Use a full JDK 21 via `JAVA_HOME`, Android SDK 37, and Build Tools 37.0.0. Configure your SDK path in untracked `local.properties`. Run from the repository root:
 
 ```powershell
-.\gradlew.bat :lib:test                 # Library JVM tests
+.\gradlew.bat :lib:test                 # Library JVM tests + API processor tests
+.\gradlew.bat :lib:generatePublicApiDocs # Annotated API Markdown for both variants
 .\gradlew.bat :demo:assembleDebug       # Build the debug APK
 .\gradlew.bat :lib:lint :demo:lint       # Android lint checks
 .\gradlew.bat :demo:installDebug        # Install on a connected device

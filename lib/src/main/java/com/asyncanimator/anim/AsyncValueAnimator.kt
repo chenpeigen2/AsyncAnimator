@@ -3,16 +3,18 @@ package com.asyncanimator.anim
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
-import java.util.concurrent.atomic.AtomicBoolean
-import com.asyncanimator.thread.LooperExecutor
+import com.asyncanimator.api.PublicApi
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.thread.Executors
+import com.asyncanimator.thread.LooperExecutor
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 为 start/cancel/end 增加固定 Looper 转发和最终释放协议的 ValueAnimator。
  * 业务监听经 AsyncAnimCallbacks 回到主线程，原生更新监听仍在原生动画线程执行。
  * 只保证这些生命周期入口的调度，不使继承的所有属性方法线程安全；业务结束通知为一次性。
  */
+@PublicApi
 class AsyncValueAnimator : ValueAnimator() {
 
     private val lifecycleLock = Any()
@@ -24,6 +26,7 @@ class AsyncValueAnimator : ValueAnimator() {
      * 生命周期命令使用的执行器，默认主线程；读取与赋值在生命周期锁内完成。
      * 首次 start/cancel/end 或 dispose 会绑定所属执行器，之后只允许设置同一实例；释放后禁止赋值。
      */
+    @PublicApi
     var executor: LooperExecutor
         get() = synchronized(lifecycleLock) { configuredExecutor }
         set(value) = synchronized(lifecycleLock) {
@@ -102,18 +105,21 @@ class AsyncValueAnimator : ValueAnimator() {
      * 通过固定所属执行器启动平台 ValueAnimator，首次调用会冻结执行器选择。
      * 已释放时抛出 IllegalStateException；仅转发此生命周期入口，原生属性配置仍需在启动前完成。
      */
+    @PublicApi
     override fun start() = marshal(starting = true) { super.start() }
 
     /**
      * 将平台取消命令交给首次绑定的执行器，首次取消也会绑定线程。
      * 释放后为无操作；业务取消与结束通知遵守一次性转发状态，不将 cancel 当成最终 dispose。
      */
+    @PublicApi
     override fun cancel() = marshal { super.cancel() }
 
     /**
      * 在固定所属执行器上调用平台结束操作，具体终值和帧状态遵循 ValueAnimator。
      * 释放后直接忽略；跨线程调用返回不表示平台结束或业务主线程回调已经执行。
      */
+    @PublicApi
     override fun end() = marshal { super.end() }
 
     /**
@@ -121,6 +127,7 @@ class AsyncValueAnimator : ValueAnimator() {
      * 重复释放无操作，排队生命周期动作会跳过；不能撤回已经执行中的回调，也不退出共享动画线程。
      * 释放后不要经本包装或公开监听容器继续注册原生/业务监听。
      */
+    @PublicApi
     fun dispose() {
         val target = synchronized(lifecycleLock) {
             if (disposed) return
@@ -145,6 +152,7 @@ class AsyncValueAnimator : ValueAnimator() {
      * 在生命周期锁内向业务容器注册监听，未释放时允许 null 并由容器负责去重。
      * 不是直接添加原生监听；业务生命周期事件经容器回到主线程，释放后即使传 null 也会抛出状态异常。
      */
+    @PublicApi
     fun addAnimatorListener(l: NullableAnimatorListener?) = synchronized(lifecycleLock) {
         check(!disposed) { "Animator is disposed" }
         asyncAnimCallbacks.addListener(l)
@@ -154,6 +162,7 @@ class AsyncValueAnimator : ValueAnimator() {
      * 从业务派发容器移除指定监听，允许 null、不存在的实例或释放后的重复调用。
      * 不删除通过原生 addListener 注册的监听，也不能撤回已经执行中的业务回调。
      */
+    @PublicApi
     fun removeAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.removeListener(l) }
 
     companion object {
@@ -162,6 +171,7 @@ class AsyncValueAnimator : ValueAnimator() {
          * 创建并配置一个新的 AsyncValueAnimator，按给定浮点关键帧定义数值变化。
          * 默认执行器为主线程，方法名称不代表自动切到后台；创建后仍需设置所需时长、曲线及线程配置。
          */
+        @PublicApi
         fun ofFloat(vararg values: Float): AsyncValueAnimator =
             AsyncValueAnimator().apply { setFloatValues(*values) }
 
@@ -169,6 +179,7 @@ class AsyncValueAnimator : ValueAnimator() {
          * 根据 isAsync 选择线程转发包装或普通 ValueAnimator，再写入传入的浮点关键帧。
          * 提供 Java 静态入口；两种分支均未启动动画，true 分支默认仍绑定主线程执行器。
          */
+        @PublicApi
         @JvmStatic
         fun ofFloat(isAsync: Boolean, vararg values: Float): ValueAnimator =
             (if (isAsync) AsyncValueAnimator() else ValueAnimator()).apply {

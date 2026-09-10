@@ -2,6 +2,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -32,6 +33,9 @@ android {
 
     buildFeatures { buildConfig = true }
 
+    // KSP 文档是构建产物，不应作为运行时资源进入 AAR/APK。
+    packaging.resources.excludes.add("public-api.md")
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
@@ -51,6 +55,8 @@ tasks.withType<Test>().configureEach {
 }
 
 dependencies {
+    add("kspDebug", project(":api-doc-processor"))
+    add("kspRelease", project(":api-doc-processor"))
     implementation(libs.androidx.dynamicanimation)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
@@ -58,4 +64,42 @@ dependencies {
     testRuntimeOnly(libs.robolectric.android)
     robolectricSdk(libs.robolectric.android)
     testImplementation(libs.assertj.core)
+}
+
+// 文档作为变体编译的产物生成；不引入运行时处理器依赖。
+ksp {
+    arg("publicApi.sourceRoot", layout.projectDirectory.dir("src/main/java").asFile.absolutePath)
+}
+
+val generatePublicApiDocs by tasks.registering {
+    group = "documentation"
+    description = "Generate annotated public API documentation for Debug and Release."
+}
+
+listOf("Debug", "Release").forEach { variant ->
+    val variantDirectory = variant.lowercase()
+    val documentation = tasks.register<Sync>("generate${variant}PublicApiDocs") {
+        group = "documentation"
+        description = "Generate $variant public API Markdown from @PublicApi and Chinese KDoc."
+        dependsOn("ksp${variant}Kotlin")
+        from(layout.buildDirectory.file("generated/ksp/$variantDirectory/resources/public-api.md"))
+        into(layout.buildDirectory.dir("docs/public-api/$variantDirectory"))
+    }
+    generatePublicApiDocs.configure { dependsOn(documentation) }
+    tasks.matching { it.name == "compile${variant}Kotlin" }.configureEach {
+        dependsOn(documentation)
+    }
+    // 在库资源源头排除文档，覆盖项目依赖场景；不能仅依赖最终 AAR 的 packaging 排除项。
+    tasks.withType<Sync>().matching { it.name == "process${variant}JavaRes" }.configureEach {
+        exclude("public-api.md")
+    }
+    tasks.withType<Test>().matching { it.name == "test${variant}UnitTest" }.configureEach {
+        val javaResources = tasks.named<Sync>("process${variant}JavaRes")
+        dependsOn(documentation, javaResources, ":api-doc-processor:test")
+        systemProperty("publicApi.javaResources", javaResources.get().destinationDir.absolutePath)
+        systemProperty(
+            "publicApi.documentation",
+            layout.buildDirectory.file("docs/public-api/$variantDirectory/public-api.md").get().asFile.absolutePath
+        )
+    }
 }
