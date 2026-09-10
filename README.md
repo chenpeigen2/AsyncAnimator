@@ -4,6 +4,15 @@
 
 **项目不是完整 Launcher，也不是 OPPO 动画框架的等价移植。** Demo 中既有直接调用 `lib` 的实验，也有自绘场景演示；画面、日志中的原厂术语不代表已接入对应系统能力。下面按当前代码区分两者。
 
+## 当前状态
+
+- **39/39 份 review 已按顺序验收**：适用建议已实现并验证，其余逐项说明不采纳或保留的理由。完成的是本地建议验收，不是完整 OPPO 系统移植。
+- **45 个测试类、340 个独立用例**：库 334 + Demo 6，已有 Debug/Release 四组通过记录；Demo Debug APK 构建成功。
+- **12 个 Demo 页面**：区分真实库接线和 Canvas 概念演示，不把动画计算间隔当屏幕呈现 FPS。
+- **未验证范围仍保留**：设备/Perfetto、干净 SDK 环境复现及 release 压缩/签名；Lint 因缺少离线依赖未完成。
+
+[API 使用指南](docs/USAGE.md) · [构建环境](docs/build-environment.md) · [39 份验收记录](docs/review/2026-09-09-ordered-review-progress.md)
+
 ## 项目结构
 
 ```text
@@ -29,7 +38,8 @@ AsyncAnimator/
 │   │       ├── scene/                # 自绘桌面、SceneSpring、SceneClock、图形素材
 │   │       └── widget/               # 曲线、线程泳道、状态图、帧间隔直方图
 │   └── src/main/res/                 # 主题、字符串、图标等 Android 资源
-├── docs/                             # 使用说明、原厂分析、trace 与 review 记录
+├── docs/                             # 使用说明、构建环境、原厂分析与 review 记录
+├── scripts/check-build-environment.ps1 # 只读 JDK/SDK 前置检查（Windows）
 ├── gradle/libs.versions.toml          # 依赖与插件版本
 ├── lib/build.gradle.kts              # 库模块配置（Kotlin DSL）
 ├── demo/build.gradle                 # 应用模块配置（Groovy DSL）
@@ -66,6 +76,13 @@ AsyncAnimator/
 
 自有 `core.AnimationHandler` 与平台 `android.animation`、AndroidX 动画内部的调度器是不同对象。给自有调度器安装帧源，**不等于替换平台或 AndroidX 的帧源**；本工程没有接入原厂 `SfVsyncFrameCallbackProvider`、UX 调度或 CPU boost。
 
+### 生命周期与诊断
+
+- 页面销毁时释放自己创建的动画、Controller、延迟任务及配置订阅；Demo 的释放入口是 `DemoBaseActivity.onCleanup()`，不要关闭进程共享的动画线程。
+- `AsyncValueAnimator.dispose()` 是最终、幂等释放：立即使排队命令/回调失效，在 owner Looper 清除监听并取消平台动画；释放后不能重新 start 或注册监听。仅调用 `asyncAnimCallbacks.dispose()` 则只清监听代次/诊断身份，不会取消动画。
+- `AsyncAnimCallbacks.setAnimType()` 是可选诊断上下文，默认 `UNSPECIFIED`。事件投递前捕获 id/type，后续改类型不会改写已排队事件；它不选择动画引擎。
+- Demo 日志使用共享 `TraceLogRedirector` 和独立页面订阅，支持交错释放；最后一个订阅结束时仅恢复自己仍拥有的 stderr，不关闭原流，也不覆盖其他组件替换的新流。
+
 ### 延迟启动决策的环境输入
 
 `AnimationController.delayStartActivityIfNeed()` 按横屏/分屏退出、transition、overview 三层互斥判断。搜索入口支持原厂两种 action 和 `source=drawer_search`；平板条件只约束纯 landscape 项，不排除导航退出或分屏分支。
@@ -91,7 +108,7 @@ AsyncAnimator/
 | 11 · `Demo11ViewSpringAnimThreadActivity` | 卡片 translationY 弹簧，切换直接/包装调用、cancel、skipToEnd 和主线程加压 | 实际构造 AndroidX `SpringAnimation`；包装模式明确 `supportAnimThread=false`，两路均安全使用主线程，不声称后台 View 支持。 |
 | 12 · `Demo12RectSpringActivity` | 六轴矩形、反向、改目标、预测接续、取消/结束，选择线程/锚点/额外倍率 | 实际调用 `RectSpringDriver` + `CustomRectFSpringAnim`；数值弹簧可在主/动画线程运行，Canvas 始终在主线程。不是系统窗口或 SF-VSYNC。 |
 
-建议先看 Demo 3 和 10 理解线程转发，再看 6/7/8 理解编排与开关，最后用其余场景辅助理解视觉概念。
+阅读路径：Demo 3/10 看线程转发 → 6/7/8 看状态编排与配置 → 9/12 看实际四轨聚合与六轴弹簧；1/2/4/5 作为视觉概念辅助。入口卡片中的原厂术语不是 API 接入证明，以本表和对应 Activity 源码为准。
 
 **Demo 10/11 的帧间隔来自动画更新回调采样，不是屏幕呈现 FPS。** 主线程阻塞时，即使后台计算继续，舞台绘制、控件刷新仍会受阻；本工程不能证明“主线程卡住时屏幕仍持续流畅刷新”。
 
@@ -123,7 +140,10 @@ sdk.dir=C:/Users/your-name/AppData/Local/Android/Sdk
 ### 常用命令（仓库根目录，PowerShell）
 
 ```powershell
-# 确认 Gradle 与使用的 JVM
+# 只读检查完整 JDK 21、SDK 和 Build Tools 文件；不会安装或改写 SDK
+.\scripts\check-build-environment.ps1
+
+# 确认 Gradle 与实际使用的 JVM
 .\gradlew.bat --version
 
 # 库的 Debug 单元测试；:lib:test 可运行各测试变体
@@ -144,7 +164,9 @@ sdk.dir=C:/Users/your-name/AppData/Local/Android/Sdk
 adb shell am start -n com.asyncanimator.demo/.LauncherEntryActivity
 ```
 
-macOS/Linux 使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
+入口 `LauncherEntryActivity` 是唯一导出的 Activity，Demo1–12 均显式 `exported=false`。安装后通过入口选择页面，不要为了外部直跳把内部页面全部导出。
+
+Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
 
 - Debug APK：`demo/build/outputs/apk/debug/demo-debug.apk`
 - Debug AAR：`lib/build/outputs/aar/lib-debug.aar`
@@ -156,7 +178,35 @@ macOS/Linux 使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
 
 库使用 JUnit 4、Robolectric 4.16 / API 36 测试运行时（也声明了 AssertJ 依赖）。`unitTests.isReturnDefaultValues = true` 仍保留，但 Android 行为用例已由 Robolectric 执行，Bundle 用例不再跳过。测试依赖不打入 APK。
 
+### 已有全量验证结果
+
+以下来自顺序验收最后一次成功构建及现存 XML，不表示每次 README 编辑都重新运行了测试：
+
+| 范围 | 测试类 | 独立用例 | Debug / Release |
+|---|---:|---:|---|
+| lib | 44 | 334 | 各 334 通过，0 失败/错误/跳过 |
+| demo | 1 | 6 | 各 6 通过，0 失败/错误/跳过 |
+| 合计 | 45 | 340 | 同一批用例，不按构建变体翻倍 |
+
+Demo Debug APK 构建成功，**118/118 个 Gradle 任务执行，耗时 3 分 10 秒**。完整过程见[顺序验收记录](docs/review/2026-09-09-ordered-review-progress.md)；本地忽略日志为 `.gradle/review-ordered-39-final.log`，不随仓库分发。
+
+复跑完整验证（依赖已缓存时）：
+
+```powershell
+.\gradlew.bat :lib:testDebugUnitTest :lib:testReleaseUnitTest `
+  :demo:testDebugUnitTest :demo:testReleaseUnitTest :demo:assembleDebug `
+  --rerun-tasks --offline --no-daemon --no-build-cache --no-configuration-cache `
+  --max-workers=1 "-Pkotlin.incremental=false" --console=plain
+```
+
+首次环境未缓存依赖时不能使用 `--offline`；先按[构建环境说明](docs/build-environment.md)准备依赖。SDK/Gradle/私有注解和 Java API deprecation 提示仍存在；Lint 在 `extractDebugAnnotations` 因缺少 `intellij-core` / `kotlin-compiler` 31.9.0 离线依赖失败，未通过关闭检查绕过。
+
+### 测试覆盖明细
+
 库当前共有 **44 个测试类、334 个用例**：
+
+<details>
+<summary>展开库测试类、用例数与覆盖内容</summary>
 
 | 测试类 | 用例数 | 覆盖内容 |
 |---|---:|---|
@@ -205,9 +255,11 @@ macOS/Linux 使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
 | `ControllerCompletionTest` | 7 | 完成回调重入/异常与新轮隔离、idle 清理、非法 Recents 状态诊断 |
 | `AnimationThreadBootstrapTest` | 2 | 冷启动首条任务前安装帧源、owner/优先级与 Looper 提前发布时序 |
 
+</details>
+
 Demo 模块另有 1 个纯 JVM 测试类，TraceLogRedirectorTest：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
 
-**本轮本地验证**：最新强制重跑 Debug/Release 单测，各 **334 个通过、0 失败/错误/跳过**；Demo Debug 构建成功，118 个 Gradle task 全部执行（3m 10s）；Demo Debug/Release 单测另各 6 个通过。两变体共用 334 个库用例和 6 个 Demo 用例，共 340 个独立用例，不按变体翻倍。帧源测试用非冗余 core 包配置形成独立 Robolectric sandbox；旧 android.view 配置会被 4.16 归一化掉，已修正，原帧数/间隔断言及真实 HandlerThread 用例均保留。逐份验收进展以[顺序执行清单](docs/review/2026-09-09-ordered-review-progress.md)为准。既有 SDK/Gradle/私有注解警告及 Java API deprecation 提示仍在；Lint 未完成，未进行设备回归。
+测试数不是行覆盖率或分支覆盖率；仓库没有配置覆盖率阈值，本轮也未运行覆盖率工具。库/Demo 的 XML 与 HTML 报告分别位于各模块的 `build/test-results/test{Debug,Release}UnitTest/` 和 `build/reports/tests/test{Debug,Release}UnitTest/`。
 
 Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 334 个用例中，不额外累计。
 
@@ -215,7 +267,7 @@ Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证
 
 - **系统能力未接入**：`LauncherAnimationRunner.RemoteAnimationTarget` 只有 `taskId` 和 `Any? leash` 类型壳，没有 RemoteAnimation Binder 通道或 `SurfaceControl.Transaction` 链路。舞台中的“窗口/leash”是 Canvas 绘制对象。
 - **诊断日志不是 Perfetto**：`LogUtils` 默认 Debug 开启、Release 关闭，可显式切换等级；Trace 输出线程名和分类到 stderr／Demo 日志区，不接入平台追踪。
-- **部分类型只是占位或内部实现**：`CustomRectFSpringAnim` 已有固定线程归属、逻辑/实际结束和可选重定向协议；可选 `RectSpringDriver` 已提供六轴 AndroidX 物理、几何、预测和速度接续；Animator adapter 仍是外部几何适配。未复制 OEM 隐藏物理/窗口引擎；`PendingAnimation`、`AnimatorPlaybackController`、`OplusValueAnimator` 等标记为 `internal`，不是供 `demo` 跨模块直接调用的公开 API。
+- **公开适配与内部实现应区分**：`CustomRectFSpringAnim` 已有固定线程归属、逻辑/实际结束和可选重定向协议；可选 `RectSpringDriver` 已提供六轴 AndroidX 物理、几何、预测和速度接续；Animator adapter 仍是外部几何适配。未复制 OEM 隐藏物理/窗口引擎；`PendingAnimation`、`AnimatorPlaybackController`、`OplusValueAnimator` 等标记为 `internal`，不是供 `demo` 跨模块直接调用的公开 API。
 - **续行动画仍是简化实现**：`TimeControllerObjectAnimator` 的 target/property 已真实接线，续行复制独立值快照并能输出到 applicator；不等于完整的原厂速度接力协议。Demo 5 仍走舞台自己的动画，没有调用该 internal 实现，也不验证速度连续性。
 - **开关不是生产灰度系统**：`supportInterruption()` 固定返回 `true`，初始化默认创建具体实现；实际演示切换使用 `interruptionEnabled`。`simulateRemoteUpdate()` 不连接服务，也不自动切换动画线程或管理器实现。
 - **后台 View 不是已验证能力保证**：`AsyncSpringAnim` 主要转发生命周期方法，未配置 AndroidX 自定义调度器，也没有统一接管 View 属性写入。Demo 11 因此明确回退主线程并在 onCleanup 清除监听/取消；Demo12 的 `RectSpringDriver` 独立配置了公开 AndroidX scheduler，后台数值更新有真实 HandlerThread 单测；不推广为任意 View 弹簧后台安全，也不等于设备独立渲染。
@@ -227,7 +279,9 @@ Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证
 - [原厂 trace 分析](docs/animation-trace-validation.md)：原厂行为的分析证据，不是当前 Demo 的性能测试报告。
 - [早期分析](docs/animation-thread-analysis.md)：保留的历史分析，线程结论请结合 v4 阅读。
 - [子线程 UI 更新讨论](docs/sub-thread-ui-update.md)：相关机制与限制讨论。
-- [Review 记录](docs/review/)：差异、修正和保留简化项；部分记录或源码注释可能早于当前实现。
+- [顺序验收清单](docs/review/2026-09-09-ordered-review-progress.md)：39/39 份建议处置、各轮代码与验证记录。
+- [基础专项 01–12](docs/review/SUMMARY-vs-oppo.md) / [深挖专项 13–34](docs/review/SUMMARY-vs-oppo-V2.md)：当前专项索引；旧版和 dated 记录作为历史证据，不当作现存缺陷列表。
+- [构建环境说明](docs/build-environment.md)：本机 SDK 兼容目录、依赖冲突、工具链与发布限制。
 - [贡献指南](AGENTS.md)：构建、风格、测试和提交约定。
 
 本项目用于动画机制学习与实验；仓库目前没有独立的 `LICENSE` 文件，学习用途说明不等同于开源授权条款。
