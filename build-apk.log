@@ -1,0 +1,92 @@
+Reusing configuration cache.
+> Task :lib:preBuild UP-TO-DATE
+> Task :demo:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :demo:preBuild UP-TO-DATE
+> Task :lib:preDebugBuild UP-TO-DATE
+> Task :demo:preDebugBuild UP-TO-DATE
+> Task :demo:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :lib:generateDebugResValues UP-TO-DATE
+> Task :demo:generateDebugResValues UP-TO-DATE
+> Task :lib:writeDebugAarMetadata UP-TO-DATE
+> Task :demo:validateSigningDebug UP-TO-DATE
+> Task :demo:writeDebugAppMetadata UP-TO-DATE
+> Task :demo:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :demo:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :lib:javaPreCompileDebug UP-TO-DATE
+> Task :demo:javaPreCompileDebug UP-TO-DATE
+> Task :demo:desugarDebugFileDependencies UP-TO-DATE
+> Task :demo:mergeDebugJniLibFolders UP-TO-DATE
+> Task :lib:mergeDebugJniLibFolders UP-TO-DATE
+> Task :lib:mergeDebugShaders UP-TO-DATE
+> Task :demo:mergeDebugShaders UP-TO-DATE
+> Task :lib:processDebugJavaRes NO-SOURCE
+> Task :demo:generateDebugResources UP-TO-DATE
+> Task :lib:processDebugManifest UP-TO-DATE
+> Task :demo:extractDeepLinksDebug UP-TO-DATE
+> Task :lib:extractDeepLinksDebug UP-TO-DATE
+> Task :lib:generateDebugResources UP-TO-DATE
+> Task :demo:compileDebugShaders NO-SOURCE
+> Task :lib:compileDebugShaders NO-SOURCE
+> Task :lib:mergeDebugNativeLibs NO-SOURCE
+> Task :demo:generateDebugAssets UP-TO-DATE
+> Task :lib:generateDebugAssets UP-TO-DATE
+> Task :lib:copyDebugJniLibsProjectOnly UP-TO-DATE
+> Task :lib:mergeDebugAssets UP-TO-DATE
+> Task :demo:packageDebugResources UP-TO-DATE
+> Task :lib:packageDebugResources UP-TO-DATE
+> Task :lib:compileDebugLibraryResources UP-TO-DATE
+> Task :lib:parseDebugLocalResources UP-TO-DATE
+> Task :demo:parseDebugLocalResources UP-TO-DATE
+> Task :lib:generateDebugRFile UP-TO-DATE
+> Task :demo:checkDebugDuplicateClasses UP-TO-DATE
+> Task :lib:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib:bundleLibRuntimeToDirDebug UP-TO-DATE
+> Task :lib:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :demo:mergeDebugAssets UP-TO-DATE
+> Task :demo:checkDebugAarMetadata UP-TO-DATE
+> Task :demo:mapDebugSourceSetPaths UP-TO-DATE
+> Task :demo:compressDebugAssets UP-TO-DATE
+> Task :demo:mergeDebugNativeLibs NO-SOURCE
+> Task :demo:mergeDebugResources UP-TO-DATE
+> Task :demo:stripDebugDebugSymbols NO-SOURCE
+> Task :demo:mergeLibDexDebug UP-TO-DATE
+> Task :demo:mergeExtDexDebug UP-TO-DATE
+> Task :demo:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :demo:processDebugMainManifest UP-TO-DATE
+> Task :demo:processDebugManifest UP-TO-DATE
+> Task :demo:processDebugManifestForPackage UP-TO-DATE
+> Task :demo:dataBindingGenBaseClassesDebug UP-TO-DATE
+
+> Task :demo:processDebugResources UP-TO-DATE
+WARNING: We recommend using a newer Android Gradle plugin to use compileSdk = 36
+
+This Android Gradle plugin (8.9.0) was tested up to compileSdk = 35.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compileSdk = 36.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compileSdk = 36 is available.
+
+For more information refer to the compatibility table:
+https://d.android.com/r/tools/api-level-support
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=37,36
+to this project's gradle.properties.
+
+> Task :demo:compileDebugKotlin UP-TO-DATE
+> Task :demo:processDebugJavaRes UP-TO-DATE
+> Task :demo:compileDebugJavaWithJavac UP-TO-DATE
+> Task :demo:dexBuilderDebug UP-TO-DATE
+> Task :demo:mergeProjectDexDebug UP-TO-DATE
+> Task :demo:mergeDebugJavaResource UP-TO-DATE
+> Task :demo:mergeDebugGlobalSynthetics UP-TO-DATE
+> Task :demo:packageDebug UP-TO-DATE
+> Task :demo:assembleDebug UP-TO-DATE
+> Task :demo:createDebugApkListingFileRedirect UP-TO-DATE
+
+BUILD SUCCESSFUL in 2s
+54 actionable tasks: 54 up-to-date
+Configuration cache entry reused.
