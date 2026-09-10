@@ -69,7 +69,8 @@ class RectSpringDriver internal constructor(
     override val supportsAnimationThread: Boolean get() = true
 
     init {
-        checkedRadius(startRadius); checkedRadius(targetRadius)
+        checkedRadius(startRadius)
+        checkedRadius(targetRadius)
         require(startAlpha.isFinite() && startAlpha in 0f..1f)
         require(targetAlpha.isFinite() && targetAlpha in 0f..1f)
         require(initialVelocity.array().all { it.isFinite() })
@@ -90,7 +91,11 @@ class RectSpringDriver internal constructor(
         val queued = linkedSetOf<Runnable>()
         val axes = mutableListOf<Axis>()
         var stop: Stop? = null
-        var widthMode = widthMode(startRect.height() / startRect.width(), targetRect.height() / targetRect.width(), animType)
+        var widthMode = widthMode(
+            startRect.height() / startRect.width(),
+            targetRect.height() / targetRect.width(),
+            animType
+        )
         var progressStart = if (widthMode) startRect.width() else startRect.height()
         var progressBase = initialProgress
         var reversing = initiallyReversing
@@ -158,7 +163,8 @@ class RectSpringDriver internal constructor(
                 5 -> 1f
                 else -> Float.MAX_VALUE
             }
-            animation.setMinValue(low); animation.setMaxValue(high)
+            animation.setMinValue(low)
+            animation.setMaxValue(high)
             force.finalPosition = target.coerceIn(low, high)
             value = value.coerceIn(low, high)
         }
@@ -338,7 +344,12 @@ class RectSpringDriver internal constructor(
             }
             var value = projected.first.coerceIn(axis.low, axis.high)
             var velocity = projected.second
-            if (run.stop != Stop.CANCEL && !axis.waiting && !axis.firstFrame && axis.force.isAtEquilibrium(value, velocity)) {
+            if (
+                run.stop != Stop.CANCEL &&
+                !axis.waiting &&
+                !axis.firstFrame &&
+                axis.force.isAtEquilibrium(value, velocity)
+            ) {
                 value = axis.force.finalPosition
                 velocity = 0f
             }
@@ -382,14 +393,20 @@ class RectSpringDriver internal constructor(
         check(run.isCurrentThread())
         if (run.stop != null) {
             if (run.stop == Stop.END) {
-                run.axes.forEach { it.value = it.force.finalPosition; it.velocity = 0f }
+                run.axes.forEach {
+                it.value = it.force.finalPosition
+                it.velocity = 0f
+            }
                 currentFrame = frame(run, terminal = true)
                 try { onUpdate(requireNotNull(currentFrame)) } finally { if (current === run) finish(run) }
             } else finish(run)
             return
         }
         val elapsed = SystemClock.uptimeMillis() - run.startedAt
-        run.axes.filter { it.waiting && (elapsed >= config.alphaStartDelayMillis || ValueAnimator.getDurationScale() == 0f) }
+        run.axes.filter {
+            it.waiting &&
+                (elapsed >= config.alphaStartDelayMillis || ValueAnimator.getDurationScale() == 0f)
+        }
             .forEach { it.start() }
         val work = run.queued.toList()
         run.queued.clear()
@@ -460,7 +477,12 @@ class RectSpringDriver internal constructor(
         val progress = if (run.reversing) run.progressBase * (1f - fraction)
             else run.progressBase + (1f - run.progressBase) * fraction
         return RectSpringFrame(values[0] - width / 2f, top, values[0] + width / 2f, top + height,
-            RectSpringValues.from(values.copyOf().also { it[2] = size; it[3] = ratio }),
+            RectSpringValues.from(
+                values.copyOf().also {
+                    it[2] = size
+                    it[3] = ratio
+                }
+            ),
             RectSpringValues.from(velocities), progress, run.widthMode)
     }
 
@@ -485,7 +507,10 @@ class RectSpringDriver internal constructor(
          * 相等时返回false即使用高度；纯计算不校验比例范围、不修改任何动画状态。
          */
         fun widthMode(startRatio: Float, endRatio: Float, type: CustomRectFSpringAnim.AnimType): Boolean =
-            if (type == CustomRectFSpringAnim.AnimType.OPEN_FROM_HOME || type == CustomRectFSpringAnim.AnimType.REVERSE_TO_OPEN)
+            if (
+                type == CustomRectFSpringAnim.AnimType.OPEN_FROM_HOME ||
+                type == CustomRectFSpringAnim.AnimType.REVERSE_TO_OPEN
+            )
                 startRatio < endRatio else endRatio < startRatio
         /**
          * 要求圆角半径有限且非负，通过后返回原值，非法值抛出IllegalArgumentException。
@@ -500,7 +525,10 @@ class RectSpringDriver internal constructor(
          * 非法几何抛出IllegalArgumentException；不修改传入对象，副本隔离后续外部矩形变化。
          */
         fun checkedRect(rect: RectF): RectF {
-            require(listOf(rect.left, rect.top, rect.right, rect.bottom, rect.width(), rect.height()).all { it.isFinite() })
+            require(
+                listOf(rect.left, rect.top, rect.right, rect.bottom, rect.width(), rect.height())
+                    .all { it.isFinite() }
+            )
             require(rect.width() > 0 && rect.height() > 0 && (rect.height() / rect.width()).isFinite())
             return RectF(rect)
         }

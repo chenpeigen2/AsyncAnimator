@@ -100,17 +100,26 @@ class MultiAnimatorSet internal constructor(
      * 在主线程向去重集合添加聚合生命周期监听器，销毁后调用会失败。
      * 按快照通知，不会为新增监听补发历史事件；事件载荷使用主animatorSet。
      */
-    fun addListener(listener: NullableAnimatorListener) { checkOwner(); listeners.add(listener) }
+    fun addListener(listener: NullableAnimatorListener) {
+        checkOwner()
+        listeners.add(listener)
+    }
     /**
      * 在主线程移除聚合监听器，未注册时无操作，销毁后拒绝调用。
      * 已取得的当前派发快照不重新检查成员资格，因此移除不保证撤回本次剩余通知。
      */
-    fun removeListener(listener: NullableAnimatorListener) { checkOwner(); listeners.remove(listener) }
+    fun removeListener(listener: NullableAnimatorListener) {
+        checkOwner()
+        listeners.remove(listener)
+    }
     /**
      * 在主线程设置或清空聚合完成时的视图复位动作，传入null表示取消该动作。
      * 完成时先消费引用再回调并传入完成动画标识；停止时排除弹簧轨道会清除此动作。
      */
-    fun setViewStateResetRunnable(callback: ((Int) -> Unit)?) { checkOwner(); resetViewState = callback }
+    fun setViewStateResetRunnable(callback: ((Int) -> Unit)?) {
+        checkOwner()
+        resetViewState = callback
+    }
 
     /**
      * 在启动前把平台Animator登记到主线程AnimatorSet，等价于play(false, animator)。
@@ -167,7 +176,9 @@ class MultiAnimatorSet internal constructor(
     fun play(animation: CustomRectFSpringAnim) {
         checkOwner()
         if (started || rect != null) return
-        requireNotNull(animation.driver) { "Rect playback requires an actual-end Driver; a bare handle cannot animate" }
+        requireNotNull(animation.driver) {
+            "Rect playback requires an actual-end Driver; a bare handle cannot animate"
+        }
         animation.animType = animType
         rect = animation
     }

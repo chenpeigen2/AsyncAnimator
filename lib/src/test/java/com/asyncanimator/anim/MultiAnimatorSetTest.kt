@@ -100,6 +100,23 @@ class MultiAnimatorSetTest {
         assertEquals(listOf("start", "end", "start", "end"), events)
     }
 
+    @Test
+    fun testListenerRegistrationAndRemovalRemainMainThreadOwned() {
+        val group = group()
+        var starts = 0
+        val listener = object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: Animator) {
+                starts++
+            }
+        }
+
+        group.addListener(listener)
+        group.removeListener(listener)
+        group.start()
+
+        assertEquals(0, starts)
+    }
+
     @Test fun testAllFourTracksMustFinishAndAsyncEndMustReturnToMain() {
         val group = group()
         val main = value()

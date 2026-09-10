@@ -79,7 +79,12 @@ object AnimationFeatureHelper {
      */
     fun removeRemoteUpdateListener(callback: () -> Unit) = synchronized(lock) {
         registrations.removeAll {
-            if (it.callback === callback) { it.callback = null; true } else false
+            if (it.callback === callback) {
+                it.callback = null
+                true
+            } else {
+                false
+            }
         }
         Unit
     }

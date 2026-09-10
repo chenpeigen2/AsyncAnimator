@@ -118,13 +118,19 @@ class AnimationController(
      * 新最近任务登记会清旧动作，整体完成时先快照并消费本轮状态再执行，重置只丢弃不执行。
      */
     override var recentsAnimFinishCallback: (() -> Unit)? = null
-        set(value) { checkMainThread(); field = value }
+        set(value) {
+            checkMainThread()
+            field = value
+        }
     /**
      * 可空应用打开完成动作，主线程写入和查询，整体动画登记均为空时参与一次收尾。
      * 回调在内部状态重置后执行，重入安装的后继动作不会被旧收尾再次清除。
      */
     override var appLaunchAnimFinishCallback: (() -> Unit)? = null
-        set(value) { checkMainThread(); field = value }
+        set(value) {
+            checkMainThread()
+            field = value
+        }
 
     private var startActivityAction: (() -> Unit)? = null
     private var startActivityWaitType: TaskStateChangeTimeOutListener.Type? = null
@@ -627,7 +633,9 @@ class AnimationController(
         } else if (overview != null) {
             val wait = isOverviewContinuationRunning?.invoke() ?: overviewContinuationRunning
             if (decision != startDecisionVersion || overviewContinuationTimeOutListener !== overview) return false
-            if (LogUtils.isLogOpen()) LogUtils.i("AnimationController", "launch decision overview running=$wait defer=$wait")
+            if (LogUtils.isLogOpen()) {
+                LogUtils.i("AnimationController", "launch decision overview running=$wait defer=$wait")
+            }
             if (wait) return deferStart(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, action)
         }
         isBetweenAppExitTransitionEndAndFinish = false

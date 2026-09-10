@@ -273,7 +273,10 @@ internal class OplusValueAnimator<T>(
             timeController.setInterpolator(LinearInterpolator())
             timeController.setFloatValues(f, 1f)
             if (durationMs > 0) timeController.setDuration(durationMs)
-            LogUtils.i("OplusValueAnimator", "continuation name=${anim.animName} fraction=$f durationMs=${newAnim.duration}")
+            LogUtils.i(
+                "OplusValueAnimator",
+                "continuation name=${anim.animName} fraction=$f durationMs=${newAnim.duration}"
+            )
             Trace.traceBegin(Trace.TAG_VIEW, "Continuation-$f")
             Trace.traceEnd(Trace.TAG_VIEW)
             return newAnim

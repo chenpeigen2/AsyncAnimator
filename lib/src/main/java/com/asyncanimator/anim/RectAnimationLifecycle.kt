@@ -205,7 +205,11 @@ internal class RectAnimationLifecycle(
                 val terminalListeners = listeners.toList()
                 if (!run.logicalEnded) {
                     run.logicalEnded = true
-                    if (run.cancelled) notify(run, terminalListeners) { listener, event -> listener.onCancel(animation, event) }
+                    if (run.cancelled) {
+                        notify(run, terminalListeners) { listener, event ->
+                            listener.onCancel(animation, event)
+                        }
+                    }
                     notify(run, terminalListeners) { listener, event -> listener.onEnd(animation, event) }
                 }
                 notify(run, terminalListeners) { listener, event -> listener.onActualEnd(animation, event) }
@@ -284,7 +288,10 @@ internal class RectAnimationLifecycle(
 
                 try { action(listener, event) }
                 catch (error: Exception) {
-                    LogUtils.i("RectAnimationLifecycle", "Listener failed: ${error.javaClass.simpleName}: ${error.message}")
+                    LogUtils.i(
+                        "RectAnimationLifecycle",
+                        "Listener failed: ${error.javaClass.simpleName}: ${error.message}"
+                    )
                 }
             }
         }
@@ -306,7 +313,11 @@ internal class RectAnimationLifecycle(
      * 验证当前线程属于主执行器，违反配置/监听器线程约束时抛出IllegalStateException。
      * 本方法只做前置检查，不会自动投递或切换到主线程。
      */
-    private fun checkMain() { check(main.isCurrentThread) { "Rect configuration/listeners belong to the main thread" } }
+    private fun checkMain() {
+        check(main.isCurrentThread) {
+            "Rect configuration/listeners belong to the main thread"
+        }
+    }
     /**
      * 依次确认主线程、未释放以及没有尚待物理结束的运行，否则抛出状态异常。
      * 供动画标识和执行器选择的修改使用，逻辑结束但尚未实际结束仍禁止重新配置。
