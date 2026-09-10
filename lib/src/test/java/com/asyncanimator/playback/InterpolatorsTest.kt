@@ -60,4 +60,42 @@ class InterpolatorsTest {
         assertEquals(0.875f, Interpolators.SCROLL_CUBIC.getInterpolation(0.5f), 0f)
         assertEquals(0.9375f, Interpolators.SCROLL.getInterpolation(0.5f), 0f)
     }
+    @Test fun testClampDoesNotEvaluateDelegateOutsideWindowOrAtZeroWidthStep() {
+        val inputs = mutableListOf<Float>()
+        val curve = TimeInterpolator { inputs.add(it); it }
+        assertEquals(0f, Interpolators.clampToProgress(curve, -1f, 0.25f, 0.75f), 0f)
+        assertEquals(1f, Interpolators.clampToProgress(curve, 2f, 0.25f, 0.75f), 0f)
+        assertEquals(1f, Interpolators.clampToProgress(curve, 0.5f, 0.5f, 0.5f), 0f)
+        assertTrue(inputs.isEmpty())
+        assertEquals(0.5f, Interpolators.clampToProgress(curve, 0.5f, 0.25f, 0.75f), 0f)
+        assertEquals(listOf(0.5f), inputs)
+    }
+
+    @Test fun testNaNBoundsAreRejectedByAllClampEntryPoints() {
+        for ((lower, upper) in listOf(Float.NaN to 1f, 0f to Float.NaN)) {
+            assertThrows(IllegalArgumentException::class.java) { Interpolators.clampToProgress(square, lower, upper) }
+            assertThrows(IllegalArgumentException::class.java) { Interpolators.clampToProgress(square, 0.5f, lower, upper) }
+            assertThrows(IllegalArgumentException::class.java) { Interpolators.clampToProgress(0.5f, lower, upper) }
+        }
+    }
+
+    @Test fun testDoubleReverseAndMappedEndpointsPreserveNonlinearCurve() {
+        val twice = Interpolators.reverse(Interpolators.reverse(square))
+        for (input in listOf(0f, 0.1f, 0.5f, 0.9f, 1f)) {
+            assertEquals(square.getInterpolation(input), twice.getInterpolation(input), 0.000001f)
+        }
+        val constant = Interpolators.mapToProgress(square, 7f, 7f)
+        assertEquals(7f, constant.getInterpolation(-2f), 0f)
+        assertEquals(7f, constant.getInterpolation(2f), 0f)
+    }
+
+    @Test fun testBuiltInCurvesAreMonotonicWithinUnitIntervalWithExactEndpoints() {
+        for (curve in listOf(Interpolators.LINEAR, Interpolators.SCROLL, Interpolators.SCROLL_CUBIC)) {
+            val values = (0..100).map { curve.getInterpolation(it / 100f) }
+            assertEquals(0f, values.first(), 0f)
+            assertEquals(1f, values.last(), 0f)
+            assertTrue(values.all { it in 0f..1f })
+            assertTrue(values.zipWithNext().all { (a, b) -> a <= b })
+        }
+    }
 }

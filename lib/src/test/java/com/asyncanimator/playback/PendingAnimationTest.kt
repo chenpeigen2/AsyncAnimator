@@ -221,4 +221,64 @@ class PendingAnimationTest {
         assertEquals(listOf(true), endings)
         assertTrue(pending.isAnimFinished)
     }
+    @Test fun testNegativeDurationNormalizesToZeroAndStillAppliesEndValue() {
+        val target = Target()
+        val pending = PendingAnimation(-100).addFloat(target, property, 2f, 10f, Interpolators.LINEAR)
+        assertEquals(0L, pending.buildAnim().childAnimations.single().duration)
+        pending.createPlaybackController().setPlayFraction(0f)
+        assertEquals(10f, target.value, 0f)
+    }
+
+    @Test fun testFinishedFlagTracksExplicitRootEventsAndResetsOnStart() {
+        val pending = PendingAnimation(100)
+        val controller = pending.createPlaybackController()
+        assertFalse(pending.isAnimFinished)
+        controller.dispatchOnStart()
+        assertFalse(pending.isAnimFinished)
+        controller.dispatchOnCancel()
+        assertTrue(pending.isAnimFinished)
+        controller.dispatchOnStart()
+        assertFalse(pending.isAnimFinished)
+        controller.dispatchOnEnd()
+        assertTrue(pending.isAnimFinished)
+    }
+
+    @Test fun testAddWithoutDurationPreservesChildTimingComparedWithAddOverride() {
+        val short = ValueAnimator.ofFloat(0f, 1f).apply { duration = 40; interpolator = Interpolators.LINEAR }
+        val overridden = ValueAnimator.ofFloat(0f, 1f).apply { duration = 40; interpolator = Interpolators.LINEAR }
+        val pending = PendingAnimation(100).addWithoutDuration(short).add(overridden)
+        assertEquals(40L, short.duration)
+        assertEquals(100L, overridden.duration)
+        pending.createPlaybackController().setPlayFraction(0.4f)
+        assertEquals(1f, short.animatedValue as Float, 0.0001f)
+        assertEquals(0.4f, overridden.animatedValue as Float, 0.0001f)
+    }
+
+    @Test fun testWrapperFluentConfigurationAndLifecycleReachStableBackingAnimator() {
+        val target = Target()
+        val wrapper = PendingAnimation.ObjectAnimator.ofFloat(target, property, 2f, 10f)
+        assertSame(wrapper, wrapper.setInterpolator(Interpolators.LINEAR))
+        assertSame(wrapper, wrapper.setDuration(100))
+        assertSame(wrapper, wrapper.setFloatValues(0f, 1f))
+        var updates = 0
+        assertSame(wrapper, wrapper.addUpdateListener { updates++ })
+        var starts = 0
+        var ends = 0
+        wrapper.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationStart(animator: android.animation.Animator) { starts++ }
+            override fun onAnimationEnd(animator: android.animation.Animator) { ends++ }
+        })
+        val backing = wrapper.buildAnimator()
+        assertEquals(100L, wrapper.duration)
+        try {
+            wrapper.start()
+            wrapper.end()
+            assertSame(backing, wrapper.buildAnimator())
+            assertFalse(wrapper.isRunning())
+            assertEquals(1, starts)
+            assertEquals(1, ends)
+            assertTrue(updates > 0)
+            assertEquals(10f, target.value, 0.0001f)
+        } finally { wrapper.cancel() }
+    }
 }

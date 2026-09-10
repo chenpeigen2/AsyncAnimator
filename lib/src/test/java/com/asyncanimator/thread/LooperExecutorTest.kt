@@ -73,4 +73,39 @@ class LooperExecutorTest {
         }
         assertThrows(IllegalStateException::class.java) { LooperExecutor(null).setThreadPriority(0) }
     }
+    @Test fun testPostOnOwnerRemainsQueuedWhileExecuteIsInline() {
+        val executor = LooperExecutor(Handler(Looper.getMainLooper()))
+        val calls = mutableListOf<String>()
+        executor.post { calls.add("post") }
+        executor.postAsync { calls.add("async") }
+        executor.execute { calls.add("execute") }
+        executor.execute(null)
+        assertEquals(listOf("execute"), calls)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf("execute", "post", "async"), calls)
+    }
+
+    @Test fun testNullHandlerFallbackRunsAllOperationsInlineWithoutInventingALooper() {
+        val executor = LooperExecutor(null)
+        val calls = mutableListOf<String>()
+        executor.execute { calls.add("execute") }
+        executor.post { calls.add("post") }
+        executor.postAsync { calls.add("async") }
+        assertEquals(listOf("execute", "post", "async"), calls)
+        assertNull(executor.getHandler())
+        assertNull(executor.getLooper())
+        assertNull(executor.getThread())
+        assertTrue(executor.isCurrentThread)
+    }
+
+    @Test fun testInlineExceptionsPropagateAndDoNotDisableSubsequentCalls() {
+        val executor = LooperExecutor(null)
+        val failure = IllegalStateException("inline failure")
+        for (dispatch in listOf<(()->Unit)->Unit>(executor::execute, executor::post, executor::postAsync)) {
+            assertSame(failure, assertThrows(IllegalStateException::class.java) { dispatch { throw failure } })
+        }
+        var calls = 0
+        executor.execute { calls++ }
+        assertEquals(1, calls)
+    }
 }

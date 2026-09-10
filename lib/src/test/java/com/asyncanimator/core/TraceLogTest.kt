@@ -177,4 +177,40 @@ class TraceLogTest {
         Trace.traceEnd(8) // Empty-stack end remains harmless.
         assertEquals(0, Trace.depth)
     }
+    @Test fun testEnablingLoggingMidSectionDoesNotInventOuterEnd() {
+        LogUtils.setLogLevel(LogUtils.OFF)
+        Trace.traceBegin(Trace.TAG_VIEW, "hidden-outer")
+        LogUtils.setLogLevel(LogUtils.INFO)
+        Trace.section(Trace.TAG_VIEW, "visible-inner") { assertEquals(2, Trace.depth) }
+        Trace.traceEnd(Trace.TAG_VIEW)
+        assertEquals(0, Trace.depth)
+        assertFalse(text().contains("hidden-outer"))
+        assertTrue(text().contains(">>> [8] visible-inner"))
+        assertTrue(text().contains("<<< [8] visible-inner"))
+    }
+
+    @Test fun testClearDiscardsOnlyCurrentThreadsSections() {
+        LogUtils.setLogLevel(LogUtils.INFO)
+        Trace.traceBegin(Trace.TAG_VIEW, "main-retained")
+        worker {
+            Trace.traceBegin(Trace.TAG_VIEW, "worker-cleared")
+            Trace.clear()
+            assertEquals(0, Trace.depth)
+            Trace.traceEnd(Trace.TAG_VIEW)
+        }
+        assertEquals(1, Trace.depth)
+        Trace.traceEnd(Trace.TAG_VIEW)
+        assertEquals(0, Trace.depth)
+        assertFalse(text().contains("<<< [8] worker-cleared"))
+        assertTrue(text().contains("<<< [8] main-retained"))
+    }
+
+    @Test fun testSectionReturnsNullableResultAndUnwindsAnError() {
+        assertNull(Trace.section<String?>(Trace.TAG_VIEW, "nullable") { null })
+        val failure = AssertionError("action error")
+        assertSame(failure, assertThrows(AssertionError::class.java) {
+            Trace.section(Trace.TAG_VIEW, "error") { throw failure }
+        })
+        assertEquals(0, Trace.depth)
+    }
 }

@@ -55,4 +55,36 @@ class RemoteAnimationBoundaryTest {
         assertEquals(0, factory.finished)
         assertEquals(AnimationState.NONE, fallback.animState)
     }
+    @Test fun testOpaqueDescriptorDefaultsAndMutationsAreNotCopiedOrInterpreted() {
+        val target = LauncherAnimationRunner.RemoteAnimationTarget()
+        assertEquals(0, target.taskId)
+        assertNull(target.leash)
+        val leash = Any()
+        target.taskId = -42
+        target.leash = leash
+        val factory = Factory()
+        controller.appLaunchAnimStartOrEnd(false, factory, arrayOf(target))
+        target.taskId = 73
+        target.leash = null
+        controller.updateRunningRemoteTarget(arrayOf(target))
+        controller.appLaunchAnimStartOrEnd(true, factory, arrayOf(target))
+        assertEquals(73, target.taskId)
+        assertNull(target.leash)
+        assertEquals(0, factory.created)
+        assertEquals(0, factory.finished)
+        assertEquals(AnimationState.NONE, controller.animState)
+    }
+
+    @Test fun testControllerResetAndDestroyNeverCallHostFactoryHooks() {
+        val factory = object : RemoteAnimationFactory {
+            override fun createAnimation(): AnimatorSet = error("host creates animation")
+            override fun onAnimationFinished() = error("host notifies completion")
+        }
+        controller.appLaunchAnimStartOrEnd(false, factory, null)
+        controller.reset()
+        assertEquals(AnimationState.NONE, controller.animState)
+        controller.appLaunchAnimStartOrEnd(false, factory, emptyArray())
+        controller.destroy()
+        assertEquals(AnimationState.NONE, controller.animState)
+    }
 }

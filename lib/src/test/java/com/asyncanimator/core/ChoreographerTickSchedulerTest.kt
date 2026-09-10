@@ -217,4 +217,45 @@ class ChoreographerTickSchedulerTest {
         }
     }
 
+    @Test fun testNullCallbacksDoNotStartClockAndRemovalOfUnknownIsHarmless() {
+        val scheduler: TickScheduler = ChoreographerTickScheduler()
+        scheduler.postFrameCallback(null)
+        scheduler.removeFrameCallback(null)
+        scheduler.removeFrameCallback { fail("unknown callback") }
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(30))
+        assertEquals(0L, scheduler.frameCount)
+        assertEquals(0L, scheduler.frameTimeNanos)
+    }
+
+    @Test fun testClockIsPublishedBeforeEachPersistentCallback() {
+        val scheduler: TickScheduler = ChoreographerTickScheduler()
+        val samples = mutableListOf<Pair<Long, Long>>()
+        val callback = TickScheduler.FrameCallback { timestamp ->
+            assertEquals(timestamp, scheduler.frameTimeNanos)
+            samples.add(scheduler.frameCount to timestamp)
+        }
+        try {
+            scheduler.postFrameCallback(callback)
+            repeat(3) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(10)) }
+            assertEquals(listOf(1L, 2L, 3L), samples.map { it.first })
+            assertTrue(samples.zipWithNext().all { (a, b) -> b.second > a.second })
+        } finally { scheduler.removeFrameCallback(callback); scheduler.stop() }
+    }
+
+    @Test fun testStopInsideCallbackCompletesSnapshotButDoesNotScheduleNextFrame() {
+        val scheduler: TickScheduler = ChoreographerTickScheduler()
+        val calls = mutableListOf<String>()
+        val first = TickScheduler.FrameCallback { calls.add("first"); scheduler.stop() }
+        val second = TickScheduler.FrameCallback { calls.add("second") }
+        try {
+            scheduler.postFrameCallback(first)
+            scheduler.postFrameCallback(second)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(10))
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+            assertEquals(listOf("first", "second"), calls)
+            assertEquals(1L, scheduler.frameCount)
+        } finally {
+            scheduler.removeFrameCallback(first); scheduler.removeFrameCallback(second); scheduler.stop()
+        }
+    }
 }

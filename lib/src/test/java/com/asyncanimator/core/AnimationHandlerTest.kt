@@ -188,4 +188,75 @@ class AnimationHandlerTest {
         assertTrue(scheduler.callbacks.isEmpty())
     }
 
+    @Test fun testLazySchedulerHolderCachesExactlyOneSourceWithoutStartingIt() {
+        val handler = AnimationHandler()
+        val first = handler.scheduler
+        assertTrue(first is ChoreographerTickScheduler)
+        assertSame(first, handler.scheduler)
+        assertEquals(0L, first.frameCount)
+        assertEquals(0L, first.frameTimeNanos)
+        assertEquals(0, handler.callbackSize)
+    }
+
+    @Test fun testTwoHandlersShareSourceWithoutUnsubscribingEachOther() {
+        val source = ManualScheduler()
+        val first = AnimationHandler(source)
+        val second = AnimationHandler(source)
+        val calls = mutableListOf<String>()
+        val firstCallback = AnimationHandler.AnimationFrameCallback { calls.add("first"); false }
+        val secondCallback = AnimationHandler.AnimationFrameCallback { calls.add("second"); false }
+        first.addAnimationFrameCallback(firstCallback)
+        second.addAnimationFrameCallback(secondCallback)
+        assertEquals(2, source.callbacks.size)
+        first.removeCallback(firstCallback)
+        source.pulse()
+        assertEquals(listOf("second"), calls)
+        assertEquals(1, source.callbacks.size)
+        assertTrue(source.running)
+        second.removeCallback(secondCallback)
+        source.pulse()
+        assertTrue(source.callbacks.isEmpty())
+        assertEquals(0, first.callbackSize)
+        assertEquals(0, second.callbackSize)
+    }
+
+    @Test fun testManyCyclesOfRegistrationAndRemovalDoNotAccumulateTicks() {
+        val source = ManualScheduler()
+        val handler = AnimationHandler(source)
+        var calls = 0
+        val callback = AnimationHandler.AnimationFrameCallback { calls++; true }
+        repeat(100) { cycle ->
+            handler.addAnimationFrameCallback(callback)
+            handler.addAnimationFrameCallback(callback)
+            assertEquals(1, source.callbacks.size)
+            source.pulse()
+            assertEquals(cycle + 1, calls)
+            handler.removeCallback(callback)
+            handler.removeCallback(callback)
+            source.pulse()
+            assertEquals(0, handler.callbackSize)
+            assertTrue(source.callbacks.isEmpty())
+        }
+    }
+
+    @Test fun testCallbackCountReflectsLiveMutationBeforeCompaction() {
+        val source = ManualScheduler()
+        val handler = AnimationHandler(source)
+        val second = AnimationHandler.AnimationFrameCallback { fail("removed callback must be skipped"); false }
+        val counts = mutableListOf<Int>()
+        lateinit var first: AnimationHandler.AnimationFrameCallback
+        first = AnimationHandler.AnimationFrameCallback {
+            counts.add(handler.callbackSize)
+            handler.removeCallback(second)
+            counts.add(handler.callbackSize)
+            handler.removeCallback(first)
+            counts.add(handler.callbackSize)
+            false
+        }
+        handler.addAnimationFrameCallback(first)
+        handler.addAnimationFrameCallback(second)
+        source.pulse()
+        assertEquals(listOf(2, 1, 0), counts)
+        assertTrue(source.callbacks.isEmpty())
+    }
 }

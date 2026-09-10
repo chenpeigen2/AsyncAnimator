@@ -107,4 +107,30 @@ class AnimationSceneTest {
         c.reset()
         assertNull(c.swipingUpActivityPkg)
     }
+    @Test fun testGestureSnapshotDefaultsAndCopyAffectOnlyExplicitConsumerInput() {
+        val defaults = GestureScene()
+        assertEquals(GestureScene(false, false, false, false, false, null, null), defaults)
+        c.setOnceGestureProcessing(defaults)
+        assertTrue(c.onceGestureProcessing)
+        assertNull(c.swipingUpActivityPkg)
+        val copy = defaults.copy(baseActivityPackage = "base.package", topActivityPackage = "top.package")
+        c.setOnceGestureProcessing(copy)
+        assertEquals("base.package", c.swipingUpActivityPkg)
+        assertNull(defaults.baseActivityPackage)
+        c.setOnceGestureProcessing(defaults)
+        assertNull(c.swipingUpActivityPkg)
+    }
+
+    @Test fun testAppExitSceneCopyLeavesOriginalPolicyReusableAfterReset() {
+        val original = AppExitScene(true, true, true)
+        assertFalse(original.largeDisplayInLargeMode)
+        val copy = original.copy(largeDisplayInLargeMode = true)
+        c.setOnAppExit(copy)
+        assertNull(c.specialSceneExitTimeOutListener)
+        c.reset()
+        c.setOnAppExit(original)
+        assertNotNull(c.specialSceneExitTimeOutListener)
+        assertFalse(original.largeDisplayInLargeMode)
+        assertTrue(copy.largeDisplayInLargeMode)
+    }
 }
