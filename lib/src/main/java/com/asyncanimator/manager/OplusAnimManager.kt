@@ -7,24 +7,20 @@ import com.asyncanimator.seq.AnimationSeqHelper
 import com.asyncanimator.seq.DefaultAnimationSeqHelper
 
 /**
- * OplusAnimManager — feature flag 驱动的工厂单例。
- *
- * 对应 `docs/review/03-controller-manager-seq.md`。首次访问 object 时创建 Controller/Seq 两个实现，
- * [supportInterruption] 是固定 true 的能力占位；[interruptionEnabled] 才是本地工厂开关。
- * 关闭后新查询返回 Default（并非所有方法空操作），再次启用创建新的实现实例。
- * FeatureHelper 的数据更新不自动重建本工厂。
- *
- * 业务统一通过 `OplusAnimManager.animController` 等获取实例，
- * 不需要知道当前返回的是 Default 还是 Impl。
+ * 根据本地开关提供转场控制器与序列协调器的进程内工厂。
+ * 首次对象初始化时创建实际实现，关闭后读取返回新的降级实例，再启用时创建新的实际实现。
+ * 配置容器的数据变更不会自动切换或重建本工厂，类型名称与现有调用接口保持不变。
  */
 object OplusAnimManager {
 
-    // Eager within object initialization, not per-helper lazy/observable delegates.
     @Volatile
     private var animationControllerImpl: AnimationController? = null
     @Volatile
     private var animationSeqHelperImpl: AnimationSeqHelper? = null
 
+    /**
+     * 在单例对象首次初始化时按能力声明建立控制器和序列实例，不是每个 getter 各自惰性构造。
+     */
     init {
         if (supportInterruption()) {
             animationControllerImpl = AnimationController()
@@ -33,26 +29,42 @@ object OplusAnimManager {
     }
 
     /**
-     * Capability placeholder, always true; not a query of the local factory toggle.
-     * OEM combines LauncherAnimConfig, shell transitions and AppFeatureUtils. This library
-     * does not discover those ROM settings; use interruptionEnabled for its local switch.
+     * 返回本库声明的中断能力占位值，当前固定为 true。
+     * 不读取本地工厂开关、系统设置或远程配置；是否返回实际控制器应查询 interruptionEnabled。
      */
     fun supportInterruption(): Boolean = true
 
+    /**
+     * 读取当前实际控制器；关闭时每次返回新的降级实例，不缓存或共享降级监听注册表。
+     */
     val animController: DefaultAnimationController
         get() = animationControllerImpl ?: DefaultAnimationController()
 
+    /**
+     * 读取当前实际序列 helper；关闭时返回新的默认实现，其延后入口仍会同步执行动作。
+     */
     internal val animationSeqHelper: DefaultAnimationSeqHelper
         get() = animationSeqHelperImpl ?: DefaultAnimationSeqHelper()
 
+    /**
+     * 返回进程共享配置容器，不创建副本，也不因工厂开关切换而替换配置实例。
+     */
     internal val featureHelper: AnimationFeatureHelper
         get() = AnimationFeatureHelper
 
+    /**
+     * 把 Recents 清理请求交给当前启用的实际控制器，功能关闭时无操作。
+     * 不会替换控制器或序列实例，也不接管宿主动画工厂；启用时遵守控制器的主线程约束。
+     */
     internal fun cleanUpRecentsAnimation() {
         animationControllerImpl?.cleanUpRecentsAnim()
     }
 
-    /** 重置为 no-op（feature toggle 关闭）。demo 用来演示降级。切换限主线程；关闭时释放旧实例持有的任务。 */
+    /**
+     * 读取实际控制器是否存在；赋值必须在主线程且由 setter 锁串行化。
+     * 启用时只补建缺失实例，重复启用保持身份；关闭时先摘除引用，再销毁旧控制器并确保清理旧序列任务。
+     * 工厂开关不销毁独立配置订阅，能力声明也不会因此变为 false。
+     */
     @set:Synchronized
     var interruptionEnabled: Boolean
         get() = animationControllerImpl != null

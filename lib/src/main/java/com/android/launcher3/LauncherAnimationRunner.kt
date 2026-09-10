@@ -1,19 +1,16 @@
 package com.android.launcher3
 
 /**
- * LauncherAnimationRunner — 远程转场 runner 的最小移植桩。
- *
- * 原 OPPO/Launcher3 代码中 `com.android.launcher3.LauncherAnimationRunner`
- * 承载 RemoteAnimation 的 Binder 回调（startAnimation(RemoteAnimationTarget[])）。
- * 本移植工程不需要真实 Binder 通道，仅保留
- * [RemoteAnimationTarget] 类型壳，供
- * `com.asyncanimator.control.DefaultAnimationController.appLaunchAnimStartOrEnd`
- * 等签名使用。嵌套类不是平台 android.view.RemoteAnimationTarget，不能传入真实平台数组
- * 或把 Any leash 当 SurfaceControl 操作；Controller 当前不读取目标内容。
+ * 本地转场目标描述符的类型容器，没有启动动画或接收远程消息的方法。
+ * 保留现有包名和嵌套类型供控制器签名使用，不提供 Binder 通道、系统窗口事务或平台目标数组适配。
  */
 abstract class LauncherAnimationRunner {
 
-    /** Opaque local descriptor, not Parcelable or a platform remote-animation target. */
+    /**
+     * 本地任务目标的可变描述符，不实现 Parcelable，也不是平台的远程动画目标类型。
+     * @property taskId 调用方提供的任务标识，默认值为零；本容器不校验标识是否对应真实任务。
+     * @property leash 调用方携带的不透明对象，默认为 null；不能仅凭该字段类型推断可执行窗口事务。
+     */
     class RemoteAnimationTarget(
         var taskId: Int = 0,
         var leash: Any? = null

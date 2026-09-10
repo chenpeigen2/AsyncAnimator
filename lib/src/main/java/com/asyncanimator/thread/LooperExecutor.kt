@@ -8,66 +8,79 @@ import android.os.Looper
 import android.os.Message
 
 /**
- * LooperExecutor — 跨线程 Executor 封装。
- *
- * 对应原 OPPO 代码 `com.oplus.basecommon.thread.LooperExecutor`（简化版）
- * 和 `docs/review/01-async-animthread.md`。
- *
- * 关键设计：[execute] 自动判断"当前线程 vs 目标 Looper"：
- *
- *  - 同一线程：直接执行
- *  - 不同线程：用 Handler.post 投递（[Executors.MAIN_EXECUTOR] 与
- *    `Executors.ANIM_CONTROL_EXECUTOR` 均绑定真实 android.os.Handler）
- *
- * JVM 单测环境下（android stub，returnDefaultValues）拿不到主 Looper，
- * [handler] 为 null，全部退化为"就地执行"，保证单测可跑。
+ * 基于 Handler 的线程归属执行器，不拥有底层线程的关闭权。
+ * execute 可在所属线程内联执行，post/postAsync 在有 Handler 时始终入队。
+ * @param handler 目标 Handler；为 null 时三个任务入口均退化为调用线程就地执行。
  */
 class LooperExecutor internal constructor(private val handler: Handler?) {
 
-    /** 目标线程。handler 为 null（JVM 单测）时视为"调用方线程"。 */
+    /**
+     * 用于执行判断的有效所属线程：优先读取 Handler 的线程，无 Handler 时使用当前调用线程。
+     */
     private val currentTargetThread: Thread?
         get() = handler?.looper?.thread ?: Thread.currentThread()
 
+    /**
+     * 判断调用方是否处于执行器的有效所属线程；无 Handler 的就地模式恒为 true。
+     */
     val isCurrentThread: Boolean
         get() = currentTargetThread === Thread.currentThread()
 
-    /** Returns the underlying [Handler], or null in JVM unit-test environment. */
+    /**
+     * 返回构造时传入的 Handler 实例，不创建替代对象。
+     * 没有 Handler 的就地执行模式返回 null；调用方直接使用该对象时需自行遵守其 Looper 归属。
+     */
     fun getHandler(): Handler? = handler
 
-    /** Returns the underlying [Looper], or null in JVM unit-test environment. */
+    /**
+     * 返回底层 Handler 绑定的 Looper；未绑定 Handler 时返回 null。
+     * 该访问不会启动线程，也不等待线程初始化或队列内已有任务完成。
+     */
     fun getLooper(): Looper? = handler?.looper
 
-    /** Returns the target thread, or null when the JVM fallback has no Handler. */
+    /**
+     * 返回底层 Handler 的实际所属线程；就地执行模式返回 null。
+     * 与内部用于判断就地执行的 currentTargetThread 不同，本方法不伪造一个绑定线程。
+     */
     fun getTargetThread(): Thread? = handler?.looper?.thread
 
-    /** OPPO-compatible accessor name; getTargetThread remains as a source-compatible alias. */
+    /**
+     * 返回与 getTargetThread 相同的底层所属线程，供需要线程访问器的调用方使用。
+     * 没有 Handler 时仍返回 null，不将当前调用线程视为固定所属线程。
+     */
     fun getThread(): Thread? = getTargetThread()
 
-    /** Set the Android priority of the owning HandlerThread, not the caller's thread.
-     * Like OPPO this operation requires a HandlerThread; it does not apply to MAIN_EXECUTOR. */
+    /**
+     * 设置底层 HandlerThread 的 Android 调度优先级，而不是修改调用方线程。
+     * @param priority 传给 Process.setThreadPriority 的优先级数值，权限或范围异常由平台抛出。
+     * @throws IllegalStateException 所属线程不是 HandlerThread，例如主线程执行器或无 Handler 模式。
+     */
     fun setThreadPriority(priority: Int) {
         val target = getThread() as? HandlerThread
             ?: throw IllegalStateException("Thread priority requires a HandlerThread-backed executor")
         Process.setThreadPriority(target.threadId, priority)
     }
 
+    /**
+     * 执行可空任务：null 直接返回，已在所属线程时内联执行，否则通过普通消息入队。
+     * 无 Handler 时视调用方为所属线程并就地运行；内联任务异常直接传播，排队任务在目标线程执行。
+     */
     fun execute(action: (() -> Unit)?) {
         if (action == null) return
         if (isCurrentThread) action() else post(action)
     }
 
+    /**
+     * 通过底层 Handler 排入普通任务，即使当前已在所属线程也不会内联执行。
+     * 无 Handler 时退化为就地执行；不返回投递结果，也不等待执行完成，已退出的 Looper 可能无法接收任务。
+     */
     fun post(action: () -> Unit) {
         if (handler != null) handler.post { action() } else action()
     }
 
     /**
-     * 以**异步消息**投递（`Message.setAsynchronous(true)`）：可穿透主线程 sync-barrier，
-     * measure/layout（traversal）期间也能按时执行。
-     *
-     * 对齐原厂 `com/android/launcher3/Utilities.java:631-637` 的 `postAsyncCallback`
-     * （`Message.obtain(handler, r)` + `setAsynchronous(true)` + `sendMessage`），
-     * 原厂 AsyncAnimCallbacks 的 listener 派发走的就是这条路径
-     * （`AsyncAnimCallbacks.java:120, 160`）。普通任务请用 [post]/[execute]。
+     * 以异步 Message 向底层 Handler 投递任务，使消息不被主线程同步屏障阻塞。
+     * 这不创建新的工作线程，也不等待执行完成；没有 Handler 时直接在调用线程执行。
      */
     fun postAsync(action: () -> Unit) {
         val h = handler ?: return action()
@@ -75,18 +88,35 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
         msg.isAsynchronous = true
         h.sendMessage(msg)
     }
-    // Never-quit contract, mirroring OPPO LooperExecutor.java:71-79: any lifecycle call
-    // throws UnsupportedOperationException instead of actually terminating the looper.
+
+    /**
+     * 拒绝关闭进程共享执行器，始终抛出 UnsupportedOperationException。
+     * 不发送退出消息、不清空队列，也不改变 isShutdown 的返回值。
+     */
     @Deprecated("LooperExecutor never quits; shutdown() always throws")
     fun shutdown(): Unit = throw UnsupportedOperationException("LooperExecutor never quits")
 
+    /**
+     * 拒绝立即终止进程共享执行器，始终抛出 UnsupportedOperationException。
+     * 不会取消待执行任务，也不会返回任何未完成任务列表。
+     */
     @Deprecated("LooperExecutor never quits; shutdownNow() always throws")
     fun shutdownNow(): List<Runnable> = throw UnsupportedOperationException("LooperExecutor never quits")
 
+    /**
+     * 始终返回 false；共享执行器不支持 shutdown，读取该属性不会探测底层 Looper 是否仍存活。
+     */
     val isShutdown: Boolean get() = false
 
+    /**
+     * 始终返回 false；不把底层线程的状态包装成可终止线程池的生命周期。
+     */
     val isTerminated: Boolean get() = false
 
+    /**
+     * 拒绝等待共享执行器退出，始终抛出 UnsupportedOperationException。
+     * 参数 timeout 和 unit 不参与等待；本执行器不提供关闭或终止生命周期。
+     */
     @Deprecated("LooperExecutor never quits; awaitTermination() always throws")
     fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean =
         throw UnsupportedOperationException("LooperExecutor never quits")

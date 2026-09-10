@@ -1,62 +1,64 @@
 package com.asyncanimator.core
 
-
 /**
- * 自有帧调度内核，主要参考 OPPO vendored androidx.core.animation.AnimationHandler。
- * 不是平台隐藏 android.animation.AnimationHandler，也不替换 AndroidX 动画的内部 handler。
- * 逐项证据及与 dynamicanimation 延迟/时钟语义的差异见 review/vs-oppo-14。
- *
- * - ThreadLocal 提供默认每线程实例；注册、删除、换源和帧派发须在各自 owner 上串行执行。
- *   局部 synchronized 与 volatile 测试入口不使整个 handler 支持跨线程共享写入。
- * - 第一次注册订阅 scheduler；逐项重读列表长度，同帧新增可见，删除立刻置 null 跳过。
- * - 帧结束清理 null 槽；没有活跃回调时仅退订自己的 tick，不停止帧源的其他订阅者。
- * - scheduler 传入纳秒时间戳，本类截断为毫秒传给业务；Boolean 返回值不自动取消订阅。
- *
- * 本库自己的选择：TickScheduler 持续订阅而非 OEM provider 的逐帧重投；回调异常隔离；
- * 带代次的换源协议。未实现 dynamicanimation 的 delayed-callback map、dispatcher 或
- * ObjectAnimator auto-cancel，不将多个不同内核声称为完整合并。
+ * 线程内的动画回调注册表与帧源桥接器。
+ * 默认实例按线程隔离；注册、移除、换源和派发应由同一所属线程串行调用。
+ * 帧源持续订阅，动画需主动移除回调；本类不替换平台或 AndroidX 动画内部的调度器。
+ * @param scheduler 可选的初始帧源，未提供时惰性创建公开 Choreographer 调度器。
  */
 internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
-    /** 每帧回调契约：与原厂一致，返回值被忽略；动画结束必须显式 removeCallback。 */
+    /**
+     * 接收毫秒级帧时间的动画更新接口。
+     * 回调由所属处理器串行调用，其 Boolean 结果不表示自动取消订阅。
+     */
     fun interface AnimationFrameCallback {
+
+        /**
+         * 处理所属线程的一帧动画更新。
+         * @param frameTimeMs 当前帧时间戳，单位为毫秒；由帧源的纳秒值截断而来。
+         * @return 返回值不参与调度决策；动画结束时必须显式移除自己的回调。
+         */
         fun doAnimationFrame(frameTimeMs: Long): Boolean
     }
 
-    /** TickScheduler 持有者（懒构造）。可被 [replaceThreadScheduler] 替换。 */
     private var schedulerHolder = TickSchedulerHolder(scheduler)
 
     private var schedulerGeneration = 0L
     private var tickCallback = tickCallbackFor(schedulerGeneration)
 
+    /**
+     * 创建携带指定调度代次的帧回调。
+     * 旧帧源可能已复制待派发的回调；只有代次仍与当前帧源一致时才进入本实例的帧循环。
+     */
     private fun tickCallbackFor(generation: Long) = TickScheduler.FrameCallback { time ->
-        // A detached provider may already have copied its callback for dispatch.
+
         if (generation == schedulerGeneration) onTick(time)
     }
 
-    /** 当前线程上活跃的 animation callbacks。懒删除（null 槽）。 */
     private val animationCallbacks = mutableListOf<AnimationFrameCallback?>()
 
-    /** 懒删除标志：true 表示本帧末尾需要 cleanUpList。 */
     private var listDirty = false
 
-    /** 当前线程的 TickScheduler（懒构造：首次访问时注入默认实现）。 */
+    /**
+     * 取得本处理器当前使用的帧源，首次读取可能创建默认实例，但不会启动帧循环。
+     */
     val scheduler: TickScheduler get() = schedulerHolder.get()
 
-    /** 当前帧回调数（不计 null 槽）。 */
+    /**
+     * 读取当前非空回调槽数量；懒删除立即影响计数，无需等待本帧末尾压缩。
+     */
     val callbackSize: Int
         get() = animationCallbacks.count { it != null }
 
-    // ──── 注册/取消 ────────────────────────────────────────────────
-
     /**
-     * 注册一个 animation callback。
-     * 若列表为空，会同时调用 [TickScheduler.start] 启动调度循环（如果是首次注册）。
+     * 在所属线程注册持续执行的动画回调；null 和已存在的实例不会重复入列。
+     * 列表完全为空时先启动帧源并订阅本实例的帧入口；列表仅含懒删除槽时仍沿用尚未清理的订阅。
      */
     fun addAnimationFrameCallback(callback: AnimationFrameCallback?) {
         if (callback == null) return
         if (animationCallbacks.isEmpty()) {
-            // 首次注册：确保 scheduler 已就绪，并注册 self-pulse
+
             scheduler.start()
             scheduler.postFrameCallback(tickCallback)
         }
@@ -66,7 +68,8 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
     }
 
     /**
-     * 取消注册。懒删除：置 null + listDirty=true（避免迭代中修改）。
+     * 在所属线程取消指定回调，null 或不存在的实例不产生变化。
+     * 通过置空而非立即删除避免遍历下标错位；本帧尚未执行的对应槽立即失效，帧末统一压缩。
      */
     fun removeCallback(callback: AnimationFrameCallback?) {
         if (callback == null) return
@@ -77,29 +80,23 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         }
     }
 
-    // ──── 帧循环（每 tick 调一次）────────────────────────────────────
-
     /**
-     * TickScheduler 每帧调一次。这是原厂 onAnimationFrame 的入口（对比见 review 04）。
-     *
-     * 顺序：分发所有 callback → cleanUpList 压缩 null 槽 → 若还有 callback 则由 TickScheduler 续帧
-     * 所有动画移除后退订 self-pulse；ChoreographerTickScheduler 无订阅者时自行停止。
+     * 将帧源的纳秒时间戳截断为毫秒，派发动画回调并压缩懒删除槽。
+     * 列表清空后仅退订本实例的帧入口，不停止共享帧源中的其他订阅者。
      */
     private fun onTick(frameTimeNanos: Long) {
-        val frameTimeMs = frameTimeNanos / 1_000_000L // nanos → ms（对齐 AndroidX 行为）
+        val frameTimeMs = frameTimeNanos / 1_000_000L
         doAnimationFrame(frameTimeMs)
         cleanUpList()
         if (animationCallbacks.isEmpty()) scheduler.removeFrameCallback(tickCallback)
     }
 
     /**
-     * 顺序遍历 animationCallbacks，跳过 null 槽，调每个 callback 的 doAnimationFrame。
-     * 对应原厂 doAnimationFrame（review 04）。
+     * 按注册顺序更新当前列表，每次迭代重新读取长度，因此同帧追加的回调也可被执行。
+     * 跳过已移除的空槽，忽略回调返回值；逐项捕获异常，使一个回调失败不影响后续回调。
      */
     private fun doAnimationFrame(frameTimeMs: Long) {
-        // 对齐原厂 androidx.core.animation.AnimationHandler:130-137：
-        // 每轮重读 size，本帧内新增的 callback 当帧可见；null 槽跳过。
-        // 异常隔离是 lib 新增语义：原厂单 callback 异常会中断整帧并沿 provider 上抛。
+
         var i = 0
         while (i < animationCallbacks.size) {
             val cb = animationCallbacks[i]
@@ -108,20 +105,27 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         }
     }
 
-    /** 清理 null 槽。仅当 listDirty=true 才执行（性能优化）。 */
+    /**
+     * 仅在存在懒删除标记时清理全部空槽，并复位清理标记。
+     * 不主动取消帧订阅，订阅是否需要移除由本帧收尾逻辑根据清理后的列表决定。
+     */
     private fun cleanUpList() {
         if (!listDirty) return
         animationCallbacks.removeAll { it == null }
         listDirty = false
     }
 
+    /**
+     * 在当前所属线程切换帧源；相同实例直接返回，不重置订阅或代次。
+     * 先退订旧入口，再递增代次并创建新入口；仍有活跃回调时启动并订阅新帧源。
+     * 方法锁仅保护换源过程，不使整个动画列表支持任意线程并发修改；不承诺两帧源相位连续。
+     */
     @Synchronized
     private fun swapScheduler(s: TickScheduler) {
         val old = schedulerHolder.get()
         if (old === s) return
         old.removeFrameCallback(tickCallback)
-        // Do not stop unrelated subscribers or interrupt the current callback traversal.
-        // ChoreographerTickScheduler stops itself when its subscription list becomes empty.
+
         schedulerGeneration++
         tickCallback = tickCallbackFor(schedulerGeneration)
         schedulerHolder = TickSchedulerHolder(s)
@@ -131,9 +135,16 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         }
     }
 
-    /** 内部 Holder：TickScheduler 懒构造。 */
+    /**
+     * 缓存注入或惰性创建的帧源；替换帧源时由外层整体替换持有者。
+     * 构造本对象不会启动调度，也不会访问 Choreographer。
+     */
     private class TickSchedulerHolder(private var scheduler: TickScheduler?) {
 
+        /**
+         * 返回注入的帧源；未注入时首次创建并缓存 Choreographer 调度器。
+         * 使用同步保护惰性创建，仅获取实例不请求帧，也不绑定 Choreographer 所属线程。
+         */
         @Synchronized
         fun get(): TickScheduler =
             scheduler ?: ChoreographerTickScheduler().also { scheduler = it }
@@ -141,30 +152,28 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     companion object {
 
-        // ──── 单例管理（ThreadLocal）─────────────────────────────────────
-
         private val threadLocalHandler = ThreadLocal<AnimationHandler>()
 
-        /** 进程级测试覆盖：非 null 时所有线程的 [instance] 都返回它。
-         * 测试应串行使用并在 finally 恢复；volatile 只发布引用，不保护被共享实例的可变列表。
+        /**
+         * 进程级测试替代实例，非 null 时优先于所有线程的默认实例。
+         * volatile 只保证引用发布，不保护替代实例的列表；测试应串行使用并在结束时恢复。
          */
         @Volatile
         var testHandler: AnimationHandler? = null
 
-        /** 当前线程的 AnimationHandler 单例（测试 hook 优先）。 */
+        /**
+         * 返回测试替代实例或当前线程的缓存实例，没有缓存时创建并保存。
+         * 该读取不启动帧循环；线程间默认不会共享动画回调列表。
+         */
         val instance: AnimationHandler
             get() = testHandler ?: threadLocalHandler.get()
                 ?: AnimationHandler(ChoreographerTickScheduler()).also(threadLocalHandler::set)
 
         /**
-         * 为当前线程安装自定义 TickScheduler。
-         *
-         * 对应"独立动画线程"方案：独立线程在 onLooperPrepared() 时调用，
-         * 在该线程第一次业务访问之前指定自有 handler 的帧源。
-         * AnimationControlThread 当前显式安装的实现与默认实现同为 ChoreographerTickScheduler；
-         * 安装动作建立确定的初始化边界，不表示切换为平台/SF 帧源。
-         *
-         * 必须在该线程首次访问 [instance] 之前调用；重复安装或启用全局 testHandler 时明确抛异常。
+         * 在当前线程首次取得默认处理器之前安装非空帧源。
+         * 动画线程可在 Looper 准备期间调用，以保证首条业务消息执行前调度内核已存在。
+         * @param scheduler 该线程将使用的帧源；null 会抛出参数异常。
+         * @throws IllegalStateException 已有线程处理器或启用了全局测试替代实例时拒绝安装。
          */
         fun installThreadScheduler(scheduler: TickScheduler?) {
             requireNotNull(scheduler) { "TickScheduler must not be null" }
@@ -176,12 +185,10 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         }
 
         /**
-         * 强制替换当前线程 AnimationHandler 的 TickScheduler（demo / 实验用）。
-         *
-         * 与 [installThreadScheduler] 的区别：本方法在线程的 handler 已存在时也生效。
-         * 行为：退订自己的旧回调 → 新代次 → 若仍有活跃动画则在新 scheduler 上重建回路。
-         * 当前帧的动画遍历继续完成；迟到旧脉冲失效。不停止旧帧源的其他订阅者。
-         * 下一帧时机由新 scheduler 决定，不承诺两个不同帧源无缝相位对齐。
+         * 替换当前线程处理器的帧源，尚无处理器时会先取得默认实例再切换。
+         * 已开始的当前帧遍历继续完成，迟到的旧代次脉冲被丢弃；不会停止旧帧源上的其他订阅。
+         * @throws IllegalArgumentException 帧源为 null。
+         * @throws IllegalStateException 全局测试替代实例正在生效。
          */
         fun replaceThreadScheduler(scheduler: TickScheduler?) {
             requireNotNull(scheduler) { "TickScheduler must not be null" }
@@ -189,7 +196,9 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
             instance.swapScheduler(scheduler)
         }
 
-        /** 当前 instance 的非 null 回调数；默认是当前线程，testHandler 非空时计数该测试实例。 */
+        /**
+         * 返回当前生效处理器的活跃回调数量；测试替代实例生效时不再代表当前线程独有的数量。
+         */
         val animationCount: Int get() = instance.callbackSize
     }
 }

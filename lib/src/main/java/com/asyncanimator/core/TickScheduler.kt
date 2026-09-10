@@ -1,41 +1,54 @@
 package com.asyncanimator.core
 
 /**
- * TickScheduler — 仿真 Choreographer 的核心接口。
- *
- * 设计动机：原始 Android [android.view.Choreographer] 只能在 Android 设备上跑，
- * 本接口抽象出"每帧调用 callback"的本质，让 lib 模块的代码可以在 JVM 里测试。
- *
- * 对应 v3 文档 `docs/animation-thread-analysis.md` §1/§2 — 平台层 Choreographer + 框架层 AnimationHandler。
- *
- * 实现类：
- *
- *  - [ChoreographerTickScheduler] — 公开 Choreographer 实现（真 VSYNC）
+ * 持续订阅式帧调度契约，隔离动画内核与具体时钟实现。
+ * 公开 Choreographer 实现可用于运行，受控实现可用于 JVM 测试；不提供跨线程 View 写入能力。
  */
 internal interface TickScheduler {
 
-    /** 持续注册帧回调，后续 tick 时派发；不是 Choreographer 的单次订阅。
-     * Choreographer 实现在首次请求帧时固定 owner，post 自动启动；null 为 no-op。
+    /**
+     * 注册持续接收后续帧的回调，不是单次 Choreographer 订阅。
+     * null 应作为无操作；是否自动启动及重复注册策略由具体帧源实现规定。
      */
     fun postFrameCallback(callback: FrameCallback?)
 
-    /** 取消注册，之后的新快照不再包含它；已复制/正在派发的当前快照不能撤回。 */
+    /**
+     * 取消指定持续订阅，使后续取得的派发快照不再包含相应条目。
+     * 不要求撤回已经复制或正在执行的当前帧回调；重复注册的移除策略由实现定义。
+     */
     fun removeFrameCallback(callback: FrameCallback?)
 
-    /** 当前帧时间戳（单位：纳秒）。模拟 Choreographer 的 frameTimeNanos。 */
+    /**
+     * 最近一次已发布帧的纳秒时间戳；时间原点由具体帧源确定。
+     */
     val frameTimeNanos: Long
 
-    /** 启动调度循环。 */
+    /**
+     * 启动或恢复该帧源的调度循环。
+     * 具体实现负责保证重复启动不会产生多条帧循环；此操作不承诺同步产生第一帧。
+     */
     fun start()
 
-    /** 暂停后续帧（保留订阅，start 恢复）；不终止线程，不撤回已开始的当前帧派发。 */
+    /**
+     * 暂停后续帧调度而保留现有订阅，以便再次 start 恢复。
+     * 不代表线程退出，也不保证撤回已进入执行阶段的当前帧派发。
+     */
     fun stop()
 
-    /** 当前帧索引（从 0 开始，每 tick +1）。便于测试与日志。 */
+    /**
+     * 帧源累计发布的帧数；实现从零开始，每次实际派发递增。
+     */
     val frameCount: Long
 
-    /** 帧回调契约。对应 Android 原生 `Choreographer.FrameCallback`。 */
+    /**
+     * 接收纳秒级帧时间的订阅接口，由具体帧源决定派发线程和异常隔离策略。
+     */
     fun interface FrameCallback {
+
+        /**
+         * 处理帧源所属线程派发的一帧。
+         * @param frameTimeNanos 帧源提供的纳秒时间戳；计算间隔应使用相邻时间戳之差而非固定帧率假设。
+         */
         fun doFrame(frameTimeNanos: Long)
     }
 }

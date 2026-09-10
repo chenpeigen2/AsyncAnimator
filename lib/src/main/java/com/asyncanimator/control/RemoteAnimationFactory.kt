@@ -3,17 +3,20 @@ package com.asyncanimator.control
 import android.animation.AnimatorSet
 
 /**
- * RemoteAnimationFactory — 本地演示的动画工厂/生命周期身份。
- *
- * 与 OPPO LauncherAnimationRunner.RemoteAnimationFactory 不是源码/二进制兼容接口。
- * Controller 只用实例记录启动/结束，不自动调用 createAnimation/onAnimationFinished；
- * 创建、播放、取消与完成通知均由宿主负责。无 Binder、merge 或远程 ready 回调协议。
+ * 宿主动画工厂及转场登记的身份对象，不提供远程通信或系统窗口事务协议。
+ * 控制器只记录实例的开始和结束；工厂方法的调用时机、播放与资源释放由宿主负责。
  */
 interface RemoteAnimationFactory {
 
-    /** 创建一次转场需要的 AnimatorSet（demo 实现）。 */
+    /**
+     * 由宿主主动创建一次转场使用的非空 AnimatorSet。
+     * 控制器登记本工厂时不会调用此方法；实例复用、配置、启动和取消均由宿主负责。
+     */
     fun createAnimation(): AnimatorSet
 
-    /** 动画结束回调（demo 自定义触发）。 */
+    /**
+     * 由宿主显式通知工厂所属转场已完成，具体资源释放行为由实现决定。
+     * 控制器移除或销毁本地登记记录不会自动调用此方法，也不保证通知仅发生一次。
+     */
     fun onAnimationFinished()
 }

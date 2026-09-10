@@ -4,24 +4,16 @@ import android.animation.Animator
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 
 /**
- * ActualEndAnimListener — "物理帧播完"回调基类（双轨结束的第二轨）。
- *
- * 还原自原厂 `com/android/quickstep/util/animation/ActualEndAnimListener.java:10`
- * （`open class ActualEndAnimListener : NullableAnimatorListenerAdapter`，仅一个空钩子）。
- *
- * 双轨时序（`docs/animation-thread-analysis-v4.md` §4）：cancel 是"置标志、下一帧生效"——
- *
- *  - [onAnimationEnd]/[onAnimationCancel] 是**逻辑结束**：UI 线程即发，驱动业务状态；
- *  - [onAnimActualEnd] 是**物理结束**：动画线程帧循环真的停了才发，用于资源清理。
- *
- * 原厂 CustomRectFSpringAnim.maybeEnd（`CustomRectFSpringAnim.java:423-441`）：
- * 正常结束先发 `onAnimationEnd` 再发 `onAnimActualEnd`；cancel 保护路径
- * （`mJustNotifyEndCallback`）只发 `onAnimActualEnd`。
- *
- * [AsyncAnimCallbacks.onAnimActualEnd] 只对实现了本类的 listener 派发。
+ * 在普通动画监听器上增加实际结束通知入口，用于区分业务逻辑结束与底层驱动完成。
+ * 只有派发方显式调用该入口才会收到事件；普通 onAnimationEnd 不会自动转换成实际结束。
+ * 经 AsyncAnimCallbacks 派发时通知回到主线程，直接调用时仍由调用方决定线程。
  */
 open class ActualEndAnimListener : NullableAnimatorListenerAdapter() {
 
-    /** 动画帧循环真实结束（cancel / end 都会走到）。 */
+    /**
+     * 接收外部明确报告的实际结束事件；默认实现为空，子类按需执行收尾。
+     * @param animator 此次事件对应的非空动画实例。
+     * 不会自动触发逻辑结束或取消，也不会自行确认底层帧循环已停止；派发方负责信号真实性和调用线程。
+     */
     open fun onAnimActualEnd(animator: Animator) {}
 }

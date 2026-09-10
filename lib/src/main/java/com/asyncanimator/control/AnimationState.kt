@@ -1,12 +1,10 @@
 package com.asyncanimator.control
 
 /**
- * AnimationState — 转场状态枚举。
- *
- * 对应 `docs/review/03-controller-manager-seq.md`。每个状态携带两个 boolean：
- *
- *  - [withTaskbarAlignment] — 该状态下 taskbar 是否参与对齐
- *  - [taskbarAlignmentToLauncher] — 对齐方向
+ * 控制器维护的十二种业务转场状态，不等同于底层帧循环或触摸门控的运行状态。
+ * 枚举名称和顺序保持稳定；构造参数描述任务栏的参与方式，而非自动执行任务栏动画。
+ * @property withTaskbarAlignment 当前状态是否让任务栏参与位置对齐。
+ * @property taskbarAlignmentToLauncher 参与对齐时是否朝向桌面端；未参与时应忽略此方向标记。
  */
 enum class AnimationState(
     val withTaskbarAlignment: Boolean,
