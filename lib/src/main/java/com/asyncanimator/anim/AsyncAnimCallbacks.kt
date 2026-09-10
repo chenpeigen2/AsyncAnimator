@@ -4,6 +4,7 @@ import android.animation.Animator
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 import com.asyncanimator.core.Trace
+import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.Executors
 
 /**
@@ -32,6 +33,12 @@ class AsyncAnimCallbacks {
 
     private val listenerLock = Any()
     private var generation = 0L
+    private var animType: CustomRectFSpringAnim.AnimType? = null
+
+    /** Optional host-supplied diagnostic context; it does not select an animation engine. */
+    fun setAnimType(type: CustomRectFSpringAnim.AnimType) = synchronized(listenerLock) {
+        animType = type
+    }
 
     private val animListeners = mutableListOf<NullableAnimatorListener?>()
 
@@ -54,7 +61,7 @@ class AsyncAnimCallbacks {
     internal fun clearListeners() = synchronized(listenerLock) { animListeners.clear() }
 
     /**
-     * Release the current registration generation, listeners and animationId.
+     * Release the current registration generation, listeners and diagnostic identity.
      * Queued old events and remaining listeners after reentrant disposal are dropped.
      * Registration may resume, but an executing callback cannot be recalled.
      * This does not cancel the animator or make a one-shot animator reusable.
@@ -63,6 +70,7 @@ class AsyncAnimCallbacks {
         generation++
         animListeners.clear()
         animationId = -1
+        animType = null
     }
 
     internal fun onAnimationStart(animator: Animator) =
@@ -79,7 +87,7 @@ class AsyncAnimCallbacks {
      * 对齐原厂 `AsyncAnimCallbacks.java:34-43, 111-122`。
      */
     internal fun onAnimActualEnd(animator: Animator) {
-        withListenersOnMain { listener, id ->
+        withListenersOnMain(null) { listener, id ->
             if (listener is ActualEndAnimListener) {
                 listener.animationId = id
                 listener.onAnimActualEnd(animator)
@@ -96,33 +104,38 @@ class AsyncAnimCallbacks {
         animListeners.filterNotNull()
     }
 
-    /** Capture the event generation before posting; snapshot listeners only on delivery. */
-    private fun withListenersOnMain(action: (NullableAnimatorListener, Int) -> Unit) {
-        val (eventGeneration, id) = synchronized(listenerLock) { generation to animationId }
+    /** Capture identity before posting; trace actual delivery on main, not just queue submission. */
+    private fun withListenersOnMain(
+        traceTagPrefix: String?,
+        action: (NullableAnimatorListener, Int) -> Unit
+    ) {
+        val (eventGeneration, id, type) = synchronized(listenerLock) {
+            Triple(generation, animationId, animType)
+        }
+        val eventName = "${traceTagPrefix ?: "ActualEnd-"}$id type=${type ?: "UNSPECIFIED"}"
         runOnMainThread {
             val listeners = synchronized(listenerLock) {
                 if (eventGeneration != generation) return@runOnMainThread
                 getListeners()
             }
-            for (listener in listeners) {
-                // Also respect dispose called reentrantly by an earlier listener.
-                if (synchronized(listenerLock) { eventGeneration != generation }) return@runOnMainThread
-                action(listener, id)
+            fun notifyListeners() {
+                LogUtils.i("AsyncAnimCallbacks", "$eventName listeners=${listeners.size}")
+                for (listener in listeners) {
+                    if (synchronized(listenerLock) { eventGeneration != generation }) return
+                    action(listener, id)
+                }
             }
+            if (traceTagPrefix != null) {
+                Trace.section(Trace.TAG_VIEW, eventName, ::notifyListeners)
+            } else notifyListeners() // Actual-end retains a log anchor without inventing an OEM trace slice.
         }
     }
 
-    /** 打 trace → 回主线程按快照逐个 fire（同步事件的 animationId）。 */
     private fun dispatch(traceTagPrefix: String, action: (NullableAnimatorListener) -> Unit) {
-        Trace.traceBegin(8L, "$traceTagPrefix$animationId")
-        runCatching {
-            withListenersOnMain { listener, id ->
-                (listener as? NullableAnimatorListenerAdapter)?.animationId = id
-                action(listener)
-            }
-        }.also {
-            Trace.traceEnd(8L)
-        }.getOrThrow()
+        withListenersOnMain(traceTagPrefix) { listener, id ->
+            (listener as? NullableAnimatorListenerAdapter)?.animationId = id
+            action(listener)
+        }
     }
 
     /**

@@ -8,11 +8,12 @@ package com.android.launcher3
  * 本移植工程不需要真实 Binder 通道，仅保留
  * [RemoteAnimationTarget] 类型壳，供
  * `com.asyncanimator.control.DefaultAnimationController.appLaunchAnimStartOrEnd`
- * 等签名使用（保持与原厂代码形状一致）。
+ * 等签名使用。嵌套类不是平台 android.view.RemoteAnimationTarget，不能传入真实平台数组
+ * 或把 Any leash 当 SurfaceControl 操作；Controller 当前不读取目标内容。
  */
 abstract class LauncherAnimationRunner {
 
-    /** 远程动画目标的最小描述（原类含 leash/taskId 等，demo 只需类型存在）。 */
+    /** Opaque local descriptor, not Parcelable or a platform remote-animation target. */
     class RemoteAnimationTarget(
         var taskId: Int = 0,
         var leash: Any? = null

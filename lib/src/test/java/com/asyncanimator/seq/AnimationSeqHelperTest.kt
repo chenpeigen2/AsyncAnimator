@@ -4,6 +4,7 @@ import android.os.Bundle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
@@ -21,12 +22,21 @@ import org.junit.Test
 @org.robolectric.annotation.Config(sdk = [36], manifest = org.robolectric.annotation.Config.NONE)
 class AnimationSeqHelperTest {
 
+    private lateinit var originalClock: () -> Long
+
     @Before
     fun resetTimeStamps() {
+        originalClock = AnimSeqTimeStamp.clock
         // AnimSeqTimeStamp 是全局静态状态，测试间必须复位，否则结果依赖执行顺序
         AnimSeqTimeStamp.resetAllForTest()
         // Fixed time keeps window tests deterministic.
         AnimSeqTimeStamp.clock = { 10_000L }
+    }
+
+    @After
+    fun restoreTimeStamps() {
+        AnimSeqTimeStamp.resetAllForTest()
+        AnimSeqTimeStamp.clock = originalClock
     }
 
     @Test

@@ -3,10 +3,12 @@ package com.asyncanimator.anim
 import android.animation.Animator
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
+import android.animation.PropertyValuesHolder
 import android.util.FloatProperty
 import android.view.animation.LinearInterpolator
 import com.asyncanimator.playback.PendingAnimation
 import com.asyncanimator.core.Trace
+import com.asyncanimator.core.LogUtils
 
 /** 把当前动画值应用到 target 的回调。 */
 internal typealias ValueApplicator = (value: Any?) -> Unit
@@ -29,6 +31,9 @@ internal class OplusValueAnimator<T>(
     constructor() : this(AnimParam(), null)
 
     init {
+        // A continuation is a real value animator, not just a fraction container.
+        super.setFloatValues(param.fromValue, param.toValue)
+        if (param.duration > 0) setDuration(param.duration)
         param.interpolator?.let { super.setInterpolator(it) }
         // 自监听帧更新，把值应用到 target
         addUpdateListener { a ->
@@ -37,6 +42,17 @@ internal class OplusValueAnimator<T>(
     }
 
     val animName: String get() = param.name
+
+    // Construction seeds Float holders. Reusing those holders for Int keyframes crashes in
+    // platform PropertyValuesHolder; replace the value definition with the requested type.
+    // Apply any custom evaluator after setting values (or provide configured holders via setValues).
+    override fun setIntValues(vararg values: Int) {
+        if (values.isNotEmpty()) setValues(PropertyValuesHolder.ofInt("", *values))
+    }
+
+    override fun setFloatValues(vararg values: Float) {
+        if (values.isNotEmpty()) setValues(PropertyValuesHolder.ofFloat("", *values))
+    }
 
     override fun setCurrentFraction(f: Float) {
         super.setCurrentFraction(f)
@@ -82,10 +98,10 @@ internal class OplusValueAnimator<T>(
     override fun setDuration(duration: Long): ValueAnimator {
         if (timeController != null) {
             timeController.setDuration(duration)
-            param.duration = duration
         } else {
             super.setDuration(duration)
         }
+        param.duration = duration
         return this
     }
 
@@ -96,6 +112,11 @@ internal class OplusValueAnimator<T>(
 
     // ──── AnimParam ─────────────────────────
 
+    /**
+     * copy() creates a new parameter container: scalar fields are independent, while
+     * interpolator/applicator references (and any state captured by them) remain shared.
+     * This is not a generic deep copy of a target or callback closure.
+     */
     data class AnimParam(
         var name: String = "default",
         var fromValue: Float = 0f,
@@ -111,8 +132,20 @@ internal class OplusValueAnimator<T>(
     open class TimeControllerObjectAnimator : PendingAnimation.ObjectAnimator(null, null, 0f, 1f) {
 
         private var target: OplusValueAnimator<*>? = null
+        private var property: FloatProperty<OplusValueAnimator<*>>? = null
 
-        fun setProperty(prop: FloatProperty<*>?): TimeControllerObjectAnimator = this
+        init {
+            // One listener reads the current binding; rebinding never retains an old target.
+            addUpdateListener { animator ->
+                val currentTarget = target
+                val value = animator.animatedValue as? Float
+                if (currentTarget != null && value != null) property?.setValue(currentTarget, value)
+            }
+        }
+
+        fun setProperty(prop: FloatProperty<OplusValueAnimator<*>>?): TimeControllerObjectAnimator = apply {
+            property = prop
+        }
 
         override fun setFloatValues(vararg values: Float): TimeControllerObjectAnimator = apply {
             super.setFloatValues(*values)
@@ -124,15 +157,13 @@ internal class OplusValueAnimator<T>(
 
         fun setTarget(target: OplusValueAnimator<*>?): TimeControllerObjectAnimator = apply {
             this.target = target
-            addUpdateListener { a ->
-                (a.animatedValue as? Float)?.let { target?.setCurrentFraction(it) }
-            }
         }
     }
 
     companion object {
 
-        /** 静态工厂：ofFloat 可选 async 版本。 */
+        /** Library wrapper-selection factory; true does not move execution to another thread.
+         * For thread-marshalled animation use AsyncValueAnimator instead. */
         fun ofFloat(isAsync: Boolean, vararg values: Float): ValueAnimator {
             val anim: ValueAnimator = if (isAsync) OplusValueAnimator<Any>() else ValueAnimator()
             anim.setFloatValues(*values)
@@ -142,27 +173,35 @@ internal class OplusValueAnimator<T>(
         /** 续行动画：从已有 anim 复制状态生成新 anim 从当前 fraction 跑到 1.0。 */
         fun <T> generateContinuationAnim(anim: OplusValueAnimator<T>?,
                                          durationMs: Long): OplusValueAnimator<T>? {
-            if (anim == null) return null
+            if (anim == null) {
+                LogUtils.i("OplusValueAnimator", "continuation rejected: null source")
+                return null
+            }
             // 从 RecordInputInterpolator 取最近一次 input
             (anim.param.interpolator as? RecordInputInterpolator)?.let {
                 anim.param.currentFraction = it.inputed
             }
             val f = anim.param.currentFraction
             if (f < 0f || f >= 1f) {
-                Trace.traceBegin(8L, "Continuation-fail f=$f")
-                Trace.traceEnd(8L)
+                LogUtils.i("OplusValueAnimator", "continuation rejected: fraction=$f")
+                Trace.traceBegin(Trace.TAG_VIEW, "Continuation-fail f=$f")
+                Trace.traceEnd(Trace.TAG_VIEW)
                 return null
             }
             // 新 timeController 驱动 CURRENT_FRACTION
             val timeController = TimeControllerObjectAnimator()
             val newAnim = OplusValueAnimator<T>(anim.param.copy(), timeController)
+            // setFloatValues/setValues may have configured more than the parameter endpoints.
+            // Clone holders so later source edits cannot mutate the continuation's keyframes.
+            newAnim.setValues(*anim.values.map { it.clone() }.toTypedArray())
             timeController.setTarget(newAnim)
             timeController.setProperty(CURRENT_FRACTION)
             timeController.setInterpolator(LinearInterpolator())
             timeController.setFloatValues(f, 1f)
             if (durationMs > 0) timeController.setDuration(durationMs)
-            Trace.traceBegin(8L, "Continuation-$f")
-            Trace.traceEnd(8L)
+            LogUtils.i("OplusValueAnimator", "continuation name=${anim.animName} fraction=$f durationMs=${newAnim.duration}")
+            Trace.traceBegin(Trace.TAG_VIEW, "Continuation-$f")
+            Trace.traceEnd(Trace.TAG_VIEW)
             return newAnim
         }
 

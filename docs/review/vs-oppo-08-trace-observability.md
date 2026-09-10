@@ -1,5 +1,42 @@
 # 区域 08 对比 Review：日志 / Tracing / 可观测性
 
+## 2026-09-09 顺序验收：✅完成（第 13 份，可移植诊断）
+
+七项回移建议、七项保留项逐条处理；当前 Trace 是 stderr 诊断段，不是 Android native trace，不能用日志段推导 Systrace/Perfetto 时长。
+
+| §4.1 | 当前处理 | 证据 / 边界 |
+|---|---|---|
+| 1 最小日志入口 | ✅已实现 | core/LogUtils 提供 i/isLogOpen/isAlwayson/setLogLevel，输出包含实际线程名、分类及消息；接入 AsyncAnimCallbacks、AnimationSeqHelper、OplusValueAnimator |
+| 2 animType 标签 | ✅决策完成：不伪造分类 | 未给所有 callbacks 强填 SWIPE_TO_HOME；容器没有真实业务 animType。日志记录已有事件与捕获的 animationId，不宣称跨进程稳定 ID |
+| 3 Debug.getCallers | ✅决策完成：不移植栈采样 | 续行失败已记录 null source/fraction 等原因；不依赖未经本 SDK 验证的 Debug.getCallers，也不声称它必为公开 SDK API |
+| 4 release 门控 | ✅已实现并按变体验证 | 新增 lib BuildConfig 生成；默认 Debug=INFO、Release=OFF，支持显式 OFF/INFO/ALWAYS。本地策略，不冒充 OEM RUS 的级别/配置含义 |
+| 5 栈并发 | ✅保留 ThreadLocal 并补验证 | 独立线程的 end 不会弹出主线程栈；begin/end 必须在同一线程配对。ThreadLocal 不是跨线程异步 section 协议 |
+| 6 actual-end 锚点 | ✅日志已接入，不造额外 Trace 段 | onAnimActualEnd 在主线程写 ActualEnd/ID 日志后派发，保持与逻辑事件的区分。旧“lib 已走 LogUtils”当时并不真实 |
+| 7 dispatch 段位置 | ✅本轮修复 | begin 与 end 一起放到主线程实际 listener 派发范围，不只把 end 移到另一线程；try/finally 保证抛异常也收尾，包含真实的回调执行而非仅 post |
+
+### 日志门控及异常边界
+
+- 每段记录 begin 时是否输出；中途关日志仍闭合已经输出的段，关门控后新段不输出。内部 disabled 段仍保留栈配对，以免误弹出外层；不宣称零分配开销。
+- 同步/异步 listener 异常仍按原调用机制传播，Trace 只负责 finally 收尾，不吞掉业务异常。Seq delay 注册段也使用同一 finally 工具。
+- stderr 的行以 Trace 前缀保留，DemoBaseActivity 的日志重定向仍能显示；日志包含线程名和分类，可 grep。没有 native trace 或跨线程开始/结束匹配能力。
+- 顺带去掉 Trace ThreadLocal.get 空值警告；非空检查集中在 currentStack，不将编译警告修正当作额外性能收益。
+
+### §4.2 七项保留决策
+
+1. 不接入 android.os.Trace/SF 私有追踪，本轮没有 Perfetto 验证。
+2. 不移植 toFile/PERSIST_LOG_DIR 持久化日志，不触碰设备私有目录。
+3. 不增加 lazy message 工厂；**Kotlin 字符串插值和 run 并不自动惰性求值**，昂贵消息应先用 isLogOpen 守卫，不能沿用原文的错误理由。
+4. 不增加 OEM TraceHelper/FLAG 薄壳。
+5. 不扩展与本库无调用关系的周边模块 Trace 锚点。
+6. 不接入 OEM LogUtilsConfig/RUS；只提供本地等级切换。
+7. 保留 Demo stderr→日志区的展示；它不等于 Perfetto 平台 sink，也不声称能修复 UI 主线程阻塞。
+
+### 验证
+
+TraceLogTest 新增 **6 tests**，旧 Trace/dispatch 上 **4 条失败**，修复后通过；包括构建变体默认门控、跨线程栈隔离、关闭门控/嵌套切换、异常收尾、异步主线程实际派发范围。关联 Async/Seq/Oplus 定向共 **41 tests 通过**（`.gradle/review-ordered-13-red.log` / `-green.log`）。Debug/Release 各 **187 tests 全通过**，Demo Debug 成功（80/80 tasks，1m 22s，`.gradle/review-ordered-13-final.log`），见[执行清单](2026-09-09-ordered-review-progress.md)；设备/Perfetto 未验证，Lint 未完成。
+
+---
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库；`core/Trace.kt` 是统一 trace 工具；`anim/AsyncAnimCallbacks.kt`、`anim/OplusValueAnimator.kt`、`seq/AnimationSeqHelper.kt` 三处是 Trace 调用点；其它类全部无 `println`/`Log`/`android.util.Log`——实测全 lib 仅 `core/Trace.kt:36` 一处 `System.err.println`）。
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）。

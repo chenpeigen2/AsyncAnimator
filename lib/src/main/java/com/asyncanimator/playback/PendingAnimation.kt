@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
+import android.animation.ObjectAnimator as PlatformObjectAnimator
 import android.util.FloatProperty
 
 /**
@@ -58,21 +59,24 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
 
     fun <T> addFloat(target: T, property: FloatProperty<T>,
                      from: Float, to: Float, ip: TimeInterpolator?): PendingAnimation {
-        val oa = ObjectAnimator.ofFloat(target, property, from, to)
-        oa.setInterpolator(ip)
-        return add(oa.buildAnimator())
+        val oa = PlatformObjectAnimator.ofFloat(target, property, from, to)
+        oa.interpolator = ip
+        return add(oa)
     }
 
     /**
      * 动画版 setFloat（原厂 PendingAnimation.java:127-134）：构造 ObjectAnimator 并 [add]，
-     * 属性为 null 或当前值已等于目标值时短路。no-op 语义见 [PropertySetter] 默认实现。
+     * 属性为 null 或当前值已等于目标值时短路；起点在平台初始化/首次 seek 时读取。
+     * 无动画的立即写入语义见 [PropertySetter] 默认实现。
      */
     override fun <T> setFloat(target: T, property: FloatProperty<T>?, value: Float,
                               interpolator: TimeInterpolator) {
         if (property == null || property.get(target) == value) return
-        val oa = ObjectAnimator.ofFloat(target, property, property.get(target), value)
-        oa.setInterpolator(interpolator)
-        add(oa.buildAnimator())
+        // A single end value lets the platform capture the start at initialization/first seek,
+        // rather than freezing a potentially stale value while assembling the transition.
+        val oa = PlatformObjectAnimator.ofFloat(target, property, value)
+        oa.interpolator = interpolator
+        add(oa)
     }
 
     fun addEndListener(onEnd: ((success: Boolean) -> Unit)?): PendingAnimation = apply {
@@ -98,6 +102,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         return anim
     }
 
+    /** Finish assembling children/callbacks first: the cached controller snapshots the holders. */
     fun createPlaybackController(): AnimatorPlaybackController =
         controller ?: AnimatorPlaybackController(buildAnim(), durationMs, animHolders)
             .also { controller = it }
@@ -110,7 +115,7 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
         AnimatorPlaybackController.addHoldersRecur(child, durationMs, animHolders)
     }
 
-    // ───────────────── 简化版 ObjectAnimator ─────────────────
+    // ───── TimeController-compatible ValueAnimator adapter (not used by property setters) ─────
 
     open class ObjectAnimator(
         private val target: Any?,
@@ -120,6 +125,20 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
     ) {
 
         private val va: ValueAnimator = ValueAnimator.ofFloat(0f, 1f)
+
+        init {
+            // Install once, not on every buildAnimator() call. TimeController subclasses
+            // have no property binding here and keep their own update listener.
+            if (property != null && target != null) {
+                va.addUpdateListener { a ->
+                    val f = a.animatedValue as? Float
+                    if (f != null) {
+                        @Suppress("UNCHECKED_CAST")
+                        (property as FloatProperty<Any?>).setValue(target, from + (to - from) * f)
+                    }
+                }
+            }
+        }
 
         open fun setInterpolator(ip: TimeInterpolator?): ObjectAnimator = apply {
             va.interpolator = ip
@@ -134,27 +153,8 @@ internal class PendingAnimation(duration: Long) : PropertySetter {
             va.setFloatValues(*values)
         }
 
-        /**
-         * 返回内部 ValueAnimator 本体：va 推进时把 0..1 的 animatedValue 映射到 from..to
-         * 并 setValue 到 target。
-         *
-         * 必须直接返回 ValueAnimator（而不是包一层匿名 Animator）：原厂这里用平台
-         * android.animation.ObjectAnimator，本身就是 ValueAnimator 子类，能进
-         * AnimatorPlaybackController.addAnimationHoldersRecur 的 Holder 链
-         * （原厂 AnimatorPlaybackController.java:164-166）。此前 lib 返回匿名 Animator，
-         * 会被 Holder 收集静默丢弃，跟手进度驱动不到该属性
-         * （见 docs/review/02-pending-playback.md ③-3）。
-         */
-        fun buildAnimator(): ValueAnimator {
-            va.addUpdateListener { a ->
-                val f = a.animatedValue as? Float
-                if (f != null && property != null && target != null) {
-                    @Suppress("UNCHECKED_CAST")
-                    (property as FloatProperty<Any?>).setValue(target, from + (to - from) * f)
-                }
-            }
-            return va
-        }
+        /** The stable backing animator; repeated calls do not register additional listeners. */
+        fun buildAnimator(): ValueAnimator = va
 
         val duration: Long get() = va.duration
         val currentPlayTime: Long get() = va.currentPlayTime

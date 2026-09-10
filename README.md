@@ -1,6 +1,6 @@
 # AsyncAnimator
 
-一个用于学习 Launcher 动画调度、跨 Looper 调用和转场编排的 **Kotlin Android 多模块示例工程**。项目包含动画机制库 `lib` 和带 11 个交互页面的演示应用 `demo`，参考 OPPO Launcher 动画机制分析进行简化实现。
+一个用于学习 Launcher 动画调度、跨 Looper 调用和转场编排的 **Kotlin Android 多模块示例工程**。项目包含动画机制库 `lib` 和带 12 个交互页面的演示应用 `demo`，参考 OPPO Launcher 动画机制分析进行简化实现。
 
 **项目不是完整 Launcher，也不是 OPPO 动画框架的等价移植。** Demo 中既有直接调用 `lib` 的实验，也有自绘场景演示；画面、日志中的原厂术语不代表已接入对应系统能力。下面按当前代码区分两者。
 
@@ -13,7 +13,7 @@ AsyncAnimator/
 │   │   ├── com/asyncanimator/
 │   │   │   ├── core/                 # 自有帧调度器、ThreadLocal AnimationHandler、Trace
 │   │   │   ├── thread/               # launcher.anim、LooperExecutor、AsyncAnimWrapper
-│   │   │   ├── anim/                 # 异步动画包装、续行动画、动画句柄
+│   │   │   ├── anim/                 # 异步动画包装、续行动画、六轴 Rect driver 与句柄
 │   │   │   ├── playback/             # PendingAnimation、统一进度播放控制
 │   │   │   ├── control/              # 动画状态、超时与 Recents 编排
 │   │   │   ├── seq/                  # 序列号、时间窗口与延迟去重
@@ -21,10 +21,11 @@ AsyncAnimator/
 │   │   └── com/android/launcher3/    # LauncherAnimationRunner 类型桩
 │   └── src/test/java/                # JUnit 4 本地单元测试
 ├── demo/
+│   ├── src/test/java/                # Demo 日志转发器的纯 JVM JUnit 回归
 │   ├── src/main/java/com/asyncanimator/
 │   │   ├── LauncherEntryActivity.kt  # 入口文件；包名为 com.asyncanimator.demo
 │   │   └── demo/
-│   │       ├── Demo*Activity.kt       # 11 个页面及 DemoBaseActivity
+│   │       ├── Demo*Activity.kt       # 12 个页面及 DemoBaseActivity
 │   │       ├── scene/                # 自绘桌面、SceneSpring、SceneClock、图形素材
 │   │       └── widget/               # 曲线、线程泳道、状态图、帧间隔直方图
 │   └── src/main/res/                 # 主题、字符串、图标等 Android 资源
@@ -43,7 +44,7 @@ AsyncAnimator/
 |---|---|
 | `thread` | `Executors` 提供主线程及 `launcher.anim` 执行器；`AnimationControlThread` 使用 `HandlerThread`，初始化时安装自有线程帧调度器，并尝试设置线程优先级。 |
 | `core` | 自有 `AnimationHandler` 管理帧回调，`ChoreographerTickScheduler` 使用公开 `Choreographer` 订阅帧；不是 JVM 定时器模拟。 |
-| `anim` | `AsyncValueAnimator` 将 `start/cancel/end` 转发到目标 Looper；`AsyncSpringAnim` 包装 AndroidX `SpringAnimation` 的生命周期调用；`OplusValueAnimator` 包含简化的进度续行逻辑。 |
+| `anim` | `AsyncValueAnimator` 将 `start/cancel/end` 转发到目标 Looper；`AsyncSpringAnim` 包装 AndroidX `SpringAnimation` 的生命周期调用；`OplusValueAnimator` 包含简化的进度续行逻辑；`MultiAnimatorSet` 聚合 main/async AnimatorSet、View springs 和 rect driver 的独立结束条件；`RectSpringDriver` 用公开 AndroidX scheduler 运行六轴数值弹簧。 |
 | `playback` | `PendingAnimation` 组装属性动画，`AnimatorPlaybackController` 用主 `ValueAnimator` 的进度驱动各 `Holder`，支持正向、反向和手动设置进度。 |
 | `control` / `seq` | `AnimationController` 维护动画状态与三类超时监听；`AnimationSeqHelper` 配合时间戳实现序列控制和延迟请求去重。 |
 | `manager` | `OplusAnimManager.interruptionEnabled` 切换具体实现和 `Default*`；`AnimationFeatureHelper.simulateRemoteUpdate()` 仅模拟配置下发。 |
@@ -61,11 +62,19 @@ AsyncAnimator/
 
 只有通过 `asyncAnimCallbacks` 或 `addAnimatorListener()` 注册的这组生命周期监听走主线程派发；不能把继承的 `addListener()`、逐帧更新或所有属性设置都当作自动跨线程安全。动画更新涉及界面时，应明确数据共享和主线程更新边界。
 
+`RectSpringDriver` 是显式接入例外：为它自己创建的六个 AndroidX `SpringAnimation` 设置公开 `FrameCallbackScheduler`，由自有帧源触发；不会改全局 AndroidX/平台内核。
+
 自有 `core.AnimationHandler` 与平台 `android.animation`、AndroidX 动画内部的调度器是不同对象。给自有调度器安装帧源，**不等于替换平台或 AndroidX 的帧源**；本工程没有接入原厂 `SfVsyncFrameCallbackProvider`、UX 调度或 CPU boost。
 
-## 11 个 Demo：实际做了什么
+### 延迟启动决策的环境输入
 
-入口页面注册了以下 11 个 Activity。表中的“场景演示”由 `LauncherStageView`、`SceneClock` 和自写的 `SceneSpring`/进度曲线驱动，不是相应 `lib` API 的集成测试。
+`AnimationController.delayStartActivityIfNeed()` 按横屏/分屏退出、transition、overview 三层互斥判断。搜索入口支持原厂两种 action 和 `source=drawer_search`；平板条件只约束纯 landscape 项，不排除导航退出或分屏分支。
+
+可通过构造参数 `isTablet` 和 `isOverviewContinuationRunning` 注入真实设备/动画状态。默认平板判定使用传入 Context 的 sw600dp 配置（无 Context 时视为非平板）；默认续行状态由 `setAppToOverviewContinuationState(true/false)` 维护。**单独注册 overview 定时器不代表动画正在运行**，100ms 只作等待兜底；false 注销并取消该场景的等待，不等于完成事件。真实场景信息和系统事件源仍需集成方接入，详见[使用说明](docs/USAGE.md)。
+
+## 12 个 Demo：实际做了什么
+
+入口页面注册了以下 12 个 Activity。表中的“场景演示”由 `LauncherStageView`、`SceneClock` 和自写的 `SceneSpring`/进度曲线驱动，不是相应 `lib` API 的集成测试。
 
 | Demo / Activity | 操作与观察内容 | 与库的实际关系 |
 |---|---|---|
@@ -74,12 +83,13 @@ AsyncAnimator/
 | 3 · `Demo3AsyncCrossThreadActivity` | 从 worker 或主线程调用启动，观察线程泳道与回调日志 | 实际使用 `AsyncValueAnimator`，目标执行器为主线程；桌面开屏另由舞台演示。 |
 | 4 · `Demo4SpringTransitionActivity` | 窗口先匀速移动，再由弹簧接管收敛 | 场景演示；使用 `SceneSpring`，不是原厂 `OplusSpringObjectAnimator`。 |
 | 5 · `Demo5ContinuationActivity` | 上滑在约 40% 处暂停，等待 800ms 后继续进入 Recents | 场景演示；没有调用 `OplusValueAnimator.generateContinuationAnim()`，不能据此验证库的速度连续性。 |
-| 6 · `Demo6StateMachineActivity` | 播放状态序列，注册或模拟触发三类超时 | 实际调用 `AnimationController`，配合状态图与舞台反馈；不是系统任务状态联调。 |
+| 6 · `Demo6StateMachineActivity` | 实际播放 OPEN→WAITING→CLOSE→REVERSE_OPEN，交付匹配事件或等待 timer | 状态图只跟随 controller 通知；公开事件桥和定时器一次性完成，不是系统任务状态联调。 |
 | 7 · `Demo7SeqIdDedupActivity` | 连发五次回桌面请求，观察立即执行、拦截与延迟补发 | 实际调用 `AnimationSeqHelper` 和 `AnimSeqTimeStamp`，使用 500ms 时间窗口。 |
-| 8 · `Demo8FeatureFlagActivity` | 切换实现，比较弹簧开屏与瞬间完成，查看模拟配置 | 实际切换 `OplusAnimManager` 并写入配置容器；视觉差异由 Demo 自行分支实现。 |
-| 9 · `Demo9AllAppsTransitionActivity` | 图标展开为窗口、收回、进入 Recents，并绘制进度 | 自绘应用开合场景；虽页面标题仍写 AllApps ↔ Workspace，但没有真实应用抽屉、系统应用启动或完整远程转场链。 |
-| 10 · `Demo10IndependentThreadActivity` | 分别选择主线程或 `launcher.anim` 驱动，阻塞主线程 800ms，比较更新回调间隔 | 实际对比 `ValueAnimator` 和 `AsyncValueAnimator`；两路是切换运行，不是同时运行。 |
-| 11 · `Demo11ViewSpringAnimThreadActivity` | 卡片 translationY 弹簧，切换线程、cancel、skipToEnd 和主线程加压 | 实际构造 AndroidX `SpringAnimation` 并可经 `AsyncSpringAnim` 转发；后台启动及 View 属性更新的运行时行为仍需设备验证。 |
+| 8 · `Demo8FeatureFlagActivity` | 切换实现，比较弹簧开屏与瞬间完成，查看模拟配置 | 实际切换 `OplusAnimManager`；后台模拟发布、主线程订阅刷新一致快照，退出注销；Adaptive 为显式本地策略，非真实 RUS。视觉差异仍由 Demo 分支实现。 |
+| 9 · `Demo9AllAppsTransitionActivity` | 四通道开/关窗口、观察独立进度与聚合结束 | 实际调用 `MultiAnimatorSet`；Rect 使用 Canvas/Animator 适配，不是 OEM 六自由度弹簧或系统窗口。已接 Controller 600ms 触摸查询；Recents 辅助按钮仍是舞台示意，非系统多 app 合并。 |
+| 10 · `Demo10IndependentThreadActivity` | 分别选择主线程或 `launcher.anim` 驱动，阻塞主线程 800ms，比较更新回调间隔 | 实际对比 `ValueAnimator` 和 `AsyncValueAnimator`；两路是切换运行，不是同时运行；后台仅计算/采样，View 提交在主线程并过滤停止前的旧回调。 |
+| 11 · `Demo11ViewSpringAnimThreadActivity` | 卡片 translationY 弹簧，切换直接/包装调用、cancel、skipToEnd 和主线程加压 | 实际构造 AndroidX `SpringAnimation`；包装模式明确 `supportAnimThread=false`，两路均安全使用主线程，不声称后台 View 支持。 |
+| 12 · `Demo12RectSpringActivity` | 六轴矩形、反向、改目标、预测接续、取消/结束，选择线程/锚点/额外倍率 | 实际调用 `RectSpringDriver` + `CustomRectFSpringAnim`；数值弹簧可在主/动画线程运行，Canvas 始终在主线程。不是系统窗口或 SF-VSYNC。 |
 
 建议先看 Demo 3 和 10 理解线程转发，再看 6/7/8 理解编排与开关，最后用其余场景辅助理解视觉概念。
 
@@ -108,6 +118,8 @@ sdk.dir=C:/Users/your-name/AppData/Local/Android/Sdk
 
 `gradle.properties` 关闭了 Java 工具链自动探测，并配置了最高 6GB 的 Gradle JVM 堆；请使用完整 JDK，并预留构建内存。
 
+本机 SDK 兼容目录、已验证工具链的限制、依赖冲突和只读预检见[构建环境说明](docs/build-environment.md)。构建成功不等于干净机器可复现或工具版本获得官方兼容保证。
+
 ### 常用命令（仓库根目录，PowerShell）
 
 ```powershell
@@ -116,6 +128,9 @@ sdk.dir=C:/Users/your-name/AppData/Local/Android/Sdk
 
 # 库的 Debug 单元测试；:lib:test 可运行各测试变体
 .\gradlew.bat :lib:testDebugUnitTest
+
+# Demo 纯 JVM 单元测试（不启动 Activity）
+.\gradlew.bat :demo:testDebugUnitTest :demo:testReleaseUnitTest
 
 # 构建 Demo Debug APK / 库 Debug AAR
 .\gradlew.bat :demo:assembleDebug
@@ -141,31 +156,69 @@ macOS/Linux 使用 `./gradlew` 替代 `.\gradlew.bat`。输出位置：
 
 库使用 JUnit 4、Robolectric 4.16 / API 36 测试运行时（也声明了 AssertJ 依赖）。`unitTests.isReturnDefaultValues = true` 仍保留，但 Android 行为用例已由 Robolectric 执行，Bundle 用例不再跳过。测试依赖不打入 APK。
 
-当前共有 **9 个测试类、58 个用例**：
+库当前共有 **44 个测试类、334 个用例**：
 
 | 测试类 | 用例数 | 覆盖内容 |
 |---|---:|---|
-| `AnimationHandlerTest` | 6 | 手动推进帧、显式移除、空回路退订、同帧增删、ThreadLocal |
+| `AnimationHandlerTest` | 10 | 手动帧钟/时间戳、显式移除、同帧增删/压缩顺序、re-add 单订阅与 ThreadLocal |
 | `AnimationControllerTest` | 12 | 状态、Recents、超时替换及销毁清理 |
-| `AnimationControllerRegressionTest` | 13 | 四组完整状态矩阵、双集合收尾、三层决策及截止边界 |
-| `TaskStateChangeTimeOutListenerTest` | 5 | 匹配事件/定时器一次性消费、dispose 撤销 |
+| `AnimationControllerRegressionTest` | 13 | 四组完整状态矩阵、双集合收尾、三层决策及运行态 |
+| `LaunchDecisionReentrancyTest` | 7 | Supplier/provider 重入、reset/换槽/注销、嵌套请求、截止边界与日志 |
+| `AnimationLaunchDecisionTest` | 14 | 搜索入口、平板 OR 条件、实际续行状态、停止清理及场景归属 |
+| `TaskStateChangeTimeOutListenerTest` | 11 | 事件/定时器一次性消费、并发释放、双异常保留及日志门控 |
 | `AnimatorPlaybackControllerTest` | 2 | 嵌套动画树递归派发、监听自注销 |
+| `PlaybackCompletionTest` | 9 | force finish、暂停重启、完成重入/异常、零时长和 pending 标志 |
+| `AsyncSpringAnimTest` | 4 | 真实 native cancel/skip 时序、首帧预热与零阻尼约束 |
 | `AsyncAnimCallbacksTest` | 2 | 稳定快照、注册幂等、并发增删 |
-| `AsyncAnimatorContractTest` | 5 | Boolean 工厂、释放、旧代次逻辑/物理结束与重入清理 |
+| `AsyncAnimatorContractTest` | 6 | Boolean 工厂、释放、旧代次/重入清理、独立逻辑与物理结束 |
 | `AnimationSeqHelperTest` | 7 | Bundle 序列号、时间窗口和基础清理 |
 | `AnimationSeqRegressionTest` | 6 | SeqId 配对、300/500ms 边界、独立 reset、延迟去重及重入 |
+| `AnimationSchedulerHandoffTest` | 6 | 安装失败显式报错、旧脉冲失效、回调内换源/同源幂等、其他订阅者及测试覆盖隔离 |
+| `ChoreographerTickSchedulerTest` | 8 | 受控节奏、暂停/重启、异常/快照、锁外并发注册及无 Looper 兼容 |
+| `ChoreographerOwnerTest` | 1 | 首次帧源绑定、跨 Looper 重启仍由原 HandlerThread 派发 |
+| `LooperExecutorTest` | 5 | 异步消息、owner 内联、访问器及目标 HandlerThread 优先级 |
+| `PendingAnimationTest` | 13 | 起点捕获、嵌套继承、build 幂等、属性 seek 和取消 |
+| `InterpolatorsTest` | 6 | clamp/map/reverse/velocity 分支与边界 |
+| `AnimationSceneTest` | 9 | 设备/手势组合、1500/2500ms 自动注册、null 结束及包名清理 |
+| `RecentsFinishGateTest` | 5 | launch/Seq/logical-only 否决、ID 匹配及 feature-off |
+| `AnimSeqTimeStampTest` | 7 | 零时刻事件、reset、时钟异常、并发发布与诊断门控 |
+| `AnimationSeqFeatureGateTest` | 8 | 时间窗/序号写入门控、共享计数器、跨截止点排队及旧任务撤销 |
+| `AnimationBetweenStateTest` | 6 | Between setter、待启动查询、超时/reset 清理 |
+| `OplusValueAnimatorTest` | 11 | 续行值输出/复制、property 重绑、Int/Float 切换与时长委托/回退 |
+| `RectAnimationLifecycleTest` | 17 | 固定线程归属、逻辑/实际结束、反向目标、取消竞态、重入与销毁 |
+| `RectSpringDriverTest` | 25 | 真实六轴物理、tracking/参数/延迟、重定向/反向、纯预测与进度接续、后台 owner 及 native 资源清理 |
+| `MultiAnimatorSetTest` | 24 | 四轨/mask/live-add、真实后台、volatile 信号、观察者异常和新旧轮停止/ID 隔离 |
+| `TimeoutOwnershipTest` | 3 | 三场景 dispose 摘槽、重入 replacement 保留、timer 清理后不保留 Controller |
+| `TaskStateEventTest` | 3 | 公开事件桥、timer 去重、dispose/no-op、Demo6 真实状态链 |
+| `ControllerThreadContractTest` | 6 | 主线程入口、callback/observer、owned timeout 与 standalone/no-op 边界 |
+| `FeatureSnapshotTest` | 6 | 不可变列表、旧快照隔离、兼容更新竞态、复制失败不留半批配置 |
+| `TraceLogTest` | 9 | 变体门控、线程栈隔离、实际派发范围与异常/嵌套收尾 |
+| `AsyncValueAnimatorLifecycleTest` | 7 | 最终释放、排队/重入失效、固定 executor 与真实 HandlerThread 取消 |
+| `ManagerBootstrapTest` | 1 | 八路冷首访共享同一 Controller/Seq 实现 |
+| `ManagerLifecycleTest` | 7 | 切换清理、主线程约束、配置/工厂边界、Recents 委派与 no-op |
+| `JavaApiInteropTest` | 5 | 真实 Java 编译/执行：Boolean 工厂、getter/setter、SAM 与 Adapter 增删 |
+| `ExecutorInitializationTest` | 1 | MAIN 不启动动画线程、8 路并发首次访问得到同一执行器 |
+| `TouchGateTest` | 6 | 600ms/重新启动截止、end/reset/destroy、状态/挂起操作门控及线程归属 |
+| `FeatureNotificationTest` | 7 | 主线程通知、订阅释放/重入/异常隔离、Adaptive 策略与并发一致快照 |
+| `RemoteAnimationBoundaryTest` | 3 | 非空/null/empty 本地 targets、factory 所有权、feature-off 无副作用 |
+| `ControllerStateMatrixTest` | 7 | cleanup/非手势 end 全状态、枚举角色、旧回调/Seq 撤销、window 查询与触摸区别 |
+| `ControllerCompletionTest` | 7 | 完成回调重入/异常与新轮隔离、idle 清理、非法 Recents 状态诊断 |
+| `AnimationThreadBootstrapTest` | 2 | 冷启动首条任务前安装帧源、owner/优先级与 Looper 提前发布时序 |
 
-**2026-09-09 本地验证**：Debug 和 Release 单测各 58 个通过、0 跳过、0 失败，Demo Debug APK 构建成功。遇到并行修改和 Kotlin 缓存打包问题后，使用无缓存、串行模式复验；详见 [Review 续轮记录](docs/review/2026-09-09-review-followup.md)。构建仍有已有的 Kotlin 空安全、SDK 工具/实验性选项及 Gradle 弃用警告，不是零警告构建。Lint 尚未完成：并行复核的离线检查缺少 lint 工具依赖，详见[合并复核记录](docs/review/2026-09-09-revalidation-fixes.md)。未安装或进行设备回归。
+Demo 模块另有 1 个纯 JVM 测试类，TraceLogRedirectorTest：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
 
-Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。四个状态矩阵测试合计 48 个组合，已经包含在上述 58 个用例中，不额外累计。
+**本轮本地验证**：最新强制重跑 Debug/Release 单测，各 **334 个通过、0 失败/错误/跳过**；Demo Debug 构建成功，118 个 Gradle task 全部执行（3m 10s）；Demo Debug/Release 单测另各 6 个通过。两变体共用 334 个库用例和 6 个 Demo 用例，共 340 个独立用例，不按变体翻倍。帧源测试用非冗余 core 包配置形成独立 Robolectric sandbox；旧 android.view 配置会被 4.16 归一化掉，已修正，原帧数/间隔断言及真实 HandlerThread 用例均保留。逐份验收进展以[顺序执行清单](docs/review/2026-09-09-ordered-review-progress.md)为准。既有 SDK/Gradle/私有注解警告及 Java API deprecation 提示仍在；Lint 未完成，未进行设备回归。
+
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 334 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 
 - **系统能力未接入**：`LauncherAnimationRunner.RemoteAnimationTarget` 只有 `taskId` 和 `Any? leash` 类型壳，没有 RemoteAnimation Binder 通道或 `SurfaceControl.Transaction` 链路。舞台中的“窗口/leash”是 Canvas 绘制对象。
-- **部分类型只是占位或内部实现**：`CustomRectFSpringAnim` 只保存动画类型，不实现矩形弹簧；`PendingAnimation`、`AnimatorPlaybackController`、`OplusValueAnimator` 等标记为 `internal`，不是供 `demo` 跨模块直接调用的公开 API。
-- **续行动画仍是简化实现**：`TimeControllerObjectAnimator.setTarget()` 已通过更新监听驱动目标 fraction，不再是空实现；`setProperty()` 仍为空操作。不要沿用 Demo 5 日志中“setTarget 为 no-op”的旧描述，也不要把它视为完整的原厂速度接力协议。
+- **诊断日志不是 Perfetto**：`LogUtils` 默认 Debug 开启、Release 关闭，可显式切换等级；Trace 输出线程名和分类到 stderr／Demo 日志区，不接入平台追踪。
+- **部分类型只是占位或内部实现**：`CustomRectFSpringAnim` 已有固定线程归属、逻辑/实际结束和可选重定向协议；可选 `RectSpringDriver` 已提供六轴 AndroidX 物理、几何、预测和速度接续；Animator adapter 仍是外部几何适配。未复制 OEM 隐藏物理/窗口引擎；`PendingAnimation`、`AnimatorPlaybackController`、`OplusValueAnimator` 等标记为 `internal`，不是供 `demo` 跨模块直接调用的公开 API。
+- **续行动画仍是简化实现**：`TimeControllerObjectAnimator` 的 target/property 已真实接线，续行复制独立值快照并能输出到 applicator；不等于完整的原厂速度接力协议。Demo 5 仍走舞台自己的动画，没有调用该 internal 实现，也不验证速度连续性。
 - **开关不是生产灰度系统**：`supportInterruption()` 固定返回 `true`，初始化默认创建具体实现；实际演示切换使用 `interruptionEnabled`。`simulateRemoteUpdate()` 不连接服务，也不自动切换动画线程或管理器实现。
-- **后台弹簧不是已验证能力保证**：`AsyncSpringAnim` 主要转发生命周期方法，未配置 AndroidX 自定义调度器，也没有统一接管 View 属性写入。Demo 11 的运行时线程约束、取消路径和生命周期清理需单独验证，不能仅凭编译成功判断安全。
+- **后台 View 不是已验证能力保证**：`AsyncSpringAnim` 主要转发生命周期方法，未配置 AndroidX 自定义调度器，也没有统一接管 View 属性写入。Demo 11 因此明确回退主线程并在 onCleanup 清除监听/取消；Demo12 的 `RectSpringDriver` 独立配置了公开 AndroidX scheduler，后台数值更新有真实 HandlerThread 单测；不推广为任意 View 弹簧后台安全，也不等于设备独立渲染。
 
 ## 文档导航
 

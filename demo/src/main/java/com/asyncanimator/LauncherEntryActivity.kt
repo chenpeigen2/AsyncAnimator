@@ -62,15 +62,18 @@ class LauncherEntryActivity : AppCompatActivity() {
             DemoInfo("Demo 8: Feature Flag 工厂",
                 "§6.10 + §6.11 — OplusAnimManager 切换 Default/Impl + 9 个 RUS 配置",
                 Demo8FeatureFlagActivity::class.java),
-            DemoInfo("Demo 9: 完整 AllApps ↔ Workspace 转场",
-                "§7.1 — 端到端演示：StateManager → PendingAnimation → APC → Choreographer",
+            DemoInfo("Demo 9: 四通道转场聚合",
+                "§7.1 — MultiAnimatorSet 四通道；Canvas 窗口驱动适配器",
                 Demo9AllAppsTransitionActivity::class.java),
             DemoInfo("Demo 10: 独立动画线程",
-                "launcher.anim — 主线程加压时独立线程动画不掉帧",
+                "launcher.anim — 比较计算帧间隔；View 绘制仍依赖主线程",
                 Demo10IndependentThreadActivity::class.java),
-            DemoInfo("Demo 11: View 属性弹簧跑独立线程",
-                "AsyncAnimWrapper / OplusAsyncSpringAnimWrapper — 弹簧物理用 androidx，帧跑 launcher.anim",
-                Demo11ViewSpringAnimThreadActivity::class.java)
+            DemoInfo("Demo 11: View 弹簧（主线程安全回退）",
+                "AndroidX SpringAnimation / AsyncSpringAnim — 两种调用路径均使用主线程",
+                Demo11ViewSpringAnimThreadActivity::class.java),
+            DemoInfo("Demo 12: 六轴矩形弹簧",
+                "RectSpringDriver — 独立参数、反向、预测接续；主/动画线程计算，Canvas 在主线程",
+                Demo12RectSpringActivity::class.java)
         )
 
         binding.recyclerView.layoutManager = LinearLayoutManager(this)

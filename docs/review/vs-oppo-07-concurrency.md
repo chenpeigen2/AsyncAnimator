@@ -1,5 +1,44 @@
 # 区域 07 对比 Review：并发原语与线程安全
 
+## 2026-09-09 顺序验收：✅完成（第 12 份，含保留简化）
+
+以下为六项回移建议及十项简化的当前结论。旧文中的“5% 调度开销”、字段初始化位置改变 final 语义等推断没有可复现证据，不作为本轮结论。
+
+| §4.1 | 处理 | 当前证据 / 边界 |
+|---|---|---|
+| 1 timestamp 写锁 | ✅已完成 | update/reset 写方法已有 @Synchronized，字段 volatile；单字段 gap 读取不是多字段一致快照。不把写锁误称为所有读写组合原子化 |
+| 2 feature 列表发布 | ✅本轮修复真正不可变快照 | 原 toList() 只提供 Kotlin 只读接口，2+ 元素仍可能向下转为可变 ArrayList。现复制后用 unmodifiableList 包装；外部 add/clear 被拒绝，旧快照不随更新改变 |
+| 3 controller 线程约束 | ✅本轮补齐防御检查 | 17 个状态操作/完成查询入口、finish callback setter、基类 observer 修改/派发先检查主线程。owned timeout 的 event/dispose 同样在消费前检查；误调用不丢失 pending action |
+| 4 manager 初始化 | ✅保留已同步的可切换实例 | object 初始化锁、volatile 引用、同步 toggle 已消除并发双建；不换成无法销毁重建的永久 by lazy。实例注销时清理资源属于生命周期 review，不能据此宣称已解决 |
+| 5 timeout handler final | ✅已有构造期 final 字段；纠正论据 | 字段声明初始化和 init 块赋值均属于构造流程；并不是挪位置才获得 final 语义。不得在构造完成前逃逸 this；当前内部注册 closure 不向外发布未完成实例 |
+| 6 feature 锁粒度 | ✅保留共享写锁并修复部分更新竞态 | 六参数 update 原在锁外读 onePxEnable，再等待写锁会把过期值覆盖回来；现读保留字段与更新在同一锁内。不为未经测量的吞吐收益拆分锁 |
+
+### 线程边界与可观察回归
+
+- 原厂 AnimationController.checkMainThread（Java:233-235）**只返回 boolean**，部分回调据此 marshal，并非原文所称所有 mutator 都抛异常。本库此次 fail-fast 是明确的防御契约，不冒充逐行 OEM 语义。
+- Controller-owned listener 的线程检查先于 AtomicReference 消费和注册槽注销；Standalone 三参 timeout 保持原子一次性消费及调用线程 callback 语义，未强制所有用途迁移到 UI。
+- Feature-off 基类无状态 no-op 仍可从后台安全调用；实际 observer 集合操作要求主线程。状态读取仍应遵守主线程契约，不能把这些检查理解为任意线程整体快照 API。
+- FeatureSnapshotTest 通过受控锁竞争重现六参更新覆盖较新 onePx 值；只用反射控制阻塞点，断言的是公开配置结果。共享写锁不保证多个无锁 getter 之间是同一批次快照。
+
+### §4.2 十项逐项结论
+
+1. 旧两个 scheduler 已删除，但 ChoreographerTickScheduler 仍有并发容器/atomic/volatile；这些原语不证明可从任意线程操作 Choreographer，遵守 owner 线程。
+2. 保留 handler/holder 同步辅助；换源还使用 generation，已在第 9 份回归，不能靠 synchronized 自动获得跨 Looper 所有权。
+3. AsyncAnimCallbacks 已统一 listenerLock 保护增删/快照，锁外回调；不再按“裸集合保持”描述。
+4. 时间戳 volatile 单字段读与同步写保留；没有同一时刻多字段一致读取保证。
+5. Pending/APC 裸集合保留主线程使用，不承诺任意线程安全。
+6. AnimationSuccessListener.cancelled 按所属动画线程访问，不额外加 volatile。
+7. UX/阻塞 executor 四扩展不移植；不引入等待主线程的同步桥。
+8. Trace 已 ThreadLocal，仅隔离各线程栈，不等于跨线程 begin/end 自动配对（下一份可观测性 review 核对）。
+9. null Handler 的 JVM stub 兜底保留；controller 检查在真实 Main Looper 存在时生效。该兜底不算真机线程验证。
+10. 三层 launch 决策已互斥并清理，按现有回归保留；时间/场景结论不从并发锁推导。
+
+### 验证
+
+新增 **ControllerThreadContractTest 6 + FeatureSnapshotTest 3 = 9 tests**，旧代码 **6 条失败**，修复后与 TaskState/ownership 共 **19 条定向通过**（`.gradle/review-ordered-12-red.log` / `-green.log`）。17 个入口在一条矩阵用例内，不按 17 条重复计数。Debug/Release 各 **181 tests 全通过**，Demo Debug 成功（76/76 tasks，1m 37s，`.gradle/review-ordered-12-final.log`），见[执行清单](2026-09-09-ordered-review-progress.md)；未做设备压力测试、Perfetto 或吞吐基准，Lint 未完成。
+
+---
+
 > **2026-09-09 当前复核**：AsyncAnimCallbacks 原厂裸集合不作为本库的线程安全保证：本轮统一加锁保护增删和快照，业务监听在锁外执行。历史“合理行为、不是 bug”不适用于本库的跨线程注册承诺。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
 
 > 对比双方：

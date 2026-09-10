@@ -30,6 +30,8 @@ android {
         jvmTarget = "21"
     }
 
+    buildFeatures { buildConfig = true }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }

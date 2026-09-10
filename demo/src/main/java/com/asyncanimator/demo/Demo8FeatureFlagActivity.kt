@@ -23,7 +23,7 @@ import com.asyncanimator.manager.OplusAnimManager
  * <p>可视化：顶部 Switch 切换 Impl / Default(no-op) 工厂；LauncherStageView 舞台上
  * 播放同一个 openApp —— Impl 走完整弹簧转场（图标→全屏，60fps），
  * Default(no-op) 同一调用被吞掉、窗口瞬间出现（外部驱动一步到 1f）。
- * 下方文本实时列出 9 个 RUS 配置项。
+ * 下方由可注销的本地监听展示配置快照与 Adaptive 策略，不接真实 RUS。
  */
 class Demo8FeatureFlagActivity : DemoBaseActivity() {
 
@@ -33,6 +33,7 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
     private lateinit var stage: LauncherStageView
     private lateinit var implLabel: TextView
     private lateinit var configView: TextView
+    private var featureSubscription: AutoCloseable? = null
 
     override fun createContentView(): View {
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -46,7 +47,7 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
             setTypeface(typeface, Typeface.BOLD)
         }
         val featureSwitch = SwitchCompat(this).apply {
-            isChecked = true
+            isChecked = OplusAnimManager.interruptionEnabled
             setOnCheckedChangeListener { _, checked -> onFeatureToggled(checked) }
         }
         switchRow.addView(switchTitle, LinearLayout.LayoutParams(
@@ -92,7 +93,12 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
         )
 
         // ── 远程灰度配置（9 项实时列表）──
-        content.addView(sectionCaption("远程灰度配置（AnimationFeatureHelper · 9 项）"))
+        content.addView(sectionCaption("本地配置快照 + Adaptive 策略（非真实 RUS）"))
+        content.addView(TextView(this).apply {
+            text = "multi-app 等字段仅展示配置数据，不会自动切换工厂；Impl/no-op 由顶部 Interruption 开关控制。"
+            textSize = 11f
+            setTextColor(DemoStyle.INK)
+        })
         configView = TextView(this).apply {
             textSize = 11f
             typeface = Typeface.MONOSPACE
@@ -102,22 +108,38 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
         content.addView(configView)
 
         DemoStyle.addButtonRow(content,
-            DemoStyle.outlineButton("模拟远程下发", this, DemoStyle.AMBER) {
-                AnimationFeatureHelper.simulateRemoteUpdate(
-                    0, 0, 0, 0,
-                    0.5f, 100
-                )
-                log("simulateRemoteUpdate 已下发")
-                log("mAsyncEnable = 0, mIconBlurEnable = 0")
-                log("→ 业务读到的字段立刻变化（volatile）")
-                configView.text = renderConfigs()
+            DemoStyle.outlineButton("后台模拟配置下发", this, DemoStyle.AMBER) {
+                log("后台发布配置；页面由主线程通知更新，不在按钮里手动刷新")
+                Thread {
+                    AnimationFeatureHelper.simulateRemoteUpdate(
+                        0, 0, 0, 0, 0, 0.5f, 100, listOf("demo.package"), listOf(1))
+                }.start()
             },
-            DemoStyle.outlineButton("查看当前 9 个配置", this) {
+            DemoStyle.outlineButton("查看当前配置", this) {
                 logConfigs()
             }
         )
 
+        DemoStyle.addButtonRow(content,
+            DemoStyle.outlineButton("切换 Adaptive 策略", this) {
+                val enabled = AnimationFeatureHelper.snapshot().adaptiveAnimationEnabled
+                AnimationFeatureHelper.setAdaptiveAnimationEnabled(!enabled)
+            })
+        featureSubscription = AnimationFeatureHelper.addRemoteUpdateListener {
+            val config = AnimationFeatureHelper.snapshot()
+            configView.text = renderConfigs(config)
+            stage.banner = "配置通知 · async=${config.asyncEnable} radius=${config.radiusAnimationEnable}"
+            log("配置通知在线程 ${Thread.currentThread().name}；这是本地事件，不是 ROM RUS")
+        }
         return content
+    }
+
+    override fun onCleanup() {
+        featureSubscription?.close()
+        featureSubscription = null
+        stage.onIconTapped = null
+        stage.onWindowTapped = null
+        super.onCleanup()
     }
 
     // ── Feature 开关 ────────────────────────────────────────
@@ -173,8 +195,7 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
 
     // ── 远程灰度配置 ────────────────────────────────────────
 
-    private fun renderConfigs(): String {
-        val fh = AnimationFeatureHelper
+    private fun renderConfigs(fh: AnimationFeatureHelper.Snapshot = AnimationFeatureHelper.snapshot()): String {
         return buildString {
             append("mAsyncEnable         = ${fh.asyncEnable}\n")
             append("mRTUnlockEnable      = ${fh.rtUnlockEnable}\n")
@@ -184,12 +205,14 @@ class Demo8FeatureFlagActivity : DemoBaseActivity() {
             append("mInterruptThreshold  = ${fh.interruptThreshold}\n")
             append("mLimtSize            = ${fh.limtSize}\n")
             append("m1pxPkgDisableList   = ${fh.onePxPkgDisableList.size} 项\n")
-            append("m1pxCardDisableList  = ${fh.onePxCardDisableList.size} 项")
+            append("m1pxCardDisableList  = ${fh.onePxCardDisableList.size} 项\n")
+            append("Adaptive policy     = ${fh.adaptiveAnimationEnabled}\n")
+            append("Radius animation    = ${fh.radiusAnimationEnable}")
         }
     }
 
     private fun logConfigs() {
-        val fh = AnimationFeatureHelper
+        val fh = AnimationFeatureHelper.snapshot()
         log("mAsyncEnable = ${fh.asyncEnable}")
         log("mRTUnlockEnable = ${fh.rtUnlockEnable}")
         log("mMultiAppBlockEnable = ${fh.multiAppBlockEnable}")

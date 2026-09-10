@@ -27,14 +27,13 @@ import java.util.concurrent.atomic.AtomicLong
  * - com/android/quickstep/util/animation/CustomRectFSpringAnim.java:888 —— mStartAsync ?
  *   ANIM_EXECUTOR : MAIN_EXECUTOR，再判 looper.isCurrentThread()
  *
- * <p>演示内容：同一舞台窗口做 0→1→0 往复转场，分两路分时驱动（进度逐帧写入窗口 leash）——
- * - 主线程路：平台 ValueAnimator，帧推进走主线程 Choreographer（传统做法）；
+ * <p>演示内容：同一舞台窗口做 0→1→0 往复转场，分两路分时驱动（计算结果交回主线程绘制 View；不是 SurfaceControl leash）——
+ * - 主线程路：平台 ValueAnimator，帧推进走主线程 Choreographer；
  * - launcher.anim 路：AsyncValueAnimator.setExecutor(ANIM_CONTROL_EXECUTOR)，
  *   start 与帧推进都在 "Launcher Animation Control" 线程（默认演示这路）。
  *
  * <p>点"主线程加压 800ms"后：主线程路窗口卡住、直方图飙出一根红柱；
- * launcher.anim 路动画计算帧间隔保持 ~16ms，UI 恢复后可见窗口进度持续推进——
- * 这就是独立动画线程的核心收益。
+ * launcher.anim 路可继续计算，但 View 绘制仍等待主线程；实际帧间隔以设备测量为准。
  *
  * <p>可视化：LauncherStageView 舞台（setExternalDrive 外部逐帧驱动）+ 线程名统计文本
  * + 帧间隔直方图（下=主线程路 上=launcher.anim 路），整体 ScrollView 防裁切。
@@ -48,6 +47,10 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
     private lateinit var mainStats: TextView
     private lateinit var asyncStats: TextView
     private lateinit var hist: FrameGapHistogramView
+
+    private var destroyed = false
+    private var driveGeneration = 0L
+    private val initialStart = Runnable { if (!destroyed) startAnimThreadDrive() }
 
     private var mainAnim: ValueAnimator? = null
     private var asyncAnim: AsyncValueAnimator? = null
@@ -79,18 +82,20 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
         }
     }
 
-    private val mainStatsData = FrameStats()
-    private val asyncStatsData = FrameStats()
+    private var mainStatsData = FrameStats()
+    private var asyncStatsData = FrameStats()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 默认演示 launcher.anim 路：舞台一进来就在动
-        stage.post { startAnimThreadDrive() }
+        stage.post(initialStart)
     }
 
-    override fun onDestroy() {
+    override fun onCleanup() {
+        destroyed = true
+        stage.removeCallbacks(initialStart)
         stopDrivers()
-        super.onDestroy()
+        super.onCleanup()
     }
 
     override fun createContentView(): View {
@@ -150,8 +155,10 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
     // ── 主线程路：平台 ValueAnimator，帧推进走主线程 Choreographer ──────────
     private fun startMainThreadDrive() {
+        if (destroyed) return
         stopDrivers()
-        mainStatsData.reset()
+        val generation = driveGeneration
+        val frameStats = FrameStats().also { mainStatsData = it }
         hist.clear()
         stage.banner = "主线程驱动窗口动画 (0→1→0 往复)"
 
@@ -162,9 +169,10 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
             addUpdateListener { anim ->
                 // 本回调在主线程执行
                 val v = anim.animatedValue as Float
-                val gap = mainStatsData.sample(System.currentTimeMillis())
-                stage.driveWindowProgress(v)
+                val gap = frameStats.sample(System.currentTimeMillis())
                 runOnUiThread {
+                    if (destroyed || generation != driveGeneration) return@runOnUiThread
+                    stage.driveWindowProgress(v)
                     if (gap > 0) hist.sample(0, gap.toFloat())
                     refreshStats()
                 }
@@ -181,8 +189,10 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
 
     // ── launcher.anim 路：AsyncValueAnimator + 独立动画线程 ─────
     private fun startAnimThreadDrive() {
+        if (destroyed) return
         stopDrivers()
-        asyncStatsData.reset()
+        val generation = driveGeneration
+        val frameStats = FrameStats().also { asyncStatsData = it }
         hist.clear()
         stage.banner = "launcher.anim 线程驱动窗口动画 (0→1→0 往复)"
 
@@ -194,11 +204,12 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
             repeatCount = ValueAnimator.INFINITE
             repeatMode = ValueAnimator.REVERSE
             addUpdateListener { anim ->
-                // 本回调在独立动画线程执行：直接写舞台进度（内部 postInvalidate）
+                // 本回调只在独立线程计算/采样；View 更新交回主线程并过滤旧代次
                 val v = anim.animatedValue as Float
-                val gap = asyncStatsData.sample(System.currentTimeMillis())
-                stage.driveWindowProgress(v)
+                val gap = frameStats.sample(System.currentTimeMillis())
                 runOnUiThread {
+                    if (destroyed || generation != driveGeneration) return@runOnUiThread
+                    stage.driveWindowProgress(v)
                     if (gap > 0) hist.sample(1, gap.toFloat())
                     refreshStats()
                 }
@@ -211,7 +222,7 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
             start() // 当前在主线程 → 自动 marshal 到独立线程
         }
         log("launcher.anim 路启动：AsyncValueAnimator → ${AnimationControlThread.THREAD_NAME} 线程")
-        log("→ 主线程被阻塞时，动画计算帧间隔仍 ~16ms（UI 恢复后可见进度持续推进）")
+        log("→ 后台只计算和采样，View 在主线程恢复后更新；帧间隔以测量为准")
     }
 
     private fun stressMainThread() {
@@ -219,12 +230,20 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
         mainStatsData.maxGapMs.set(0)
         asyncStatsData.maxGapMs.set(0)
         Thread.sleep(800) // 故意阻塞主线程
-        log("<<< 主线程恢复：主线程路应有一根 ~800ms 红柱；launcher.anim 路保持平稳绿柱")
+        log("<<< 主线程恢复：比较计算帧间隔；两路 View 绘制均依赖主线程")
     }
 
     private fun stopDrivers() {
-        mainAnim?.cancel(); mainAnim = null
-        asyncAnim?.cancel(); asyncAnim = null
+        driveGeneration++
+        stage.removeCallbacks(initialStart)
+        mainAnim?.apply {
+            removeAllUpdateListeners()
+            removeAllListeners()
+            cancel()
+        }
+        mainAnim = null
+        asyncAnim?.dispose()
+        asyncAnim = null
         if (::stage.isInitialized) stage.banner = "待机 · 选择驱动线程"
     }
 

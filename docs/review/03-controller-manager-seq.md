@@ -2,6 +2,29 @@
 
 # Review 03：Controller / Manager / Seq / Feature 层对比
 
+## 顺序验收（2026-09-09）
+
+**当前结论：§4.1 七项建议已完成；保留简化见下。** 当前路径为 `control/`、`manager/`、`seq/`，以下结论覆盖正文历史风险。
+
+| 建议 | 当前状态与证据 |
+|---|---|
+| 1 launch 生命周期 | ✅已完成：`appLaunchAnimStartOrEnd` 维护列表、OPEN/WAITING/MULTI 状态，末动画结束走清理；现有状态机矩阵回归保留。 |
+| 2 单调时钟 | ✅已完成：controller 使用 uptime；`AnimSeqTimeStamp` 使用可注入 uptime 时钟，未用墙钟做时间窗。 |
+| 3 Recents 转移表 | ✅已完成：UNKNOWN 不进入 CLOSE、MULTI_WAITING 进入 MULTI_CLOSE；状态/操作 48 组合已有回归。 |
+| 4 三层决策树 | ✅已完成：互斥 else-if 与未命中清理；上轮已补 search、tablet 与实时 overview running 条件，详见 [决策树修复](2026-09-09-launch-decision-fixes.md)。 |
+| 5 Between setter/query | ✅本轮完成：补两个 override；AppExit setter 仅在 navigation landscape exit 状态生效；transition 查询要求标志为 true 且 `startActivityAction != null`。OPPO `AnimationController.java:798-799,858-867` 为依据。 |
+| 6 reset 清理 | ✅已完成：清两个动画列表、removeTasks、finish callbacks、待启动动作及场景标志；clickAppView 尚无存储，继承基类的 null/no-op，不存在待清引用。完整退出用 `destroy()` 额外解除 listener 和 runningTask。 |
+| 7 自动超时 | ✅已完成：独立 listener 的 Handler 定时兜底，按等待场景消费一次；事件、超时与销毁均有回归。 |
+
+**验证**：`AnimationBetweenStateTest` 的 6 tests 修复前全部失败，修复后通过；再运行 `AnimationControllerRegressionTest` 13、`AnimationLaunchDecisionTest` 14、`AnimationSeqHelperTest` 7，合计 **40 tests 通过**。部分导航分支测试用反射隔离私有手势输入，不代表真实 Launcher 手势集成。
+
+**保留简化**：不移植 merge/prestart helper、真实 RUS 解析及 600ms 输入闸门。配置默认 -1、三态语义与模拟配置更新已实现。旧“search/tablet 保持裁剪”的建议已过期：目前有精确搜索常量及可注入 tablet 判断；sw600dp 默认不是 OPPO 私有设备服务。controller/seq 的状态操作要求主线程，不能把 executor 存在理解为任意线程安全。
+
+完整顺序及验证范围见 [执行清单](2026-09-09-ordered-review-progress.md)。
+
+---
+
+
 > 对比双方：
 > - lib：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/{controller,manager,seq,feature}` + `com/android/launcher3/LauncherAnimationRunner.kt`
 > - 原厂：`D:/oppo_a6_launcher/sources`（ColorOS 15 Launcher 15.8.24，JADX 反编译；证据行号为 Grep 穿透 DLP 拿到的明文行号）

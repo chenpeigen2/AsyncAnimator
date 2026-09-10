@@ -1,6 +1,8 @@
 package com.asyncanimator.thread
 
 import android.os.Handler
+import android.os.HandlerThread
+import android.os.Process
 import java.util.concurrent.TimeUnit
 import android.os.Looper
 import android.os.Message
@@ -23,11 +25,11 @@ import android.os.Message
 class LooperExecutor internal constructor(private val handler: Handler?) {
 
     /** 目标线程。handler 为 null（JVM 单测）时视为"调用方线程"。 */
-    private val thread: Thread?
+    private val currentTargetThread: Thread?
         get() = handler?.looper?.thread ?: Thread.currentThread()
 
     val isCurrentThread: Boolean
-        get() = thread === Thread.currentThread()
+        get() = currentTargetThread === Thread.currentThread()
 
     /** Returns the underlying [Handler], or null in JVM unit-test environment. */
     fun getHandler(): Handler? = handler
@@ -35,8 +37,19 @@ class LooperExecutor internal constructor(private val handler: Handler?) {
     /** Returns the underlying [Looper], or null in JVM unit-test environment. */
     fun getLooper(): Looper? = handler?.looper
 
-    /** Returns the target thread, falling back to current thread when handler is null. */
+    /** Returns the target thread, or null when the JVM fallback has no Handler. */
     fun getTargetThread(): Thread? = handler?.looper?.thread
+
+    /** OPPO-compatible accessor name; getTargetThread remains as a source-compatible alias. */
+    fun getThread(): Thread? = getTargetThread()
+
+    /** Set the Android priority of the owning HandlerThread, not the caller's thread.
+     * Like OPPO this operation requires a HandlerThread; it does not apply to MAIN_EXECUTOR. */
+    fun setThreadPriority(priority: Int) {
+        val target = getThread() as? HandlerThread
+            ?: throw IllegalStateException("Thread priority requires a HandlerThread-backed executor")
+        Process.setThreadPriority(target.threadId, priority)
+    }
 
     fun execute(action: (() -> Unit)?) {
         if (action == null) return

@@ -2,6 +2,29 @@
 
 # 区域 4 对比 Review：帧调度 / 弹簧 / 续行层
 
+## 顺序验收（2026-09-09）
+
+**当前结论：§4.1 五项建议已处理（1–3 完成、4 由帧源替换解决、5 明确保留简化）。** 以下状态覆盖历史快照。
+
+| 建议 | 当前状态与证据 |
+|---|---|
+| 1 inputed 初值 | ✅已完成：`RecordInputInterpolator.inputed = 0f`；测试验证记录输入而不是插值输出。它不记录速度。 |
+| 2 续行实际接线 | ✅本轮补全：参数仍用独立 copy，timeController 仍用线性插值；补真实 value 初始化与 value-holder 克隆，续行不再只推进 fraction 而没有值输出。`setProperty` 保存并执行实际 FloatProperty，`setTarget` 重绑不累加旧 listener；null binding 停止写入。 |
+| 3 参数同步 | ✅已完成并补漏：`setInterpolator` 同步 param；本轮修正普通 animator `setDuration` 未同步 param 的遗漏，保持复制元数据一致。 |
+| 4 空订阅停止 | ✅替代实现已验证：两个旧 scheduler 已删除；仅保留公开 Choreographer 帧源及自有 AnimationHandler。测试覆盖空订阅停止、重启与 self-pulse 退订，不恢复过期的 Scheduled/Handler 实现。 |
+| 5 delayMs 重载 | ➖保留简化：当前自有 AnimationHandler 没有延迟注册调用方，也尚未接入 MultiDynamicAnimation。暂不扩充无使用者的 API。 |
+
+**原厂证据**：`OplusValueAnimator.java:89-119` 的 continuation 创建/target/property/线性时钟，`:127-150` 的值与参数初始化，`:292-298,319-325` 的参数同步。lib 保存平台 value-holder 快照，额外避免源 animator 后续修改 keyframe 污染续行；未移植原厂泛型 evaluator 工厂和完整业务 helper。
+
+**验证**：新增 `OplusValueAnimatorTest` 6 tests，其中 4 个在修复前失败（无值/无输出、property 未接线、duration 参数陈旧），修复后全部通过；连同帧源和 kernel 测试，定向 **15 tests 通过**。验证包含真实 ValueAnimator start/end → applicator 输出，不仅检查字段。Demo 5 仍走舞台自己的动画，本轮删除“库接线 no-op”“记录速度/速度无跳变”等错误说明，明确其示意边界。
+
+**保留简化与勘误**：不移植 SF-VSYNC、UX/UAF、六自由度矩形弹簧、OEM 日志/事务链路。Choreographer 是公开 API，旧文把它与 hidden SF provider 一并判为不可移植的结论错误。异常隔离保留且已注明与原厂不同。`OplusValueAnimator.ofFloat(true, …)` 是库的 wrapper 选择扩展，不提供线程切换；不要与已有原厂对应的 `AsyncValueAnimator.ofFloat(isAsync, …)` 混淆。
+
+完整顺序及验证范围见 [执行清单](2026-09-09-ordered-review-progress.md)。
+
+---
+
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库，idiomatic Kotlin 重写的 OPPO 动画线程方案复刻）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）

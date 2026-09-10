@@ -1,5 +1,36 @@
 # vs-oppo-02-pending-playback — Pending / Playback 层 lib vs OPPO 对比
 
+## 2026-09-09 顺序验收：✅完成（第 7 份，含保留简化）
+
+本节为当前决策，以下旧提交/行号描述保留为历史快照。本次逐项核对 lib 与 OPPO `launcher3/anim`，不把“接口不存在”误写为“语义等价”。
+
+| §4.1 | 处理结果 | 当前证据 |
+|---|---|---|
+| 1 start pending | ✅已完成 | APC start/reverse 与根 start/end/cancel 清 false，仅 dispatchOnStart 置 true |
+| 2 根取消监听 | ✅已完成 | 初始化监听挂根 anim；targetCancelled 阻断子动画 seek，无首子元素索引 |
+| 3 递归 dispatch | ✅已完成 | 根→嵌套子集→叶子 DFS；逐层 listener 快照；APC 两条回归覆盖顺序与自注销 |
+| 4 PropertySetter.add | ✅决策完成：保持简化 | OPPO 默认 null guard + duration=0 + start；lib 没有该接口且默认 setFloat 直接写属性，**不是“setFloat 走 add”**。当前无基类 add 调用或 View alpha 联动；保留 PendingAnimation.add 的链式返回，不为无调用接口改变签名 |
+| 5 查询 getter | ✅决策完成：保持内部 API | progressFraction 只读及 animationPlayer 可访问；duration、isDispatchStartPending **仍为 private，不存在对应公开 getter**。当前 internal APC 无外部兼容需求，不声称全部 getter 等价 |
+| 6 四个插值工具 | ✅已完成 | clampToProgress/mapToProgress/reverse/scrollInterpolatorForVelocity；六条数学边界测试覆盖 |
+
+### §4.2 简化项核对
+
+1. 不移植 APC startWithVelocity / SpringProperty / SpringAnimationBuilder 组合；Holder.springProperty 是显式 null 占位，PendingAnimation.add 不接收伪 spring 参数。Demo 4 同名 SpringProperty 示意不是这条 APC 链路的调用。
+2. 不移植 grid-recents 专属 removeScaleAnimatorForGridRecentViews。
+3. 不移植 View alpha/background/int 扩展及 AlphaUpdateListener；需要完整可见性语义时再整组引入。
+4. 不全量移植 40 个业务/COUI 插值常量，保留本库已用的纯数学工具。
+5. 不为零调用方增加 dispatchSetInterpolator、overrideDurationScale 等 APC 内部工具。
+6. **纠正旧结论**：ActualEndAnimListener 已是 `anim/` 下独立基类，AnimationSuccessListener 继承它，并非“合并入 success 层”。异步实际结束由 AsyncAnimCallbacks 派发；Rect 新协议使用自己的非空 Listener，不混淆两种类型。
+
+### 验证
+
+此份为当前代码验收及文档纠错，没有重复移植已实现代码。Pending 6 + APC 2 + Interpolators 6 = **14 条相关测试**已包含在第六份全量重跑中；Debug/Release 各 141 tests 全通过，Demo Debug 成功（`.gradle/review-ordered-06-final.log`）。本份未新增用例，不重复累计。设备/Perfetto 未验证，Lint 未完成。见[执行清单](2026-09-09-ordered-review-progress.md)。
+
+---
+
+> **2026-09-09 顺序验收关联更新**：旧版 02 的六项建议已验收；本轮补齐四个插值工具，Pending 属性 seek、时长和 end 阈值回归通过。 本详细版的其余条目仍待按队列核对，不因关联修复整篇标完成。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
 > 对比双方：
 > - **lib**：`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\playback\`（8 个 .kt；e62dbff 包重组后原 `launcher/pending`（5 个）与 `launcher/playback`（3 个）合并至此）
 > - **原厂**：`D:\oppo_a6_launcher\sources\com\android\launcher3\anim\`（`PendingAnimation`、`AnimationSuccessListener`、`AnimatorListeners`、`NullableAnimatorListener`、`NullableAnimatorListenerAdapter`、`AnimatorPlaybackController`、`PropertySetter`、`Interpolators`；辅助 `SpringProperty`、`SpringAnimationBuilder`、`AlphaUpdateListener`）
@@ -148,7 +179,7 @@
 
 ---
 
-> ⚠️ ④ 建议表各行待逐条打标（对应风险项状态见 ③ R 项 打标）。
+> ④ 建议表已逐条验收，当前处理见顶部；下文原建议说明用于保留历史背景。
 ## ④ 回移建议
 
 ### 4.1 值得补进 lib（性价比高）
@@ -157,13 +188,13 @@
 
 2. ✅已修复（086844e）——**cancel/end/start 跟踪 listener 已挂到根 animator**（`AnimatorPlaybackController.kt:56-71` `anim.addListener(...)`，不再用 `anims[0]`）：cancel 写 `targetCancelled=true` + `isDispatchStartPending=false`，end/start 写 false。消除 R8（直接 cancel AnimatorSet 可阻断 `setPlayFraction`）+ 空子动画列表越界。
 
-3. **补 `dispatch` 递归**：把 `dispatchToListeners` 改为遍历 `callAnimatorCommandRecursively(mAnim, BiConsumer<Animator, Animator.AnimatorListener>)` 形态，对齐原厂 `:184-203`。成本小（10-15 行），消除 R7 潜藏风险——一旦补 R1/C1 涉及的"手势跟手→动画接管"路径，必须有递归 dispatch。（v2 现状：60bd048/086844e 已补根层派发与根层跟踪，嵌套子集 DFS 仍未实现，R7 保持 ⚠️未修复。）
+3. ✅已完成（DFS 与自注销回归，见顶部）——**补 `dispatch` 递归**：把 `dispatchToListeners` 改为遍历 `callAnimatorCommandRecursively(mAnim, BiConsumer<Animator, Animator.AnimatorListener>)` 形态，对齐原厂 `:184-203`。成本小（10-15 行），消除 R7 潜藏风险——一旦补 R1/C1 涉及的"手势跟手→动画接管"路径，必须有递归 dispatch。（v2 现状：60bd048/086844e 已补根层派发与根层跟踪，嵌套子集 DFS 仍未实现，R7 保持 ⚠️未修复。）
 
-4. **补 `PropertySetter.add(Animator)` 默认 `setDuration(0) + start`**（原厂 `:14-20`）：原厂 no-op setter 调 `add(anim)` 仍能跑动画（瞬时）；lib 默认 `setFloat` 也走 `add`，但 `add` 接口不在 `PropertySetter` 中——属 API 面一致性。**低优先级**，仅当 PendingAnimation 同时回移 C5 的 setViewAlpha 时才有意义。
+4. ✔️保持简化（无调用面，且保留 Pending 链式返回）——**补 `PropertySetter.add(Animator)` 默认 `setDuration(0) + start`**（原厂 `:14-20`）：原厂 no-op setter 调 `add(anim)` 仍能跑动画（瞬时）；lib 默认 `setFloat` 也走 `add`，但 `add` 接口不在 `PropertySetter` 中——属 API 面一致性。**低优先级**，仅当 PendingAnimation 同时回移 C5 的 setViewAlpha 时才有意义。
 
-5. **补 `AnimatorPlaybackController` 的 `isIsDispatchStartPending()` / `getProgressFraction()` getter**：当前 lib 用 Kotlin property `progressFraction` 暴露（read-only），原厂 `getProgressFraction()` 是 method；外加 `getAnimationPlayer()` 是 method；`getDuration()` 是 method。当前 lib 用 `duration: Long private val` + `animationPlayer: ValueAnimator` 公开——**API 形式不同但语义面等价**，不补也行；若外部代码按原厂 method 名查找，会找不到。
+5. ✔️保持内部 API（两个 private 查询未暴露，见顶部）——**补 `AnimatorPlaybackController` 的 `isIsDispatchStartPending()` / `getProgressFraction()` getter**：当前 lib 用 Kotlin property `progressFraction` 暴露（read-only），原厂 `getProgressFraction()` 是 method；外加 `getAnimationPlayer()` 是 method；`getDuration()` 是 method。当前 lib 用 `duration: Long private val` + `animationPlayer: ValueAnimator` 公开——**API 形式不同但语义面等价**，不补也行；若外部代码按原厂 method 名查找，会找不到。
 
-6. **补 `Interpolators.clampToProgress(Interpolator, lo, up)` + `mapToProgress` + `reverse` + `scrollInterpolatorForVelocity`**：这四个是 C1 `startWithVelocity` 的前置 + 手势链路常用工具，原厂 `:130-148, 170-177, 183-190, 192-194`。无外部依赖（纯数学），15-20 行可补齐。补了之后 C1 才有可移植面。
+6. ✅已完成（四工具及边界回归）——**补 `Interpolators.clampToProgress(Interpolator, lo, up)` + `mapToProgress` + `reverse` + `scrollInterpolatorForVelocity`**：这四个是 C1 `startWithVelocity` 的前置 + 手势链路常用工具，原厂 `:130-148, 170-177, 183-190, 192-194`。无外部依赖（纯数学），15-20 行可补齐。补了之后 C1 才有可移植面。
 
 ### 4.2 建议保持简化
 
@@ -177,7 +208,7 @@
 
 5. **dispatchSetInterpolator / overrideDurationScale / iterateAllChildAnim / resetPropertySetters / getInterpolatedProgress / getInterpolator**：这些是 APC 的内部工具，外部调用方在原厂代码里也少见（grep 全树 < 10 处），lib 无调用方。
 
-6. **ActualEndAnimListener 独立分层**：原厂该层只有空钩子，lib 合并进 `AnimationSuccessListener` 父类是合理简化，**与既有 review 02 §④-2.4 结论一致**。
+6. **ActualEndAnimListener 独立分层**：✅已有独立 `anim/ActualEndAnimListener`，`AnimationSuccessListener` 继承它。旧“合并”判断不再适用。
 
 ---
 

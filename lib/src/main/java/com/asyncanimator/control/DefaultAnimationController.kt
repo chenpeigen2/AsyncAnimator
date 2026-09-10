@@ -1,6 +1,7 @@
 package com.asyncanimator.control
 
 import android.content.Intent
+import android.os.Looper
 import com.android.launcher3.LauncherAnimationRunner
 import com.asyncanimator.anim.CustomRectFSpringAnim
 
@@ -8,30 +9,40 @@ import com.asyncanimator.anim.CustomRectFSpringAnim
  * DefaultAnimationController — AnimationController 的 no-op 基类。
  *
  * 对应 `docs/review/03-controller-manager-seq.md`。当 feature off 时，OplusAnimManager 返回此基类实例，
- * 所有方法都是 no-op，业务调用没有副作用。
+ * 状态查询与转场写入采用默认/空实现，但监听注册、移除和显式通知仍有效。
+ * delayStartActivityIfNeed 返回 false 且不执行 action；调用方负责立即启动。
  */
 open class DefaultAnimationController {
+
+    /** State/observer mutations belong to main. Null Looper is only the JVM stub fallback. */
+    protected fun checkMainThread() = checkControllerMainThread()
 
     private val animStateChangeListeners = mutableListOf<OnAnimStateChangeListener>()
 
     fun addOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) {
+        checkMainThread()
         if (listener != null) animStateChangeListeners.add(listener)
     }
 
     fun removeOnAnimStateChangeListener(listener: OnAnimStateChangeListener?) {
+        checkMainThread()
         if (listener != null) animStateChangeListeners.remove(listener)
     }
 
-    protected fun clearOnAnimStateChangeListeners() = animStateChangeListeners.clear()
+    protected fun clearOnAnimStateChangeListeners() {
+        checkMainThread()
+        animStateChangeListeners.clear()
+    }
 
     open fun onAnimStateChanged(oldState: AnimationState, newState: AnimationState, runningTask: Any?) {
+        checkMainThread()
         // 快照遍历：允许回调中增删 listener
         for (l in animStateChangeListeners.toList()) {
             l.onAnimStateChanged(oldState, newState, runningTask)
         }
     }
 
-    // ──── 全部 no-op 实现（feature off 时业务调用安全）───────────────
+    // ──── 默认查询与转场空实现（不包含上方监听容器）───────────────
 
     open val animState: AnimationState get() = AnimationState.NONE
     open val allRecentsAnimationEnd: Boolean get() = false
@@ -58,6 +69,7 @@ open class DefaultAnimationController {
     open fun cleanUpRecentsAnim(): Boolean = true
     open fun delayStartActivityIfNeed(context: Any?, intent: Intent?,
                                       call: (() -> Boolean)?, action: (() -> Unit)?): Boolean = false
+    open fun dispatchTaskStateChange(type: TaskStateChangeTimeOutListener.Type) {}
     open fun enableSwipeUp() {}
     open fun forbidTouch(): Boolean = false
     open fun forceStopAllRecentAnim() {}
@@ -84,4 +96,10 @@ open class DefaultAnimationController {
     open var appLaunchAnimFinishCallback: (() -> Unit)?
         get() = null
         set(value) {}
+}
+
+/** Non-capturing guard: retained, disposed timeout handles must not keep their controller alive. */
+internal fun checkControllerMainThread() {
+    val main = Looper.getMainLooper() ?: return
+    check(Looper.myLooper() === main) { "AnimationController state must be accessed on the main thread" }
 }

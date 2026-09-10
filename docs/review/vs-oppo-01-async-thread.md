@@ -1,5 +1,37 @@
 # vs OPPO — 区域 01：异步/线程层（lib vs ColorOS 15 Launcher 15.8.24）
 
+## 2026-09-09 顺序验收：✅完成（第 6 份，可移植协议）
+
+本节取代下文历史快照的状态描述；完成指建议已实现验证或明确保留简化，不代表 OEM 引擎完整复刻。
+
+| §4.1 | 本轮处理 | 证据 / 边界 |
+|---|---|---|
+| 1 空订阅停止 | ✅完成 | 唯一 ChoreographerTickScheduler；空订阅停止/重启测试保留 |
+| 2 Boolean 工厂 | ✅完成 | AsyncValueAnimator.ofFloat(isAsync, …) 及 Java 静态入口；已有选择分支回归 |
+| 3 null listener 参数 | ✅决策完成：保留非空 | 不恢复 OEM null，避免 Kotlin 调用方空值风险 |
+| 4 Rect 线程与双阶段结束 | ✅完成可移植协议 | RectAnimationLifecycle 固定每轮 driver owner；start/cancel/skip/reverse 纠偏，监听和 actual-end 回主线程异步消息 |
+| 5 AnimType | ✅完成 | 七个原厂枚举值及顺序已核对 |
+| 6 executor 访问器 | ✅本轮补齐 | 保留 getHandler/getLooper/getTargetThread，新增 getThread 别名和目标 HandlerThread 的 setThreadPriority；原“三个访问器已补”并未覆盖后两项 |
+| 7 帧回调 delay 重载 | ✅决策完成：暂不移植 | 当前帧核和 demo 无调用；不为尚未移植的 MultiDynamicAnimation 增加未使用协议 |
+
+### Rect 协议与验收边界
+
+- Driver 显式声明 supportsAnimationThread；只有支持的引擎默认异步。Animator 适配器保持主线程，拒绝后台 opt-in，不承诺后台 View 写入安全。
+- 主线程配置 owner/id 和监听器，每轮 owner 锁定到实际清理完成。cancel/end 是逻辑通知，**只有 driver 的物理回调才能释放 MultiAnimatorSet 的 Rect 等待**。OPPO maybeEnd 某些 cancel/skip 路径可立即通知 actual-end；本库采用更严格屏障，并非逐行照搬时序。
+- justNotifyEndCallback 只发逻辑 end，不停引擎；ReversibleDriver 接收复制的 RectF 与半径，在固定 owner 重定向后回主线程。无该能力明确抛异常，不伪造几何更新，也不执行 OEM 全局 controller 副作用。
+- 独立非空 Listener 接收句柄及不可变 animationId/runId/cancelled 事件，不伪装为平台 Animator。实际清理先于复用通知；终止回调共享监听快照，避免 onEnd 重入下一轮后，新监听器收到旧 actual-end。dispose 使排队 start 和迟到回调失效。
+- 新增 RectAnimationLifecycleTest 16 tests，LooperExecutorTest 从 2 增至 5。定向 Rect + Multi + executor **39 tests 全通过**；新监听器串轮测试先失败后通过（`.gradle/review-ordered-06-red.log` / `-green.log`）。取消去重后 Multi mask 断言改为 driver cancel 一次，全部 8 个 mask 均保留。
+- §4.2 的私有 SF 帧源、UX/UAF、阻塞扩展、额外 executors、OEM 日志、六轴弹簧/事务写表、纯日志字段继续不移植；postAsync 使用库成员方法；null-Handler 同步兜底保留且已有注释。不把这些项标成已实现。
+- Debug / Release 各 **141 tests** 全通过；Demo Debug 构建成功，76/76 tasks executed，1m 19s。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。未验证设备/Perfetto、异常 driver 故障恢复或 OEM 六轴求解器；Lint 未完成。
+
+---
+
+> **2026-09-09 第五份关联修复**：AnimType 七值本轮补齐；Driver/Animator 是生命周期适配，不等于本篇所需的 OEM Rect 线程/物理协议已完成。 证据见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
+> **2026-09-09 顺序验收关联更新**：旧版 01 的六项建议已验收；本轮纠正 frameIntervalMs/刷新周期说明并补线程、帧源和双轨结束测试。 本详细版的其余条目仍待按队列核对，不因关联修复整篇标完成。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
 > **2026-09-09 续轮完成**：§4.1-2 的 Boolean 工厂现已补齐（含 Java 静态入口），不是仅存在 `ofFloat(vararg)` 就算完成；保留异步快捷重载。选择分支和值域经回归验证，见[续轮落地记录](2026-09-09-review-followup.md)。以下旧提交记录仍保留为历史快照，其他缺口不随此项标完成。
 
 > 对比双方：
@@ -273,10 +305,10 @@
 | 1 | ✅已修复（215ecb5：删两个 scheduler，ChoreographerTickScheduler 唯一且空则停） — **统一两个 scheduler 的"空则停"语义**（`ScheduledTickScheduler.kt:56-61` 加空转保护：tick 时 callbacks 为空则自动 stop，下次 `postFrameCallback` 时 restart） | 让两种 scheduler 行为一致；消除 demo 在两种配置下 `frameCount` 增长曲线不一致的问题 | §③-1, §③-14 |
 | 2 | ✅已完成（2026-09-09 续轮：补齐 Boolean 重载及 Java 静态入口；64d3bab 当时只有异步快捷重载） — **`AsyncValueAnimator.Companion.ofFloat(isAsync, …)` 工厂**（`AsyncValueAnimator.kt` 加 `companion object`） | 5 行，对齐 `AppLaunchAnimUtil.java:443` 等调用点迁移 | §③-（轻） |
 | 3 | ✔️不修（Kotlin 非空安全有意改进） — **`AsyncAnimCallbacks` 派发恢复"传 null animator"语义**（`AsyncValueAnimator.kt:25-37` 改为 `asyncAnimCallbacks.onAnimationEnd(null)`） | 对齐原厂 `NullableAnimatorListener` 命名的本意 | §③-8 |
-| 4 | ⚠️未修复（线程切换协议大改，见 vs-oppo-16） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
-| 5 | ⚠️未修复（~5 行枚举补 7 值） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
-| 6 | ✅已修复（64d3bab：`thread/LooperExecutor.kt` getHandler/getLooper/getTargetThread 访问器） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
-| 7 | ⚠️未修复（demo 无调用方，复刻 MultiDynamicAnimation 时补） — **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
+| 4 | ✅本轮完成可移植协议（边界见顶部验收） — **`CustomRectFSpringAnim` 至少补线程切换协议**（start/cancel/skipToEnd/reverseToOpen 全部 `isCurrentThread` + post 纠偏 + `maybeEnd()` 双轨补救 + `runOnMainThread` 结束回调） | v4 §4 强调的核心设计，是跨线程动画正确性的关键；占位类有 `AnimType` 但无线程切换协议是 review 04 §4.2 一直标记的"文档与代码脱节"问题 | §③-5 |
+| 5 | ✅已完成（七值及顺序已对齐） — **`CustomRectFSpringAnim.AnimType` 枚举补齐 7 值**（加 `OPEN_FROM_HOME`/`REMOTE_CLOSE_TO_HOME`/`REMOTE_CLOSE_TO_HOME_ASSISTANT`/`GESTURE_TO_DRAG`/`SWIPE_TO_HOME_ASSISTANT`/`REVERSE_TO_OPEN`） | 一行枚举值；让 AnimationController 的 transfer table 能覆盖完整路径 | §③-7 |
+| 6 | ✅本轮补齐（getThread 别名与 setThreadPriority；保留此前三个访问器） — **`LooperExecutor` 补 `getHandler()` / `getLooper()` / `getThread()` / `setThreadPriority(int)` 访问器**（对齐 `LooperExecutor.java:35-66`） | 业务需要访问底层 Looper 时必备；~10 行； | §②-C-3 |
+| 7 | ✔️保留简化（当前无调用方，移植 MultiDynamicAnimation 时再补） — **`AnimationHandler.addAnimationFrameCallback(cb, delayMs)` 重载**（对齐 dynamicanimation/框架版 `dyn :135-145`） | 为将来复刻 `MultiDynamicAnimation.startAnimationInternal`（`MultiDynamicAnimation.java:127`）铺路；当前 demo 无调用点 | §③-2 |
 
 ### 4.2 建议保持简化
 

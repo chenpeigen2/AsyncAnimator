@@ -18,8 +18,19 @@ import com.asyncanimator.thread.Executors
  */
 class AsyncValueAnimator : ValueAnimator() {
 
-    /** 动画执行器：start/cancel/end 与帧推进所在的 Looper。 */
-    var executor: LooperExecutor = Executors.MAIN_EXECUTOR
+    private val lifecycleLock = Any()
+    @Volatile private var disposed = false
+    private var owner: LooperExecutor? = null
+    private var configuredExecutor: LooperExecutor = Executors.MAIN_EXECUTOR
+
+    /** Configure before the first lifecycle command; a live animator never migrates Loopers. */
+    var executor: LooperExecutor
+        get() = synchronized(lifecycleLock) { configuredExecutor }
+        set(value) = synchronized(lifecycleLock) {
+            check(!disposed) { "Animator is disposed" }
+            check(owner == null || owner === value) { "Animator executor is already bound" }
+            configuredExecutor = value
+        }
 
     /** listener 容器 + 跨线程派发器（listener 始终回主线程 fire）。 */
     val asyncAnimCallbacks = AsyncAnimCallbacks()
@@ -42,23 +53,63 @@ class AsyncValueAnimator : ValueAnimator() {
         })
     }
 
-    private val isCurrentExecutor: Boolean get() = executor.isCurrentThread
-
-    /** 当前线程已在目标 Looper 上就直接执行，否则 marshal 过去。 */
-    private inline fun marshal(crossinline action: () -> Unit) {
-        if (isCurrentExecutor) action() else executor.execute { action() }
+    /** Pin even a queued cancel/end so subsequent commands cannot use another Looper. */
+    private fun marshal(starting: Boolean = false, action: () -> Unit) {
+        val target = synchronized(lifecycleLock) {
+            if (disposed) {
+                check(!starting) { "Animator is disposed" }
+                return
+            }
+            owner ?: configuredExecutor.also { owner = it }
+        }
+        target.execute {
+            if (!disposed) {
+                try {
+                    action()
+                } finally {
+                    // onStart may dispose reentrantly before platform start finishes scheduling.
+                    if (disposed) releaseOnOwner()
+                }
+            }
+        }
     }
 
-    override fun start() = marshal { super@AsyncValueAnimator.start() }
+    override fun start() = marshal(starting = true) { super.start() }
 
-    override fun cancel() = marshal { super@AsyncValueAnimator.cancel() }
+    override fun cancel() = marshal { super.cancel() }
 
-    override fun end() = marshal { super@AsyncValueAnimator.end() }
+    override fun end() = marshal { super.end() }
+
+    /**
+     * Final, idempotent teardown. Invalidates queued lifecycle commands/callbacks immediately;
+     * native listeners and frame registration are removed on the pinned owner Looper.
+     * An already executing callback cannot be recalled. Configure native properties/listeners
+     * before start and do not register new listeners (including directly on the container) after
+     * disposal. This is not cancel-for-reuse and does not quit the process animation thread.
+     */
+    fun dispose() {
+        val target = synchronized(lifecycleLock) {
+            if (disposed) return
+            disposed = true
+            asyncAnimCallbacks.dispose()
+            owner ?: configuredExecutor.also { owner = it }
+        }
+        target.execute { releaseOnOwner() }
+    }
+
+    private fun releaseOnOwner() {
+        removeAllUpdateListeners()
+        removeAllListeners()
+        super.cancel()
+    }
 
     // ---- 兼容原厂调用方式 ----
 
     /** 兼容原厂 [Animator.addListener]：委托给 [asyncAnimCallbacks] 保持跨线程 marshal。 */
-    fun addAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.addListener(l) }
+    fun addAnimatorListener(l: NullableAnimatorListener?) = synchronized(lifecycleLock) {
+        check(!disposed) { "Animator is disposed" }
+        asyncAnimCallbacks.addListener(l)
+    }
 
     /** 兼容原厂 [Animator.removeListener]：委托给 [asyncAnimCallbacks]。 */
     fun removeAnimatorListener(l: NullableAnimatorListener?) { asyncAnimCallbacks.removeListener(l) }

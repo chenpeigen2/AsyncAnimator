@@ -19,8 +19,13 @@ object Executors {
     /** 主线程 LooperExecutor（绑定真实 Main Looper）。 */
     val MAIN_EXECUTOR = LooperExecutor(mainHandlerOrNull())
 
-    /** 独立动画线程 LooperExecutor（launcher.anim，首次访问即启动该线程）。 */
-    val ANIM_CONTROL_EXECUTOR = LooperExecutor(Handler(AnimationControlThread.instance.looper))
+    /**
+     * 独立动画线程 LooperExecutor（launcher.anim，首次访问即启动该线程）。
+     * 取得执行器不代表 onLooperPrepared 已返回；通过它提交的普通任务会在准备完成后运行。
+     */
+    val ANIM_CONTROL_EXECUTOR: LooperExecutor by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        LooperExecutor(Handler(AnimationControlThread.instance.looper))
+    }
 
     private fun mainHandlerOrNull(): Handler? =
         runCatching { Looper.getMainLooper()?.let(::Handler) }.getOrNull()

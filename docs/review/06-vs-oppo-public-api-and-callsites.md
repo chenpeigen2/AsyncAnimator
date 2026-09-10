@@ -1,5 +1,35 @@
 # 对比 Review 06：public API 暴露面 vs 原厂调用面
 
+## 顺序验收（2026-09-09）
+
+**§④ 六项建议已落地（第 3/6 项为公开 API 的可移植四通道实现，不是 OEM 物理/窗口系统复刻）。** 旧“78% / 100% 闭合率”、类不存在和 Demo 9 仅有概念日志的判断是历史快照，不再作为当前验收结论。
+
+| 建议 | 本轮结果与证据 |
+|---|---|
+| 1 AnimType 七值 | ✅完成：`CustomRectFSpringAnim.AnimType` 与原厂七个名称及顺序一致，移除 RECENTS_TRANSITION / APP_LAUNCH；精确枚举测试覆盖全部值。 |
+| 2 USAGE API | ✅完成：补四通道与 Driver API、修正枚举表，并明确 AsyncSpringAnim 只是生命周期转发，未保证后台 View 弹簧安全；merge/prestart 不支持已声明。 |
+| 3 MultiAnimatorSet | ✅完成（适配边界）：独立 main/async AnimatorSet、AndroidX springs、rect actual-end 四条结束轨道；支持 mask 1/2/4/7、spring live-add、Animator live-add、空组、禁用动画、一次性收尾与 destroy。Async start/cancel/end 在目标 Looper 上执行，结束回主线程；初始化全部等待标志后才启动子动画，避免零时长提前收尾。 |
+| 4 dispose 摘注册 | ✅完成：controller 现有三个槽就是所有权注册表，没有凭空增加全局 Set。显式 dispose 会按实例身份摘槽并撤销该场景待启动动作；旧 listener 不能删除回调重入创建的新 listener。修复前回归确实发现 dispose 后槽位残留。 |
+| 5 Boolean 工厂 | ✅已核对：`AsyncValueAnimator.ofFloat(isAsync, vararg values)` 及 Java static 入口保留，由既有契约测试覆盖。 |
+| 6 Demo 9 接线 | ✅完成：开/关窗口实际调用 MultiAnimatorSet，main fade、后台数值、View spring 与 rect Animator adapter 并行；等待四条轨道才显示结束。后台只写 volatile 数值，View 更新在主线程。替换转场及离页会 destroy；Recents 辅助按钮仍明确是舞台示意。 |
+
+### 验证与保真边界
+
+- 新增 `MultiAnimatorSetTest` **18 tests**：四轨等待、所有 8 个 cancel mask、spring 摘除而非取消、live-add、零时长、禁用动画、重入、销毁晚到事件、真实 HandlerThread 归属/回主线程，以及两个类型查询。Rect Driver 用可控“请求取消≠物理结束”测试锁定结束屏障；另用平台 Animator adapter 验证实际值输出。
+- 新增 `TimeoutOwnershipTest` **2 tests**：三类 listener 显式 dispose 的实例槽位清理、重入 replacement 不被旧 dispose 摘除。前者修复前失败，修复后通过。
+- Kotlin `play(isAsync, animator)` 与 `play(animator, startImmediately)` **不是同一语义**；后者是 live-add。原厂依据：`MultiAnimatorSet.java:394-435`。四轨/取消/结束依据 `:34-52,103-117,143-213,276-390,453-475`。
+- 当前 `CustomRectFSpringAnim` 是句柄 + Driver/Animator 适配。Driver 必须报告实际结束；裸句柄进入聚合播放会抛错，不能凭空“播放完成”。未移植六自由度求解器、RectTransformHelper、OEM 弹簧线程协议、SF-VSYNC 或 SurfaceControl。
+- 主线程约束与 listener 的非空 Animator 参数是库约定；不声称 Java 二进制 API 与原厂完全可替换。mask 排除 spring 后，其独立动画生命周期归调用方负责。
+- 全量验证、Robolectric 帧源隔离说明与剩余队列见[顺序执行清单](2026-09-09-ordered-review-progress.md)。未执行真机/Perfetto，不能与原厂 77 帧 trace 或性能表现互推。
+
+### 明确保留的简化
+
+§④ 保留项 1–8：不移植 OplusRectFSpringAnim 残留路径、五个私有动画包、其他模块 UX 标记、zoom 专用线程、三个 Launcher 续行触发 helper、四个 merge/intercept helper、LauncherContentAnimManager 和完整 TaskStateHelper 业务总线。它们没有被本轮适配器“补齐”，也不计为实现。
+
+---
+
+## 历史比较快照（以下内容不代表当前待办状态）
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库，Kotlin/JVM）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24 JADX 反编译源码；80% 文件经企业 DLP 加密，证据全部由 Grep 穿透取得，行为定论经多份 review 互相印证）

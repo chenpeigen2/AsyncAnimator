@@ -1,5 +1,45 @@
 # 区域 5 对比 Review：续行动画层（continuation / spring 接力）
 
+## 2026-09-09 顺序验收：✅完成（第 10 份，含保留简化）
+
+六项回移建议与七项简化已逐项核对，本节优先于正文旧提交/行号结论。本次确实补了整数值路径和续行默认时长，不仅修改完成标记。
+
+| §4.1 | 当前处理 | 证据 / 边界 |
+|---|---|---|
+| 1 setProperty 接线 | ✅已完成 | TimeController 单监听读取当前 target/property；CURRENT_FRACTION 真实推进值输出，重复重绑不持旧 target，已在第 4 份修复验证 |
+| 2 currentPlayTime 委托 | ✅已完成并新增验证 | 从 controller player 读取，不读未启动的 wrapper 时钟；新增用例直接设置 player 时间并查询 wrapper |
+| 3 duration 双写 | ✅本轮补缺口 | setDuration 已写 controller/native 与 param；构造复制 param 时改走该 setter。原仅 super.setDuration 导致 continuation duration 参数为 0/-1 时仍使用 controller 默认 300ms，而非复制的 700ms；回归先失败后通过 |
+| 4 两套 interpolator | ✅核对后保持 | 值动画沿用业务插值器，timeController 保持 LINEAR；不把业务曲线同步到 controller，避免二次变换 |
+| 5 Int/Float evaluator | ✅补齐可用的类型化值路径 | setIntValues/setFloatValues 使用对应平台 PropertyValuesHolder，替换值定义；规避构造先建 Float holder 后塞 Int keyframe 的转型崩溃/错误输出。续行克隆 holder 保留实际类型与 keyframe，不仅复制 Float param 端点 |
+| 6 getTag | ✅决策完成：保留简化 | 没有 LogUtils 调用链，不增加仅服务 OEM 私有日志的 identity 字符串 API；保留 animName 与现有 Trace，非原厂日志完全等价 |
+
+### 重要事实纠正与 API 边界
+
+- AnimParam.fromValue/toValue 是 Float，并非原厂泛型 Any 端点；正文 `AnimParam(startValue=0, endValue=100)` 不是可编译的本库接口。整数值应显式使用 setIntValues，平台选择对应 evaluator，不伪造通用对象工厂。
+- 旧报告“Float 强转 Int 会得到 0”不正确：这类强转会报类型错误；本轮测试还实测到 FloatKeyframes/IntKeyframeSet 不匹配及 0.5 代替整数 50。现在类型化 setter 重建值定义，两方向切换都有回归。
+- setIntValues/setFloatValues 替换整个值定义；自定义 evaluator 在设值后配置，或通过 setValues 提供已配置 holders。续行的克隆不和源动画共享可变 holders。不宣称实现原厂通用 Any/evaluator 工厂或几何求解器。
+- continuation duration > 0 仍是 timeController 的播放时长覆盖；<= 0 使用已复制 param 的有效 duration，param 未配置时才保留平台默认值。正常 setDuration 调用仍更新 param。业务 interpolator 不改 controller 的 LINEAR 时钟。
+- ofFloat(isAsync, …) 在此类中只选择 wrapper，不负责切线程；线程动画请用 AsyncValueAnimator。Demo 5 仍是单路舞台示意，不是四路 OEM continuation 链或速度连续性证明。
+
+### §4.2 七项保留决策
+
+1. 不移植 AppSwipeToRecentContinuationHelper/RecentsViewAnimUtil 等四路业务编排；涉及 Recents/TaskView 及未可靠反编译的逻辑，不以假实现补齐。
+2. 不移植 VirtualBtnToRecentContinuationHelper 独立业务线。
+3. 不移植 LogUtils/Debug.getCallers OEM 日志。
+4. 不增加通用对象 evaluator 工厂；Int/Float 类型路径已支持，其他 evaluator 由调用方显式配置。
+5. 保留 AnimParam 的七个 var，但它们是参数描述，不承诺任意直接改字段会自动同步运行中 animator；运行时通过 setter 修改。
+6. 保留 update lambda 捕获和 Any? applicator 签名。
+7. 保留 target 强引用；双向引用本身不等于 GC root 或泄漏，不据此声称没有任何生命周期风险。
+
+### 验证
+
+OplusValueAnimatorTest 从 **6 增至 10 tests**：增加 controller 时间委托、Int 续行、Int→Float 切换、0/-1 时长回退。旧代码 **3 条失败**，修复后 **10/10 通过**（`.gradle/review-ordered-10-red.log` / `-green.log`）。Debug/Release 各 **169 tests 全通过**；Demo Debug 成功（76/76 tasks，1m 34s，`.gradle/review-ordered-10-final.log`），见[执行清单](2026-09-09-ordered-review-progress.md)；设备/Perfetto、真实四路速度接力未验证，Lint 未完成。
+
+---
+
+> **2026-09-09 顺序验收关联更新**：旧版 04 的续行接线本轮补全：真实 value-holder 初始化/复制、setProperty 执行、target 重绑以及 duration 参数同步；setProperty no-op 的旧判断已失效。 本详细版的其余条目仍待按队列核对，不因关联修复整篇标完成。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/anim/`（`OplusValueAnimator.kt`、`RecordInputInterpolator.kt`；包重组后由 `launcher/continuation/` 迁入 `anim/`）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）
@@ -116,9 +156,9 @@
 
 ### 4.1 值得补进 lib 的
 
-1. **修 §3-1 残余项（60bd048 后已非"从 0 重启"，剩 setProperty no-op）**——核心是把 `TimeControllerObjectAnimator.setProperty(CURRENT_FRACTION)` 真正接线。当前 `anim/OplusValueAnimator.kt:102` 仍是 no-op（`PendingAnimation.ObjectAnimator` 起步件无 setProperty 入口实现）。最直接的修法是放弃 `PendingAnimation.ObjectAnimator` 复刻，让 `TimeControllerObjectAnimator` 直接 `extends android.animation.ObjectAnimator`——然后 `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setFloatValues(f, 1.0f)` 全部走 platform 路径。这与 review 04 §4.1-2 的建议一致，本区域只是把"bug 级"标号打上去。
-2. **补 `getCurrentPlayTime` 委托**（§3-2）。5 行，与 isRunning/getDuration 同一模式：`override fun getCurrentPlayTime(): Long = timeController?.currentPlayTime ?: super.getCurrentPlayTime`（需要查 `TimeControllerObjectAnimator` 是否暴露 `currentPlayTime` getter；如未暴露，给 `PendingAnimation.ObjectAnimator` 加 `fun currentPlayTime(): Long` 转发到 va）。
-3. **补 `setDuration` override + 双写**（§3-3）。原厂 `:319-327` 是 super + param 双写。lib 加：
+1. ✅已完成（真实 property/target 接线）——**修 §3-1 残余项（60bd048 后已非"从 0 重启"，剩 setProperty no-op）**——核心是把 `TimeControllerObjectAnimator.setProperty(CURRENT_FRACTION)` 真正接线。当前 `anim/OplusValueAnimator.kt:102` 仍是 no-op（`PendingAnimation.ObjectAnimator` 起步件无 setProperty 入口实现）。最直接的修法是放弃 `PendingAnimation.ObjectAnimator` 复刻，让 `TimeControllerObjectAnimator` 直接 `extends android.animation.ObjectAnimator`——然后 `setTarget(newAnim)` + `setProperty(CURRENT_FRACTION)` + `setFloatValues(f, 1.0f)` 全部走 platform 路径。这与 review 04 §4.1-2 的建议一致，本区域只是把"bug 级"标号打上去。
+2. ✅已完成（委托已测）——**补 `getCurrentPlayTime` 委托**（§3-2）。5 行，与 isRunning/getDuration 同一模式：`override fun getCurrentPlayTime(): Long = timeController?.currentPlayTime ?: super.getCurrentPlayTime`（需要查 `TimeControllerObjectAnimator` 是否暴露 `currentPlayTime` getter；如未暴露，给 `PendingAnimation.ObjectAnimator` 加 `fun currentPlayTime(): Long` 转发到 va）。
+3. ✅已完成（含本轮复制时长回退）——**补 `setDuration` override + 双写**（§3-3）。原厂 `:319-327` 是 super + param 双写。lib 加：
     ```kotlin
     override fun setDuration(duration: Long): ValueAnimator {
         val a = super.setDuration(duration)
@@ -127,14 +167,14 @@
     }
     ```
     返回 `ValueAnimator` 与 platform 签名一致。这与 review 04 §2.3-5 的"override setInterpolator"是同一族（都是"super + param 双写"），回移可打包成一批"参数双写一致性"修复。
-4. **补 `setInterpolator` 在 timeController != null 模式下同步传给 timeController**（隐含的偏差）。原厂 `setInterpolator`（`:292-298`）只写 super + param，不写 timeController——timeController 自己的 interpolator 在 `generateContinuationAnim` 末尾被设为 `LinearInterpolator`（`:117`）。所以 timeController 的 interpolator 跟 this 的 interpolator **是两套**：this 用 param.interpolator（业务设置的 RecordInputInterpolator），timeController 用 LinearInterpolator。Lib 也是这样（`generateContinuationAnim` 末 `timeController.setInterpolator(LinearInterpolator())`），无差。**回移时无需改这块**——记录下来确认"两套插值器各管各的"是设计意图。
-5. **补 IntEvaluator/FloatEvaluator 自动选择**（§3-4）。在 `ofFloat`/`generateAnim` 工厂里加：
+4. ✔️维持两套插值器（不做错误同步）——**补 `setInterpolator` 在 timeController != null 模式下同步传给 timeController**（隐含的偏差）。原厂 `setInterpolator`（`:292-298`）只写 super + param，不写 timeController——timeController 自己的 interpolator 在 `generateContinuationAnim` 末尾被设为 `LinearInterpolator`（`:117`）。所以 timeController 的 interpolator 跟 this 的 interpolator **是两套**：this 用 param.interpolator（业务设置的 RecordInputInterpolator），timeController 用 LinearInterpolator。Lib 也是这样（`generateContinuationAnim` 末 `timeController.setInterpolator(LinearInterpolator())`），无差。**回移时无需改这块**——记录下来确认"两套插值器各管各的"是设计意图。
+5. ✅类型化值路径已完成（不是泛型 Any 工厂）——**补 IntEvaluator/FloatEvaluator 自动选择**（§3-4）。在 `ofFloat`/`generateAnim` 工厂里加：
     ```kotlin
     if (startValue is Int && endValue is Int) va.setEvaluator(IntEvaluator())
     // else: FloatEvaluator 是 platform ofFloat 的默认，无需设置
     ```
     防 `Int → Float` 静默丢精度。
-6. **补 `getTag`**（§3-8）。3 行，`"<identityHashCode>-<name>"` 形式。给 `LogUtils.i`（如保留）提供 anchor。
+6. ✔️保留简化（无 OEM 日志调用面）——**补 `getTag`**（§3-8）。3 行，`"<identityHashCode>-<name>"` 形式。给 `LogUtils.i`（如保留）提供 anchor。
 
 ### 4.2 建议保持简化的
 

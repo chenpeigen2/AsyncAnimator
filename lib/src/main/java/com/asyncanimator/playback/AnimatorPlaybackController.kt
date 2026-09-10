@@ -9,7 +9,10 @@ import android.animation.ValueAnimator
 /** 全局进度 → 子动画进度的映射策略（默认线性截断）。 */
 internal typealias ProgressMapper = (globalFraction: Float, globalEndProgress: Float) -> Float
 
-private val DEFAULT_PROGRESS_MAPPER: ProgressMapper = { f, g -> if (f > g) 1f else f / g }
+private val DEFAULT_PROGRESS_MAPPER: ProgressMapper = { f, g ->
+    // An instantaneous child is already at its end, including the initial f == 0 seek.
+    if (g <= 0f || f > g) 1f else f / g
+}
 
 /**
  * AnimatorPlaybackController — "主时钟驱动所有子动画"的统一播放控制器。
@@ -34,6 +37,11 @@ internal class AnimatorPlaybackController(
     private var isDispatchStartPending = false
 
     var cancelAction: (() -> Unit)? = null
+    /**
+     * Keyed completion work. Pause/cancel retains it for a later successful restart;
+     * abandoning the controller requires the owner to clear captured work.
+     * Success consumes a snapshot before callbacks: new registrations belong to the next run.
+     */
     val endActions = mutableMapOf<String, () -> Unit>()
 
     var progressFraction = 0f
@@ -69,7 +77,8 @@ internal class AnimatorPlaybackController(
 
     class Holder(animator: Animator, totalDuration: Float) {
         val anim: ValueAnimator = animator as ValueAnimator
-        val globalEndProgress: Float = animator.duration / totalDuration
+        val globalEndProgress: Float =
+            if (totalDuration <= 0f) 0f else animator.duration / totalDuration
         val interpolator: TimeInterpolator? = anim.interpolator
         var mapper: ProgressMapper = DEFAULT_PROGRESS_MAPPER
         val springProperty: Any? = null // 占位字段：SpringProperty / startWithVelocity 弹簧沉降链路按 review ②-保持简化-1 决定不回移，暂无赋值方
@@ -122,7 +131,7 @@ internal class AnimatorPlaybackController(
         (duration * f).toLong().coerceIn(0L, duration)
 
     fun forceFinishIfCloseToEnd() {
-        if (animationPlayer.isRunning && animationPlayer.animatedFraction <= 0.95f) return
+        if (!animationPlayer.isRunning || animationPlayer.animatedFraction <= 0.95f) return
         animationPlayer.end()
     }
 
@@ -142,10 +151,14 @@ internal class AnimatorPlaybackController(
 
         override fun onAnimationSuccess(animator: Animator) {
             if (dispatched) return
-            dispatchOnEnd()
-            endActions.values.forEach { it() }
-            endActions.clear()
+            // Consume before external callbacks. They may reenter completion, mutate the map,
+            // throw, or start the next run; no trailing cleanup may erase that newer work.
             dispatched = true
+            val actions = endActions.values.toList()
+            endActions.clear()
+            dispatchOnEnd()
+            // Preserve fail-fast exception propagation, but never replay the consumed snapshot.
+            actions.forEach { it() }
         }
 
         override fun onAnimationCancel(animator: Animator) {
@@ -191,7 +204,17 @@ internal class AnimatorPlaybackController(
         fun addHoldersRecur(anim: Animator, totalDuration: Long, out: MutableList<Holder>) {
             when (anim) {
                 is ValueAnimator -> out.add(Holder(anim, totalDuration.toFloat()))
-                is AnimatorSet -> anim.childAnimations.forEach { addHoldersRecur(it, totalDuration, out) }
+                is AnimatorSet -> {
+                    // Apply inherited settings before Holder snapshots duration and curve.
+                    // OEM uses strict > 0: unset (-1) and zero set durations do not override.
+                    val setDuration = anim.duration
+                    val setInterpolator = anim.interpolator
+                    anim.childAnimations.forEach { child ->
+                        if (setDuration > 0) child.duration = setDuration
+                        if (setInterpolator != null) child.interpolator = setInterpolator
+                        addHoldersRecur(child, totalDuration, out)
+                    }
+                }
                 // 原厂抛 RuntimeException（AnimatorPlaybackController.java:168-169）：
                 // 不认识的动画类型显式失败，而不是静默丢弃出 Holder 链
                 else -> throw RuntimeException("Unknown animation type $anim")

@@ -1,5 +1,6 @@
 package com.asyncanimator.demo
 
+import android.animation.AnimatorSet
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Handler
@@ -13,6 +14,8 @@ import com.asyncanimator.demo.widget.StateGraphView
 import com.asyncanimator.anim.CustomRectFSpringAnim
 import com.asyncanimator.control.AnimationController
 import com.asyncanimator.control.AnimationState
+import com.asyncanimator.control.GestureScene
+import com.asyncanimator.control.RemoteAnimationFactory
 import com.asyncanimator.control.TaskStateChangeTimeOutListener
 
 /**
@@ -25,8 +28,8 @@ import com.asyncanimator.control.TaskStateChangeTimeOutListener
  * MULTI_* 归并到对应基础状态），每次迁移小球飞行 + 当前状态高亮 + 舞台 banner 同步；
  * 完整状态名仍打在日志和状态标签里。
  *
- * <p>注意：WAITING / REVERSE_OPEN 在 lib 里由 private 的 updateAnimState() 在手势流程内部
- * 设置，demo 没有公开事件入口能到达，这两步由舞台 + 状态图直接演示，日志中说明。
+ * <p>状态图只由真实 controller 状态通知更新；WAITING 通过手势中的 launch-end，
+ * REVERSE_OPEN 通过 revertRecentsAnimation 到达。Canvas 舞台仍非系统窗口转场。
  */
 class Demo6StateMachineActivity : DemoBaseActivity() {
 
@@ -42,6 +45,11 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
     private lateinit var timeoutLabel: TextView
     private lateinit var listenerLabel: TextView
     private val controller = AnimationController()
+    private val recentsHandle = CustomRectFSpringAnim(CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME)
+    private val launchFactory = object : RemoteAnimationFactory {
+        override fun createAnimation() = AnimatorSet() // This demo registers lifecycle identity only.
+        override fun onAnimationFinished() {}
+    }
 
     /** 状态图当前高亮（图上的代表状态，可能不等于 controller 的完整状态名）。 */
     private var graphCurrent: String? = "NONE"
@@ -117,7 +125,7 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         )
 
         // ── 三种超时 listener ──
-        content.addView(sectionCaption("三种超时 listener（先注册，再模拟触发）"))
+        content.addView(sectionCaption("三种场景：匹配事件或定时器先到即完成"))
         DemoStyle.addButtonRow(content,
             DemoStyle.outlineButton("注册 SpecialSceneExit", this) {
                 controller.registerSpecialSceneExitTimeOutListener(1500L)
@@ -132,12 +140,12 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         )
         DemoStyle.addButtonRow(content,
             DemoStyle.outlineButton("注册 OverviewContinuation", this) {
-                controller.registerOverviewContinuationTimeOutListener(100L)
-                log("mOverviewContinuationTimeOutListener 已注册")
+                controller.setAppToOverviewContinuationState(true)
+                log("OverviewContinuation 已标记运行，100ms 超时兜底已注册")
                 refreshUI()
             },
-            DemoStyle.dangerButton("模拟超时触发", this) {
-                simulateTimeout()
+            DemoStyle.dangerButton("交付匹配事件", this) {
+                simulateTaskEvent()
             }
         )
 
@@ -146,15 +154,7 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
 
     // ── 自动演示序列 ──────────────────────────────────────
 
-    /**
-     * OPEN（开 app）→ 停 1.2s → CLOSE（回桌面）→ 停 1.2s →
-     * WAITING（上滑进 recents）→ 停 1s → REVERSE_OPEN（反转回 app）。
-     *
-     * <p>状态机事件走 lib 的 AnimationController 真实入口
-     * （appLaunchAnimStartOrEnd / addRecentsAnim）；WAITING、REVERSE_OPEN
-     * 是 lib 内部态（updateAnimState 为 private，仅手势流程内设置），
-     * 这两步由舞台 + 状态图直接演示并在日志说明。
-     */
+    /** OPEN → WAITING → CLOSE → REVERSE_OPEN all come from public controller events. */
     private fun startSequence() {
         if (seqRunning) {
             log("演示序列进行中…（可点「重置」中止）")
@@ -163,41 +163,41 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         seqRunning = true
         stage.resetScene()
         controller.reset()
-        log("═══ 自动演示序列: OPEN → CLOSE → WAITING → REVERSE_OPEN ═══")
+        log("═══ 自动演示序列: OPEN → WAITING → CLOSE → REVERSE_OPEN ═══")
 
         // Step 1: 开 app → OPEN
         seqHandler.postDelayed({
             stage.banner = "OPEN — 打开应用"
             stage.openApp(0)
-            controller.appLaunchAnimStartOrEnd(false, null, arrayOf())
+            controller.appLaunchAnimStartOrEnd(false, launchFactory, arrayOf())
             log("lib 事件: appLaunchAnimStartOrEnd(isEnd=false)")
         }, 300L)
 
-        // Step 2: 回桌面 → CLOSE（OPEN 下 addRecentsAnim 得 MULTI_CLOSE，图上归并 CLOSE）
-        seqHandler.postDelayed({
-            stage.banner = "CLOSE — 回到桌面"
-            stage.closeApp()
-            controller.addRecentsAnim(
-                CustomRectFSpringAnim(CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME),
-                null, arrayOf())
-            log("lib 事件: addRecentsAnim(SWIPE_TO_HOME)")
-        }, 1500L)
-
-        // Step 3: 上滑进 recents → WAITING（lib 内部态，无公开入口）
+        // Step 2: Launch completes while the gesture is active → WAITING.
         seqHandler.postDelayed({
             stage.banner = "WAITING — 上滑进 Recents"
             stage.swipeToRecents()
-            driveGraphState("WAITING")
-            log("WAITING 由 lib 内部 updateAnimState() 设置（手势流程内，demo 无公开入口）→ 舞台直接演示")
+            controller.setOnceGestureProcessing(GestureScene())
+            controller.appLaunchAnimStartOrEnd(true, launchFactory, arrayOf())
+            log("lib 事件: gesture begin + launch end → ${controller.animState}")
+        }, 1500L)
+
+        // Step 3: Register the actual recents handle → CLOSE.
+        seqHandler.postDelayed({
+            stage.banner = "CLOSE — 回到桌面"
+            stage.closeApp()
+            controller.addRecentsAnim(recentsHandle, null, arrayOf())
+            log("lib 事件: addRecentsAnim → ${controller.animState}")
         }, 2700L)
 
-        // Step 4: 反转回 app → REVERSE_OPEN（lib 内部态）
+        // Step 4: Reverse that recents lifecycle → REVERSE_OPEN.
         seqHandler.postDelayed({
             stage.banner = "REVERSE_OPEN — 从 Recents 反转回 App"
             stage.exitRecents()
             stage.openApp(0)
-            driveGraphState("REVERSE_OPEN")
-            log("REVERSE_OPEN 同为 lib 内部态（recents 反向打开时设置）→ 舞台直接演示")
+            controller.revertRecentsAnimation(recentsHandle)
+            controller.setOnceGestureProcessing(null)
+            log("lib 事件: revertRecentsAnimation → ${controller.animState}")
         }, 3700L)
 
         seqHandler.postDelayed({
@@ -212,6 +212,9 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
         seqRunning = false
         stage.banner = null
         stage.resetScene()
+        controller.specialSceneExitTimeOutListener?.dispose()
+        controller.transitionFinishTimeOutListener?.dispose()
+        controller.overviewContinuationTimeOutListener?.dispose()
         controller.reset()          // → NONE，监听器同步状态图
         graphCurrent = "NONE"
         timeoutLabel.text = "超时: —"
@@ -222,6 +225,7 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
     override fun onCleanup() {
         seqHandler.removeCallbacksAndMessages(null)
         controller.destroy()
+        recentsHandle.dispose()
         super.onCleanup()
     }
 
@@ -255,32 +259,23 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
             if (new.name.startsWith("MULTI_")) "（图上归并到 ${new.name.removePrefix("MULTI_")}）" else "")
     }
 
-    /** lib 内部态（WAITING / REVERSE_OPEN）没有公开事件入口，直接驱动状态图演示。 */
-    private fun driveGraphState(name: String) {
-        val from = graphCurrent
-        if (from != null && from != name) graph.transition(from, name) else graph.setCurrent(name)
-        graphCurrent = name
-        stateLabel.text = "当前状态: $name（lib 内部态）"
-        stateLabel.background = DemoStyle.roundRect(DemoStyle.PRIMARY, 8f, this)
-    }
-
     // ── 三种超时 listener ─────────────────────────────────
 
-    /** 直接调用已注册 listener 的 onTimeOut，演示超时兜底路径。 */
-    private fun simulateTimeout() {
+    /** 通过公开事件入口交付匹配事件；不点击时由注册的 Handler 定时器自然兜底。 */
+    private fun simulateTaskEvent() {
         var fired = false
         controller.specialSceneExitTimeOutListener?.let {
-            it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, 1500L)
+            controller.dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT)
             showTimeout("ON_LAND_SCAPE_SCENE_EXIT")
             fired = true
         }
         controller.transitionFinishTimeOutListener?.let {
-            it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 1500L)
+            controller.dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH)
             showTimeout("ON_TRANSITION_FINISH")
             fired = true
         }
         controller.overviewContinuationTimeOutListener?.let {
-            it.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 100L)
+            controller.dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION)
             showTimeout("ON_APP_TO_OVERVIEW_CONTINUATION")
             fired = true
         }
@@ -292,8 +287,8 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
     }
 
     private fun showTimeout(type: String) {
-        log("超时触发: $type → onTimeOut() 执行兜底逻辑")
-        timeoutLabel.text = "超时: $type"
+        log("事件交付: $type → dispatchTaskStateChange()（和 timer 共用一次性完成）")
+        timeoutLabel.text = "事件: $type"
         timeoutLabel.setTextColor(DemoStyle.WARN)
     }
 

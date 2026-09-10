@@ -14,10 +14,12 @@ package com.asyncanimator.core
  */
 internal interface TickScheduler {
 
-    /** 注册帧回调。下一次 tick 时 callback.doFrame(frameTimeNanos) 会被调用。 */
+    /** 持续注册帧回调，后续 tick 时派发；不是 Choreographer 的单次订阅。
+     * Choreographer 实现在首次请求帧时固定 owner，post 自动启动；null 为 no-op。
+     */
     fun postFrameCallback(callback: FrameCallback?)
 
-    /** 取消注册。下一次 tick 时 callback 不会被调用。 */
+    /** 取消注册，之后的新快照不再包含它；已复制/正在派发的当前快照不能撤回。 */
     fun removeFrameCallback(callback: FrameCallback?)
 
     /** 当前帧时间戳（单位：纳秒）。模拟 Choreographer 的 frameTimeNanos。 */
@@ -26,14 +28,11 @@ internal interface TickScheduler {
     /** 启动调度循环。 */
     fun start()
 
-    /** 停止调度循环（已注册的 callback 保留，等下次 start 恢复）。 */
+    /** 暂停后续帧（保留订阅，start 恢复）；不终止线程，不撤回已开始的当前帧派发。 */
     fun stop()
 
     /** 当前帧索引（从 0 开始，每 tick +1）。便于测试与日志。 */
     val frameCount: Long
-
-    /** 帧间隔（毫秒）。 */
-    val frameIntervalMs: Long
 
     /** 帧回调契约。对应 Android 原生 `Choreographer.FrameCallback`。 */
     fun interface FrameCallback {

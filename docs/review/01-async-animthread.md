@@ -2,6 +2,28 @@
 
 # 对比 Review 01：异步/线程层（async / animthread）
 
+## 顺序验收（2026-09-09）
+
+**当前结论：§④ 六项建议已处理，以下状态覆盖正文的历史判断。** 本文仍是旧版快照；源码路径已迁入 `anim/`、`thread/`、`core/`。
+
+| §④ 建议 | 当前状态与代码证据 |
+|---|---|
+| 1 优先级 | ✅已完成：`AnimationControlThread` 使用字面量 `-19`；自有 scheduler 与平台/SF provider 的边界已注释。优先级设定不代表经过真机性能验证。 |
+| 2 listener 快照 | ✅已完成：`AsyncAnimCallbacks` 在同一锁内增删、压缩 null 槽、取快照；派发不持锁，dispose 的 generation 阻止旧事件污染新注册。 |
+| 3 async 消息 | ✅已完成：`LooperExecutor.postAsync` 设置异步 Message，跨线程 listener 使用此入口；普通 post/execute 不强制异步。 |
+| 4 双轨结束 | ✅已完成：`ActualEndAnimListener` 与逻辑结束分离；actual-end 仅派发对应 listener，并回主线程。不是所有 spring 路径都已接入此协议。 |
+| 5 Boolean 工厂 | ✅已完成：`AsyncValueAnimator.ofFloat(isAsync, vararg values)` 保留 Java static 入口和同步/异步分支。 |
+| 6 帧源 | ✅已完成（公开 API 折中）：唯一帧源为 `ChoreographerTickScheduler`，不再用固定 16ms timer。本轮删除无调用方的 internal `frameIntervalMs`，纠正把 `ValueAnimator.getFrameDelay()` 当刷新周期的说明；没有用掉帧间隔冒充显示刷新率。 |
+
+**验证**：`AsyncAnimCallbacksTest`、`AsyncAnimatorContractTest`；本轮补 `LooperExecutorTest` 的消息标记/线程派发以及 `ChoreographerTickSchedulerTest` 的帧源节奏、空订阅停止与重启。受控 8/11/17ms 帧源只是 Robolectric 契约测试，不是 60/90/120Hz 真机测量，也未实测 traversal barrier。
+
+**明确保留的简化**：不反射接 SF-VSYNC、不移植 UX/UAF、阻塞等待及无关 executor 池；不补 OEM 日志/AnimType 装饰。旧文建议保留 `HandlerTickScheduler` 和其注释勘误已失效（类已删除），不再恢复该实现。错误配置的 null-Handler JVM fallback 仍是边界，不能据此推导真机线程保证。
+
+验证命令及逐文件进度见 [顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+---
+
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib/src/main/java/com/asyncanimator/launcher/async/`（AsyncValueAnimator、AsyncAnimCallbacks、LooperExecutor、Executors）+ `.../animthread/`（AnimExecutors、AnimationControlThread、AsyncAnimWrapper、HandlerTickScheduler）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher 15.8.24 JADX 反编译源码）

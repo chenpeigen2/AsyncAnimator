@@ -1,5 +1,46 @@
 # 区域 03 对比 Review：Controller / Manager / Seq / Feature / Runner 层
 
+## 2026-09-09 顺序验收：✅完成（第 8 份，含保留简化）
+
+本节是当前代码与建议的逐项处理，优先于下文历史快照。参考 OPPO AnimationController.java:559-580、881-952，以及 AnimationSeqHelper.java:69-76；可移植场景输入不冒充系统信息采集。
+
+| §4.1 | 本轮结果 | 证据 / 保留边界 |
+|---|---|---|
+| 1 launch end/add + 600ms touch | ✅生命周期已完成；输入闸门保留裁剪 | 双集合等待及 12 态矩阵已有回归；forbidTouch 无业务调用，600ms 属手势输入消费策略，沿用旧版 03 的明确简化，不为无接线策略伪造 Handler |
+| 2 timeout 事件与注册 | ✅完成本地所有权协议；不仿造全局总线 | 三个 controller 槽即注册表；匹配事件或主线程 timer 一次消费，dispose 按身份摘槽。保留 onTimeOut 的模拟事件入口，不造 BaseTaskState/OplusTaskListener 空壳；没有专用事务 executor |
+| 3 时钟与三层决策 | ✅已完成 | uptimeMillis、互斥分支、搜索常量、tablet OR 限定、实际续行查询、场景独立挂起请求均已有回归 |
+| 4 Between setters/query | ✅已完成 | 两 setter，navigation 守卫，query 同时要求 pending action；6 条回归 |
+| 5 Recents 完成/反向/任务移除 | ✅补齐可移植完成门控；真实移除保留裁剪 | canFinishRecentsAnim 拒绝 launch 非空、Seq 否决和 just-notify；列表为空放行，单项校验 ID（-1 沿用原厂宽松值），多项否决。反向两种状态已实现；Any 类型的 controller/target 不具备真实移除能力，不造 mock 方法冒充系统 task 移除 |
+| 6 Seq 双 feature 门控 | ✅本轮补齐 | startingSurfaceSupported / interruptionSupported 可注入；任一关闭即放行，启用时保留 300/500ms 含边界阻断；resetInterceptState 已重置启动时间戳 |
+| 7 reset | ✅已完成当前状态清理 | 新增手势包名及 lastGestureScene 在 reset 清除；已有集合、callbacks、pending、between 等清理。无 OEM mCurrentAnim 单独字段；保持先清状态再通知 NONE，避免监听看到残留对象 |
+| 8 app-exit 场景 | ✅本轮修复 | AppExitScene 提供三键/横屏/低动画/大屏展开事实，匹配才注册 1500ms；null 不触发，between 必须由真实事件单独设置 |
+| 9 gesture 场景与自动注册 | ✅本轮修复 | GestureScene 接收 landscape/split/continuation/tablet/home-overview/package；1500ms 分支与横屏手机结束后 2500ms 分支对齐；null 是结束，不是开始 |
+| 10 feature 默认/阈值 | ✅默认 -1 已完成；adaptive 钳制保留简化 | 七个标量/列表模拟配置已有真实存储；无 OEM adaptive-animation 配置源，threshold 保持显式输入，不把所有配置写死为 1.0 冒充 OEM 分支 |
+
+### 实现与迁移说明
+
+- 新增 `control/AnimationScene.kt`：设备事实由集成方提供，不读取/猜测私有 navigation、TaskStateHelper 或 ROM feature。两个基类方法仍接收 Any?，实现类对非 null 非快照参数明确拒绝；**旧 setOnAppExit(null) 开启模拟退出 / setOnceGestureProcessing(null) 开启手势的用法不再有效**。无现有 Demo 调用需迁移；相关测试改为显式场景及 between 事件，原断言全部保留。
+- Gesture 包名先 baseActivity 后 topActivity，手势结束/reset 清空。矩阵覆盖 16 个 AppExit 组合及 16 个 Gesture 组合（它们是两条测试内部组合，不额外累计用例）。相关状态/事件要求主线程，直接回调在调用线程，timer 兜底在主线程。
+- 新的 Seq feature 查询暴露了另一处延迟所有权缺口：先排队旧 finish，再关闭 feature 并提交立即执行的新 finish，旧任务仍会迟到。现无论新请求排队还是立即放行，均先撤销旧任务。回归明确先失败 `expected [new], was [new, old]` 后验证修复；不声称修改了 OEM feature 服务。
+- 默认 startingSurfaceSupported=true，interruptionSupported 读取 manager 的本地策略；host 可注入真实配置。canFinishRecentsAnim 默认查询 manager Seq helper，也允许注入实际结束策略。
+
+### §4.2 保持简化的八项
+
+merge/prestart helpers、时间戳读端同步、controller 任意线程自动纠偏、完整 Binder Runner、adaptive task-removal 分支、OEM 日志、widget/window 查询、纯日志 tag 均不移植。字段 volatile/写端同步不等于任意多字段原子快照；controller/seq 明确主线程使用。Rect 已有实际结束协议，不意味着上述系统桥接已经实现。
+
+### 验证记录
+
+- AnimationSceneTest **9 tests**：旧代码 **7 失败**，修复后全部通过（`.gradle/review-ordered-08-red.log` / `-green.log`）。原有 controller/Between/launch/ownership 与这 9 条合计 **56 tests** 定向通过。
+- RecentsFinishGateTest **5 tests**；AnimationSeqFeatureGateTest **4 tests**，包括立即完成替换旧任务的红→绿回归（`.gradle/review-ordered-08-seq-red.log`）。本份共新增 **18 tests**。
+- Debug/Release 各 **159 tests 全通过**，Demo Debug 构建成功，76/76 tasks executed（1m 23s）。日志 `.gradle/review-ordered-08-final.log`，见[顺序清单](2026-09-09-ordered-review-progress.md)。未验证设备、Perfetto、系统输入过滤或真实 task 移除；Lint 未完成。
+
+---
+
+> **2026-09-09 顺序验收关联更新**：旧版 03 §4.1-5 本轮补齐：Between 两个 setter 及 query 的 pending-action 条件；不能再视为未实现。 本详细版的其余条目仍待按队列核对，不因关联修复整篇标完成。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
+> **2026-09-09 决策树完成项更新**：§3-c 剩余的运行态、特殊搜索入口和平板限定已按可注入环境方式补齐；停止 overview 会注销本场景，三类事件不再串用挂起 action。见[决策树本轮记录](2026-09-09-launch-decision-fixes.md)。feature/手势信息/系统事件源仍保持未接入，不将本类全部缺口标完成。
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（e62dbff 包重组后：`control/`＝controller、`manager/`＝manager+feature、`seq/`、`com/android/launcher3/LauncherAnimationRunner.kt`，区域 03 全部 12 个 .kt 文件）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）
@@ -97,7 +138,7 @@
 > **✅已修复（cdd125e：UNKNOWN→UNKNOWN、MULTI_WAITING→MULTI_CLOSE）**
 **b.（高→已修复）`addRecentsAnim` 转移表两处偏差**（lib `AnimationController.kt:65-77` vs 原厂 `:482-499`）。当前实现：`NONE/OPEN/REVERSE_OPEN/WAITING→CLOSE`（`:68-70`）、`MULTI_OPEN/MULTI_WAITING/MULTI_REVERSE_OPEN→MULTI_CLOSE`（`:71-73`）、其余（含 `UNKNOWN`）→ `UNKNOWN`（`:74-75`）——UNKNOWN 保持 UNKNOWN、MULTI_WAITING→MULTI_CLOSE 均与原厂一致（cdd125e 修复）。
 
-> **✅部分修复（cdd125e：else-if 互斥 + 清理段；仍缺 isTablet/isSpecialAppScene/运行态桩）**
+> **✅本项已完成（2026-09-09：三项谓词补齐并验证；系统策略通过可注入适配提供，下段旧现状保留作历史）**
 **c.（高 / bug 级→✅部分修复）`delayStartActivityIfNeed` 三层判定**（lib `AnimationController.kt:220-251` vs 原厂 `:598-671`）。当前实现已（cdd125e）：`if / else if / else if` 互斥（`:224-241`）+ 三层全不命中时 dispose 三个 listener 并清两个 Between 标志（`:242-249`）后返回 false。**仍缺**（相对原厂）：第一层 `!ScreenUtils.isTablet()` 限定（原厂 `:620`）；第二层 `isSpecialAppScene(intent)` 三 source 判定（原厂 `:628, 640, 283-290`）；第三层用"100ms 时间窗"（`:237` `uptimeMillis() < overviewContinuationTimeOutMaxTime`）替代原厂运行态判定 `AppSwipeToRecentContinuationHelper.isAppSwipeToRecentContinuationRunning()`（`:646-650`）——时间窗与运行态不等价，demo 判定宽松于原厂。
 
 > **⚠️未修复（缺 TaskStateHelper 全局事件总线）**

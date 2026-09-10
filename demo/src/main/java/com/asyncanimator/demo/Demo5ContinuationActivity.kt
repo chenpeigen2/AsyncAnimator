@@ -6,18 +6,12 @@ import com.asyncanimator.demo.scene.LauncherStageView
 import com.asyncanimator.demo.widget.DemoStyle
 
 /**
- * Demo 5 — 续行动画（断点接力）。
+ * Demo 5 — 续行动画概念演示（断点接力）。
  *
- * <p>对应分析文档 §6.5。真机上 generateContinuationAnim 用 RecordInputInterpolator
- * 记录的当前 fraction（和速度）作起点，新对象的 timeController 从该 fraction 无缝
- * 跑到 1.0，速度无跳变。
- *
- * <p>可视化：LauncherStageView 桌面舞台。点「上滑」后虚拟手指上滑、窗口滑向
- * recents 卡片位，到 40% 断住（banner「断点 40%·已记录速度」），800ms 后自动
- * 从断点续行滑到 100%（banner「从断点续行，速度无跳变」）。
- *
- * <p>注意：移植版 TimeControllerObjectAnimator.setTarget/setProperty 是 no-op
- * （lib 侧简化），因此续行段只在 log 里说明概念，动画由舞台演示等价效果。
+ * LauncherStageView 在 40% 停顿 800ms 后继续到终点，使用自己的舞台动画，
+ * 不调用 lib 的 internal OplusValueAnimator，也不是原厂速度连续性的验证。
+ * 库的 RecordInputInterpolator 只记录输入 fraction；TimeController 的 target/property
+ * 接线和续行值输出由库单测验证，不应从本页视觉表现推导。
  */
 class Demo5ContinuationActivity : DemoBaseActivity() {
 
@@ -54,8 +48,8 @@ class Demo5ContinuationActivity : DemoBaseActivity() {
         stage.onFrame = { s -> onStageFrame(s) }
         stage.resetScene()
         log("=== 上滑进 recents（40% 断点续行） ===")
-        log("RecordInputInterpolator 实时记录 fraction 与速度")
-        stage.banner = "上滑中：窗口滑向 recents 卡片位"
+        log("概念：RecordInputInterpolator 记录输入 fraction，不记录速度")
+        stage.banner = "上滑中：舞台窗口滑向 recents 卡片位"
         stage.openApp(0)
         // 等开屏转场走一段后，虚拟手指开始上滑
         stage.postDelayed({
@@ -68,21 +62,21 @@ class Demo5ContinuationActivity : DemoBaseActivity() {
         val p = s.recentsProgress
         if (!checkpointLogged && p >= 0.399f && p < 0.45f) {
             checkpointLogged = true
-            s.banner = "断点 40% · 已记录速度"
+            s.banner = "断点 40% · 舞台进度采样"
             log(">>> 断住：fraction=${"%.2f".format(p)}")
-            log("RecordInputInterpolator.inputed = ${"%.2f".format(p)}")
-            log("anim.getParam().currentFraction = ${"%.2f".format(p)}")
+            log("概念对应 inputed（舞台采样）= ${"%.2f".format(p)}")
+            log("概念对应 currentFraction（舞台采样）= ${"%.2f".format(p)}")
         }
         if (checkpointLogged && !resumedLogged && p > 0.45f) {
             resumedLogged = true
-            s.banner = "从断点续行，速度无跳变"
-            log("松手 → generateContinuationAnim：新对象从 0.40 → 1.0 接力")
-            log("真机 timeController 驱动 CURRENT_FRACTION；移植版为 no-op，由舞台演示等价效果")
+            s.banner = "从断点继续播放（舞台示意）"
+            log("舞台从 0.40 → 1.0 继续；概念对应 generateContinuationAnim")
+            log("库已接通 timeController target/property；本页未调用库续行入口")
         }
         if (resumedLogged && !doneLogged && p >= 0.999f) {
             doneLogged = true
             s.banner = "续行完成 ✓"
-            log("续行完成：recents 卡片落位，全程速度连续、无跳变")
+            log("舞台续播完成：recents 卡片落位；不作为速度连续性验证")
             s.postDelayed({ s.banner = null }, 1200)
         }
     }

@@ -1,38 +1,37 @@
 package com.asyncanimator.core
 
 /**
- * Trace — 简化的 trace 工具，对应 Android 平台 [android.os.Trace]。
- *
- * review 01 中 AsyncAnimCallbacks 大量使用 `Trace.traceBegin/End` 做动效溯源。
- * 本实现把 trace 输出到 stderr（demo 模块的 DemoBaseActivity 会重定向到日志区）。
- *
- * 设计：单 tag 字符串 + 嵌套深度，避免 native Trace 的开销，方便单元测试断言。
+ * Thread-local diagnostic sections, emitted to stderr for the demo log view.
+ * This is NOT android.os.Trace/Perfetto. Begin and end must execute on the same thread;
+ * another thread's end cannot close an open section here.
  */
 object Trace {
+    /** AOSP VIEW tag value; metadata only, not a platform tracing backend. */
+    internal const val TAG_VIEW = 8L
 
-    /** 每线程一份栈：traceBegin/End 允许跨线程（动画线程 begin、主线程 end 不互相错位）。 */
-    private val STACK = ThreadLocal.withInitial { ArrayDeque<String>() }
+    private data class Section(val name: String, val logAtBegin: Boolean)
+    private val stack = ThreadLocal.withInitial { ArrayDeque<Section>() }
+    private fun currentStack(): ArrayDeque<Section> = checkNotNull(stack.get())
 
     internal fun traceBegin(tag: Long, name: String) {
-        val tagStr = "[$tag] $name"
-        STACK.get().addFirst(tagStr)
-        log(">>> $tagStr")
+        val section = Section("[$tag] $name", LogUtils.isLogOpen())
+        currentStack().addFirst(section)
+        if (section.logAtBegin) LogUtils.emit("Trace", ">>> ${section.name}")
     }
 
+    // Callers must pair the same tag on the same thread; no platform tag filtering is emulated.
+    @Suppress("UNUSED_PARAMETER")
     internal fun traceEnd(tag: Long) {
-        val stack = STACK.get()
-        if (stack.isNotEmpty()) {
-            val name = stack.removeFirst()
-            log("<<< $name")
-        }
+        val section = currentStack().removeFirstOrNull() ?: return
+        // Policy belongs to begin, so disabling logging mid-section still emits its matching end.
+        if (section.logAtBegin) LogUtils.emit("Trace", "<<< ${section.name}")
     }
 
-    internal val depth: Int get() = STACK.get().size
-
-    internal fun clear() = STACK.get().clear()
-
-    private fun log(msg: String) {
-        // 测试时可重定向 System.err
-        System.err.println("Trace $msg")
+    internal fun <T> section(tag: Long, name: String, action: () -> T): T {
+        traceBegin(tag, name)
+        return try { action() } finally { traceEnd(tag) }
     }
+
+    internal val depth: Int get() = currentStack().size
+    internal fun clear() = currentStack().clear()
 }

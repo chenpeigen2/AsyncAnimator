@@ -19,17 +19,18 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".Demo1MasterClockActivity" android:label="@string/demo1_title" />
-        <activity android:name=".Demo2HolderProgressActivity" android:label="@string/demo2_title" />
-        <activity android:name=".Demo3AsyncCrossThreadActivity" android:label="@string/demo3_title" />
-        <activity android:name=".Demo4SpringTransitionActivity" android:label="@string/demo4_title" />
-        <activity android:name=".Demo5ContinuationActivity" android:label="@string/demo5_title" />
-        <activity android:name=".Demo6StateMachineActivity" android:label="@string/demo6_title" />
-        <activity android:name=".Demo7SeqIdDedupActivity" android:label="@string/demo7_title" />
-        <activity android:name=".Demo8FeatureFlagActivity" android:label="@string/demo8_title" />
-        <activity android:name=".Demo9AllAppsTransitionActivity" android:label="@string/demo9_title" />
-        <activity android:name=".Demo10IndependentThreadActivity" android:label="@string/demo10_title" />
-        <activity android:name=".Demo11ViewSpringAnimThreadActivity" android:label="@string/demo11_title" />
+        <activity android:name=".Demo1MasterClockActivity" android:label="@string/demo1_title" android:exported="false" />
+        <activity android:name=".Demo2HolderProgressActivity" android:label="@string/demo2_title" android:exported="false" />
+        <activity android:name=".Demo3AsyncCrossThreadActivity" android:label="@string/demo3_title" android:exported="false" />
+        <activity android:name=".Demo4SpringTransitionActivity" android:label="@string/demo4_title" android:exported="false" />
+        <activity android:name=".Demo5ContinuationActivity" android:label="@string/demo5_title" android:exported="false" />
+        <activity android:name=".Demo6StateMachineActivity" android:label="@string/demo6_title" android:exported="false" />
+        <activity android:name=".Demo7SeqIdDedupActivity" android:label="@string/demo7_title" android:exported="false" />
+        <activity android:name=".Demo8FeatureFlagActivity" android:label="@string/demo8_title" android:exported="false" />
+        <activity android:name=".Demo9AllAppsTransitionActivity" android:label="@string/demo9_title" android:exported="false" />
+        <activity android:name=".Demo10IndependentThreadActivity" android:label="@string/demo10_title" android:exported="false" />
+        <activity android:name=".Demo11ViewSpringAnimThreadActivity" android:label="@string/demo11_title" android:exported="false" />
+        <activity android:name=".Demo12RectSpringActivity" android:label="@string/demo12_title" android:exported="false" />
 
     </application>
 

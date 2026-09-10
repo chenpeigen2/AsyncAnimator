@@ -1,5 +1,40 @@
 # 区域 04 重对比 Review：帧调度层（AnimationHandler + TickScheduler）
 
+## 2026-09-09 顺序验收：✅完成（第 9 份，含保留简化）
+
+以下是当前决策；正文旧 scheduler、行号和风险标签保留作历史快照，不作为当前行为说明。
+
+| §4-A | 处理 | 当前证据 |
+|---|---|---|
+| 1 per-thread 帧源 | ✅已完成 | 公开 Choreographer 是唯一生产实现，安装在 owner Looper；不恢复共享定时线程 |
+| 2 install silent no-op | ✅本轮修复 | null 参数、已存在 handler、testHandler 覆盖均明确失败；报错提示改用 replaceThreadScheduler，不再假装安装成功 |
+| 3 破坏式换源 | ✅本轮修复可移植换源协议 | 同源替换 no-op；旧源只退订自身回调，不 stop 其他订阅者；当前帧遍历继续完成。每次换源使用新 generation 回调，旧源已经取出的迟到回调失效；新源负责下一帧 |
+| 4 刷新周期 | ✅完成并纠正旧解释 | frameIntervalMs 已删除；ValueAnimator.getFrameDelay 不是屏幕刷新周期，不能再作为本项完成理由。节奏来自 Choreographer 实际帧回调 |
+| 5 delay callback | ✅决策完成：保持简化 | 无当前调用，未移植 MultiDynamicAnimation 延迟启动链，暂不加空协议 |
+| 6 异常隔离开关 | ✅决策完成：保持隔离 | 不增加未使用 isolateExceptions 开关；handler 与 scheduler 均采用库扩展的异常隔离，不声称 OEM 异常传播等价。新增回归确认抛错/自移除不跳过健康回调且能清槽 |
+
+### 换源保证与边界
+
+- AnimationHandler/TickScheduler 的注册、换源和派发遵循 owner 线程；不提供跨任意线程更换 provider 的同步保证。
+- 旧 Choreographer scheduler 没有其他订阅者时自行停帧；有其他订阅者时继续，不再全局 stop。无论旧帧已拍快照还是换源发生在 callback 内，旧代次不能再次驱动动画。
+- 不保证不同帧源相位连续、不承诺真机“零丢帧”。原厂 androidx/dynamicanimation/AnimationHandler.java:174-176 只换 provider 引用；本库是持久订阅抽象，必须显式退订并迁移，不能只照搬字段赋值。
+- install/replace 在全局 testHandler 覆盖期间都拒绝，不会改变被覆盖的 ThreadLocal 后又让调用者误以为生效。
+
+### §4-B/C 保留项
+
+七项简化分别保留：跨线程统计、delay 重载、未用 provider hook、平台 autoCancel、运行期 frame-delay 调速接口、公开 onAnimationFrame 命名、OEM 路径 D 的 SF delta 对齐。当前 animationCount 只统计当前线程，Choreographer 节奏不是构造期固定帧率。
+
+三项可选项均不移植：路径 D 六轴/帧对齐仿写、隐藏 SF provider 反射、仅为命名一致的静态 getInstance。lib core handler 也**不等于替换平台 Animator 内部的 AnimationHandler**，不能据此声称 Demo 所有动画都走本库帧核。
+
+### 验证
+
+AnimationSchedulerHandoffTest 新增 **5 tests，旧代码 5/5 失败**；覆盖首次安装/重复失败、null 拒绝、迟到旧脉冲、回调内换源及其他订阅者、同源幂等。AnimationHandlerTest 新增 1 条异常隔离测试。日志 `.gradle/review-ordered-09-red.log` / `-green.log`；定向 15 tests 全通过；Debug/Release 各 **165 tests 全通过**，Demo Debug 构建成功（76/76 tasks，1m 22s）。日志 `.gradle/review-ordered-09-final.log`，见[执行清单](2026-09-09-ordered-review-progress.md)。未验证设备帧相位或 SF 私有接口，Lint 未完成。
+
+---
+
+> **2026-09-09 顺序验收关联更新**：旧版 04 的帧源建议已按当前 Choreographer 实现验收；旧两个 scheduler 不恢复，frameIntervalMs 的错误刷新率含义已删除。 本详细版的其余条目仍待按队列核对，不因关联修复整篇标完成。见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
 > 对比双方：
 > - **lib**：`D:/AsyncAnimator/lib`（AsyncAnimator 演示库）
 > - **原厂**：`D:/oppo_a6_launcher/sources`（OPPO ColorOS 15 Launcher `com.android.launcher 15.8.24` JADX 反编译源码）
@@ -310,7 +345,7 @@ private fun swapScheduler(s: TickScheduler) {
 
 ---
 
-> ⚠️ ④ 建议表各行待逐条打标（风险项状态见 ③ ①-⑨ 打标）。
+> ④ 建议表已逐项处理；以顶部当前验收为准，下面保留原建议和历史技术背景。
 ## ④ 回移建议
 
 ### A. 值得补进 lib 的（性价比高 / 必修）
@@ -319,21 +354,21 @@ private fun swapScheduler(s: TickScheduler) {
    - 现状：默认帧源即 per-thread `core/ChoreographerTickScheduler`（`core/AnimationHandler.kt:142`；`ChoreographerTickScheduler.kt:33-35` ThreadLocal Choreographer），demo 3 / 10 的"帧回调在指定线程"断言可成立。
    - 残余注意：JVM 单测无 Choreographer → tick 为 no-op（不再有共享守护线程兜底）；无 Looper 的后台线程需显式装帧源（`ChoreographerTickScheduler` 要求线程有 Choreographer/Looper）。
 
-2. **🔴 必修**：`installThreadScheduler` 改 fail-loud 或 fallback（修 ③-②）
+2. ✅本轮完成（fail-loud，见顶部）——原 **🔴 必修**：`installThreadScheduler` 改 fail-loud 或 fallback（修 ③-②）
    - 当前三个 early return 全部 silent。
    - 方案 A：增加 `forceInstall: Boolean = false` 形参，`true` 时覆盖已存在的 handler（与 `replaceThreadScheduler` 合并语义）。
    - 方案 B：在 `instance` getter 加 `threadLocalHandler.get() == null` 检查时**优先用** installScheduler 设的 scheduler（懒注入），而不是直接 new `AnimationHandler(ChoreographerTickScheduler())`（现默认实现，`core/AnimationHandler.kt:142`）。
    - 方案 C：抛 `IllegalStateException("AnimationHandler already instantiated on this thread; use replaceThreadScheduler instead")`（fail-loud）。
    - 推荐方案 C —— 与 vendor `setProvider` 不一致（vendor 无 install 约束），但 lib 设计本身就有这个隐性契约，fail-loud 比 silent fail 安全。
 
-3. **🔴 必修/可选**：`replaceThreadScheduler` 改非破坏式（修 ③-③）
+3. ✅本轮完成（owner 订阅迁移及 generation，见顶部）——原 **🔴 必修/可选**：`replaceThreadScheduler` 改非破坏式（修 ③-③）
    - 不调用 `scheduler.stop()`，只换字段；让当前帧派发走完，下一帧由新 provider 接续。
    - 对齐 vendor `setProvider` 语义。
    - 实现：把 `swapScheduler` 改为只赋值 `schedulerHolder = TickSchedulerHolder(s)`，让 TickScheduler 自身判断"旧 self-pulse 是否需要 cancel"。
    - 但这要求 TickScheduler 自己实现"换源协议"——增加复杂度。
    - 折中：在 `replaceThreadScheduler` 加注释"换源当帧后续 frameIntervalMs 可能丢一帧，与 vendor setProvider 行为不同；如需对齐请改用内部 stop/start 调用约定"。
 
-4. ✅已解决（215ecb5/dbde195：`frameIntervalMs` 已改读 `ValueAnimator.getFrameDelay()`，`core/ChoreographerTickScheduler.kt:53`，跟随系统帧延迟）——原 🟡 推荐（修 ③-④）
+4. ✅已解决（当前移除 frameIntervalMs；实际节奏跟随 Choreographer，getFrameDelay 不是刷新周期）——原 🟡 推荐（修 ③-④）
    - `HandlerTickScheduler`/`ScheduledTickScheduler` 均已删；无需再从 `Display.getRefreshRate()` 取初值。
 
 5. **🟢 可选**：`addAnimationFrameCallback(cb, delayMs)` 重载（修 ③-⑤）

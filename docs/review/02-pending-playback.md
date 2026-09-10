@@ -2,6 +2,28 @@
 
 # 区域 2 对比 Review：Pending / Playback 层
 
+## 顺序验收（2026-09-09）
+
+**当前结论：§④ 六项建议已完成；以下状态覆盖历史快照。** 当前实现位于 `lib/src/main/java/com/asyncanimator/playback/`。
+
+| §④ 建议 | 当前状态与证据 |
+|---|---|
+| 1 success 判定 | ✅已完成：`AnimatorListeners` 采用 `animatedFraction > 0.5f`，cancel 为 false，单次消费。回归覆盖 0.49/0.50/0.51、重复 end 和 cancel→end。 |
+| 2 setFloat 动画版 | ✅已完成：`PendingAnimation.setFloat` 的 null/等值短路，其他值构造动画；不立即写目标，APC seek 才推进。 |
+| 3 addFloat / Holder | ✅已完成：返回真实 `ValueAnimator`，属性值可经 Holder seek；不支持的 Animator 明确抛异常。 |
+| 4 progress 时长 | ✅已完成：`buildAnim` 经 `add` 覆写时长；0/80/700ms 及重复 build 的回归通过。 |
+| 5 根 cancel / start 标志 | ✅已完成：根 Animator 注册跟踪 listener；start/reverse 清 pending，dispatchOnStart 置 pending；根 cancel 后停止 seek。嵌套 dispatch 递归修复也已保留。 |
+| 6 插值工具 | ✅本轮完成：补 `clampToProgress` 三个重载、`mapToProgress`、`reverse`、`scrollInterpolatorForVelocity` 与两条 scroll 曲线。按 OPPO `Interpolators.java:118-143,150-155,170-214` 核对；覆盖零宽窗口、非法区间、降序范围、非钳制输出、±10px/ms 严格阈值。 |
+
+**验证**：定向运行 `PendingAnimationTest` 6、`InterpolatorsTest` 6、`AnimatorPlaybackControllerTest` 2，共 **14 tests 通过**。本轮新增前两类；没有声称补齐 `startWithVelocity` 或真实手势抬手集成。
+
+**保留简化**：不移植 SpringProperty/RefreshRateTracker/带速度弹簧沉降、grid recents 业务补丁、View 可见性联动方法和全部业务插值常量。`PendingAnimation.add` 已无被丢弃的 springProperty 参数；Holder 的只读 null 字段仅是标明的占位，不是实现。旧文“ActualEndAnimListener 合并无需拆分”已过期：当前保留独立基类并由 `AnimationSuccessListener` 继承。旧 DECELERATE 公式已删除。
+
+完整顺序及验证范围见 [执行清单](2026-09-09-ordered-review-progress.md)。
+
+---
+
+
 > 对比双方：
 > - **lib**：`D:\AsyncAnimator\lib\src\main\java\com\asyncanimator\launcher\pending\` + `...\playback\`（Kotlin 重实现）
 > - **原厂**：`D:\oppo_a6_launcher\sources\com\android\launcher3\anim\`（OPPO ColorOS 15 Launcher，JADX 反编译，AOSP Launcher3 同源类）

@@ -136,11 +136,8 @@ class Demo3AsyncCrossThreadActivity : DemoBaseActivity() {
         synchronized(animationLock) {
             disposed = true
             uiHandler.removeCallbacksAndMessages(null)
-            val pending = animations.keys.toList()
-            animations.keys.forEach { it.asyncAnimCallbacks.dispose() }
+            animations.keys.forEach { it.dispose() }
             animations.clear()
-            // Queue after any start already posted by the worker; immediate cancel could precede it.
-            Executors.MAIN_EXECUTOR.post { pending.forEach { it.cancel() } }
         }
         super.onCleanup()
     }

@@ -5,8 +5,8 @@ package com.asyncanimator.control
  *
  * 对应 `docs/review/03-controller-manager-seq.md`。`(旧状态, 新状态, 当前 runningTask)`。
  *
- * 用 fun interface 而非 typealias：函数类型没有引用相等性，
- * `removeOnAnimStateChangeListener(同一个 lambda)` 会静默失效（review 30 bug #1）。
+ * fun interface 便于 Kotlin/Java 共用明确的监听器类型；移除时应保留并传回同一实例。
+ * 函数类型同样是对象，不能把重复创建 lambda 导致的身份不同归因于 typealias。
  */
 fun interface OnAnimStateChangeListener {
 

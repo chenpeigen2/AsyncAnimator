@@ -28,8 +28,11 @@ import com.asyncanimator.core.Trace
 abstract class DemoBaseActivity : AppCompatActivity() {
 
     private var cleanedUp = false
-    private var originalErr: java.io.PrintStream? = null
-    private var traceStream: java.io.PrintStream? = null
+    private var traceSubscription: AutoCloseable? = null
+
+    private companion object {
+        val traceLogs = TraceLogRedirector()
+    }
 
     protected lateinit var titleView: TextView
     protected lateinit var sectionView: TextView
@@ -161,29 +164,19 @@ abstract class DemoBaseActivity : AppCompatActivity() {
         try {
             onCleanup()
         } finally {
-            if (System.err === traceStream) originalErr?.let(System::setErr)
-            traceStream = null
-            originalErr = null
+            traceSubscription?.close()
+            traceSubscription = null
             super.onDestroy()
         }
     }
 
     private fun redirectTraceToLogView() {
-        originalErr = System.err
-        traceStream = TraceLogStream(System.err, this).also(System::setErr)
-    }
-
-    private class TraceLogStream(delegate: java.io.PrintStream, activity: DemoBaseActivity) :
-        java.io.PrintStream(delegate) {
-        private val owner = java.lang.ref.WeakReference(activity)
-
-        override fun println(x: String?) {
-            super.println(x)
-            if (x != null && x.contains("Trace")) {
-                owner.get()?.let { activity ->
-                    activity.runOnUiThread {
-                        if (!activity.cleanedUp) activity.log(x)
-                    }
+        if (traceSubscription != null) return
+        val owner = java.lang.ref.WeakReference(this)
+        traceSubscription = traceLogs.subscribe { line ->
+            owner.get()?.let { activity ->
+                activity.runOnUiThread {
+                    if (!activity.cleanedUp) activity.log(line)
                 }
             }
         }

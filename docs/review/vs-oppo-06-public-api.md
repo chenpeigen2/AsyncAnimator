@@ -1,5 +1,40 @@
 # 区域 06 vs-oppo public API 与调用面
 
+## 2026-09-09 顺序验收：✅完成（第 11 份，可移植公开面）
+
+本节覆盖正文的旧覆盖率及状态标签。原报告“公开面 100%”“调用面 78%”没有可复现统计口径，不作为当前验收数据。
+
+| §4.1 | 处理 | 当前证据 / 边界 |
+|---|---|---|
+| 1 AsyncSpring 文档 | ✅已完成并纠正源码注释 | USAGE 已说明只纠偏生命周期、不安装 AndroidX 后台帧源、不接管 View 写入；源码 KDoc 不再把 start 所在线程等同于物理帧线程 |
+| 2 枚举兼容 | ✅纠正错误建议 | AnimationState.OPEN 是原厂 12 态之一，不应改为 OPEN_FROM_HOME；后者属于独立 CustomRectFSpringAnim.AnimType。Rect 七值和顺序已补，不能把两套枚举混用 |
+| 3 状态 listener | ✅已有 fun interface | 移除应保留同一实例。Kotlin 函数值同样有对象身份，旧“typealias 没有引用相等性”论据错误；已纠正接口 KDoc，不为过期描述改回实现 |
+| 4 Demo9 merge | ✅决策完成：真实聚合已接线，OEM merge 保留简化 | Demo9 开/关已走 MultiAnimatorSet 四轨，不再只有概念动画；不添加无业务语义的 MultiOpenPreStartHelper 骨架冒充多 app merge，预启动/按键拦截依赖系统集成 |
+| 5 TaskState 事件 | ✅完成可移植事件桥与 Demo6 接线 | 新增 controller.dispatchTaskStateChange(type)，按实例槽交付匹配事件，和 timer 共用一次性消费。Default 基类 no-op；不虚构全局 TaskStateHelper 或七个无系统来源的回调 |
+
+### 实际演示与接口边界
+
+- Demo6 “交付匹配事件”按钮现在调用公开事件桥，而不是把直接 onTimeOut 调用标成定时器触发；不点击时保留自然 Handler 兜底。公开 listener.onTimeOut 作为兼容入口仍保留。
+- Demo6 自动序列 **OPEN → WAITING → CLOSE → REVERSE_OPEN** 均来自 controller 的公共方法及状态监听。原来 private updateAnimState 无法直接调用，并不意味着 WAITING/REVERSE_OPEN 不可达；已删除手工 driveGraphState 假状态路径。factory 只登记生命周期身份，Canvas 舞台仍非系统窗口。
+- TaskStateEventTest 三条回归覆盖三场景匹配/不匹配/重复事件与 timer、dispose/feature-off，以及 Demo6 的真实状态顺序。三个场景组合包含在测试内部，不重复累计。
+- Demo4 仍是阶段/属性切换示意，并无 OplusSpringObjectAnimator 实现；Demo5 非四路续行，Demo11 的后台 View 弹簧不因 wrapper 存在就等价原厂。USAGE 已列出这些边界，不恢复旧“全部闭合”说法。
+
+### §4.2 四项决策
+
+1. MultiAnimatorSet 已完成可移植四轨聚合，旧“保持缺失”不再适用；不是 OEM 合并/预启动体系。
+2. merge helper 全套继续不移植，包括没有真实预启动消费者的骨架。
+3. AnimType 七值已实现，不再按三值简化。
+4. LauncherAnimationRunner 保留类型壳，不宣称 Binder/SurfaceControl/系统动画完成桥接已实现。
+
+### 验证
+
+新增 **TaskStateEventTest 3 tests**，定向测试及 Demo Debug 构建通过（`.gradle/review-ordered-11-targeted.log`）；全量 Debug/Release 各 **172 tests 通过**，Demo Debug 成功（76/76 tasks，1m 21s；`.gradle/review-ordered-11-final.log`），见[顺序清单](2026-09-09-ordered-review-progress.md)。未进行设备/Perfetto 回归，Lint 未完成；没有将未实现系统能力标成已移植。
+
+---
+
+> **2026-09-09 第五份关联修复**：旧版 06 六项建议已落地：七值枚举、Multi 四通道、Demo 9 实际接线及 dispose 摘槽；本详细版仍待顺序逐项核对。 证据见[顺序执行清单](2026-09-09-ordered-review-progress.md)。
+
+
 > **2026-09-09 当前复核**：补齐原厂带 isAsync 参数的 ofFloat 静态重载；dispose 是本库新增的生命周期屏障，不是原厂同名 API。 详见 [本轮修复记录](2026-09-09-revalidation-fixes.md)。
 
 > 对比双方：

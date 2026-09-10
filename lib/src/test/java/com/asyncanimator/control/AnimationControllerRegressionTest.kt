@@ -66,7 +66,7 @@ class AnimationControllerRegressionTest {
         AnimationState.OPEN to AnimationState.WAITING,
         AnimationState.MULTI_OPEN to AnimationState.MULTI_WAITING
     ), { controller ->
-        controller.setOnceGestureProcessing(null)
+        controller.setOnceGestureProcessing(GestureScene())
         controller.appLaunchAnimStartOrEnd(true, null, emptyArray())
     }, { it })
 
@@ -112,7 +112,7 @@ class AnimationControllerRegressionTest {
         var calls = 0
         var predicateCalls = 0
         try {
-            controller.setOnAppExit(null)
+            controller.setOnAppExit(AppExitScene(true, true, true)); controller.setBetweenAppExitTransitionEndAndFinish(true)
             controller.registerSpecialSceneExitTimeOutListener(1000)
             controller.registerTransitionFinishTimeOutListener(1000)
             controller.registerOverviewContinuationTimeOutListener(1000)
@@ -138,11 +138,11 @@ class AnimationControllerRegressionTest {
         } finally { controller.destroy() }
     }
 
-    @Test fun testOverviewDefersBeforeDeadline() {
+    @Test fun testOverviewDefersWhileExplicitlyRunning() {
         val controller = AnimationController()
         var calls = 0
         try {
-            controller.registerOverviewContinuationTimeOutListener(1000)
+            controller.setAppToOverviewContinuationState(true)
             assertTrue(controller.delayStartActivityIfNeed(null, null, null) { calls++ })
             controller.overviewContinuationTimeOutListener!!.onTimeOut(
                 TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 1000)
@@ -163,13 +163,13 @@ class AnimationControllerRegressionTest {
         } finally { controller.destroy() }
     }
 
-    @Test fun testExpiredSpecialAndOverviewDoNotRetainStartAction() {
+    @Test fun testExpiredSpecialAndInactiveOverviewDoNotRetainStartAction() {
         for (special in listOf(true, false)) {
             val controller = AnimationController()
             var calls = 0
             try {
                 if (special) {
-                    controller.setOnAppExit(null)
+                    controller.setOnAppExit(AppExitScene(true, true, true)); controller.setBetweenAppExitTransitionEndAndFinish(true)
                     controller.registerSpecialSceneExitTimeOutListener(-1)
                 } else controller.registerOverviewContinuationTimeOutListener(0)
                 assertFalse(controller.delayStartActivityIfNeed(null, null, null) { calls++ })
@@ -190,11 +190,11 @@ class AnimationControllerRegressionTest {
         } finally { controller.destroy() }
     }
 
-    @Test fun testSpecialDeadlineIsInclusiveButOverviewDeadlineIsExclusive() {
+    @Test fun testSpecialDeadlineIsInclusiveButOverviewTimerAloneDoesNotDefer() {
         val special = AnimationController()
         val overview = AnimationController()
         try {
-            special.setOnAppExit(null)
+            special.setOnAppExit(AppExitScene(true, true, true)); special.setBetweenAppExitTransitionEndAndFinish(true)
             special.registerSpecialSceneExitTimeOutListener(0)
             assertTrue(special.delayStartActivityIfNeed(null, null, null) {})
             overview.registerOverviewContinuationTimeOutListener(0)

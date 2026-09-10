@@ -17,25 +17,14 @@ import com.asyncanimator.anim.AsyncSpringAnim
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Demo 11 — View 属性弹簧跑在独立线程。
- *
- * <p>对应 OPPO 链路：
- * - com/android/launcher3/anim/AsyncAnimWrapper.java —— runOnAnimThread / runOnMainThread 骨架
- * - com/android/quickstep/util/OplusAsyncSpringAnimWrapper.java —— viewSupportAnimThread 时
- *   start/cancel/skipToEnd/animateToFinalPosition/setStartVelocity 全部 marshal 到 ANIM_EXECUTOR
- * - com/android/quickstep/util/animation/SpringAnimation.java —— 弹簧物理（原厂 OPPO fork）
- *
- * <p>本 demo 用 androidx.dynamicanimation 的 SpringAnimation（同样是 ThreadLocal AnimationHandler
- * + 调用线程 Choreographer），所以：
- * - 主线程路：`SpringAnimation.start()` 直接在主线程启动 → 帧回调在主线程；
- * - launcher.anim 路：`AsyncSpringAnim(supportAnimThread=true).start()` 把真实 start marshal 到
- *   launcher.anim → 帧回调与 View 属性写都在 launcher.anim 线程。
- *
- * <p>点"主线程加压 800ms"后，主线程路卡住、红柱；launcher.anim 路弹簧继续收敛、绿柱平稳。
+ * Demo 11 — AndroidX View 弹簧与 AsyncSpringAnim 生命周期包装。
+ * 原厂有自定义后台弹簧引擎；本页没有为 AndroidX View 动画安装后台 scheduler（Demo12 的数值引擎另行配置）。
+ * 两路均在主线程安全写 View；包装模式显式 supportAnimThread=false。
+ * 这不是后台 View 渲染或独立线程物理能力演示。
  */
 class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
 
-    override val demoTitle = "Demo 11: View 属性弹簧跑独立线程"
+    override val demoTitle = "Demo 11: View 弹簧（主线程安全回退）"
     override val docSection = "AsyncAnimWrapper / AsyncSpringAnim / androidx SpringAnimation"
 
     private lateinit var card: View
@@ -44,7 +33,12 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
 
     private var realSpring: SpringAnimation? = null
     private var asyncSpring: AsyncSpringAnim? = null
-    private var supportAnimThread = true
+    private var useWrapper = true
+    private var destroyed = false
+    private var generation = 0L
+    private var updateListener: DynamicAnimation.OnAnimationUpdateListener? = null
+    private var endListener: DynamicAnimation.OnAnimationEndListener? = null
+    private lateinit var modeButton: android.widget.Button
 
     private class FrameStats {
         val count = AtomicLong(0)
@@ -98,7 +92,7 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
 
         root.addView(sectionLabel("帧间隔直方图：绿 ≤20ms　黄 ≤50ms　红 >50ms（当前驱动线程）"))
         hist = FrameGapHistogramView(this).apply {
-            addChannel(if (supportAnimThread) DemoStyle.ANIM_THREAD else DemoStyle.MAIN_THREAD)
+            addChannel(DemoStyle.MAIN_THREAD)
         }
         root.addView(hist, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -107,9 +101,9 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
             DemoStyle.primaryButton("启动：弹到 -260（translationY）", this) { startSpring(-260f) },
             DemoStyle.outlineButton("启动：回弹到 0", this) { startSpring(0f) })
         DemoStyle.addButtonRow(root,
-            DemoStyle.outlineButton(
-                if (supportAnimThread) "当前：launcher.anim（点切主线程）" else "当前：主线程（点切动画线程）",
-                this, DemoStyle.GRAY) { toggleThread() },
+            DemoStyle.outlineButton("当前：包装模式（主线程）", this, DemoStyle.GRAY) {
+                toggleThread()
+            }.also { modeButton = it },
             DemoStyle.dangerButton("主线程加压 800ms", this) { stressMainThread() })
         DemoStyle.addButtonRow(root,
             DemoStyle.outlineButton("cancel", this, DemoStyle.WARN) { stop() },
@@ -127,48 +121,48 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
             DemoStyle.dp(this@Demo11ViewSpringAnimThreadActivity, 2f))
     }
 
-    private fun buildSpring(finalPosition: Float): SpringAnimation =
-        SpringAnimation(card, SpringAnimation.TRANSLATION_Y).apply {
+    private fun startSpring(finalPosition: Float) {
+        if (destroyed) return
+        stop()
+        val run = generation
+        statsData.reset()
+        hist.clear()
+        card.translationY = if (finalPosition == 0f) -260f else 0f
+        val s = SpringAnimation(card, SpringAnimation.TRANSLATION_Y).apply {
             spring = SpringForce(finalPosition).apply {
                 dampingRatio = SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY
                 stiffness = SpringForce.STIFFNESS_MEDIUM
             }
-            addUpdateListener { _: DynamicAnimation<*>?, value: Float, _: Float ->
-                val gap = statsData.sample(System.currentTimeMillis())
-                runOnUiThread {
-                    if (gap > 0) hist.sample(0, gap.toFloat())
-                    refreshStats()
-                }
-            }
         }
-
-    private fun startSpring(finalPosition: Float) {
-        stop()
-        statsData.reset()
-        hist.clear()
-        card.translationY = if (finalPosition == 0f) -260f else 0f
-        val s = buildSpring(finalPosition)
         realSpring = s
-        if (supportAnimThread) {
-            asyncSpring = AsyncSpringAnim(s, supportAnimThread = true)
-            asyncSpring?.addEndListener { _, canceled, _, _ ->
-                log("[弹簧结束] canceled=$canceled  线程=${Thread.currentThread().name}（回主线程）")
+        updateListener = DynamicAnimation.OnAnimationUpdateListener { _, _, _ ->
+            if (!destroyed && run == generation) {
+                val gap = statsData.sample(System.currentTimeMillis())
+                if (gap > 0) hist.sample(0, gap.toFloat())
+                refreshStats()
             }
-            asyncSpring?.start()
-            log("launcher.anim 路：AsyncSpringAnim.start() 已 marshal 到独立线程；end 回调回主线程")
-        } else {
-            s.addEndListener { _, canceled, _, _ ->
+        }.also { s.addUpdateListener(it) }
+        endListener = DynamicAnimation.OnAnimationEndListener { _, canceled, _, _ ->
+            if (!destroyed && run == generation) {
                 log("[弹簧结束] canceled=$canceled  线程=${Thread.currentThread().name}")
             }
+        }.also { s.addEndListener(it) }
+        if (useWrapper) {
+            // No background AndroidX scheduler/View engine is installed. Do not fake support.
+            asyncSpring = AsyncSpringAnim(s, supportAnimThread = false)
+            asyncSpring?.start()
+            log("包装模式：AsyncSpringAnim(supportAnimThread=false)，View 弹簧安全回退主线程")
+        } else {
             s.start()
-            log("主线程路：SpringAnimation.start() 直接在主线程启动")
+            log("直接模式：SpringAnimation.start() 在主线程启动")
         }
     }
 
     private fun toggleThread() {
         stop()
-        supportAnimThread = !supportAnimThread
-        log("切换驱动线程 → ${if (supportAnimThread) "launcher.anim" else "主线程"}")
+        useWrapper = !useWrapper
+        modeButton.text = if (useWrapper) "当前：包装模式（主线程）" else "当前：直接模式（主线程）"
+        log("两种模式均使用主线程；未安装后台 AndroidX scheduler，不演示后台 View 写入")
         // 重建 hist 通道颜色
         hist.clear()
     }
@@ -177,23 +171,32 @@ class Demo11ViewSpringAnimThreadActivity : DemoBaseActivity() {
         log(">>> 主线程 sleep(800)：观察弹簧是否继续收敛…")
         statsData.maxGapMs.set(0)
         Thread.sleep(800)
-        log("<<< 主线程恢复：主线程路应有一根 ~800ms 红柱；launcher.anim 路保持平稳")
+        log("<<< 主线程恢复：两种模式均受主线程阻塞影响，以直方图实测为准")
     }
 
     private fun skipToEnd() {
-        if (supportAnimThread) asyncSpring?.skipToEnd() else realSpring?.skipToEnd()
-        log("skipToEnd() → ${if (supportAnimThread) "launcher.anim" else "主线程"}")
+        if (useWrapper) asyncSpring?.skipToEnd() else realSpring?.skipToEnd()
+        log("skipToEnd() → 主线程")
     }
 
     private fun stop() {
-        realSpring?.cancel()
+        generation++
+        realSpring?.let { spring ->
+            updateListener?.let { spring.removeUpdateListener(it) }
+            endListener?.let { spring.removeEndListener(it) }
+            // Cancel through the same wrapper/owner used to start the animation.
+            asyncSpring?.cancel() ?: spring.cancel()
+        }
+        updateListener = null
+        endListener = null
         realSpring = null
         asyncSpring = null
     }
 
-    override fun onDestroy() {
+    override fun onCleanup() {
+        destroyed = true
         stop()
-        super.onDestroy()
+        super.onCleanup()
     }
 
     private fun refreshStats() {

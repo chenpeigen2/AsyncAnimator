@@ -102,4 +102,28 @@ class AsyncAnimatorContractTest {
         callbacks.onAnimationEnd(ValueAnimator.ofFloat(0f, 1f))
         assertEquals(listOf("first"), calls)
     }
+    @Test fun testLogicalEndAndActualEndAreSeparateMainThreadEvents() {
+        val callbacks = AsyncAnimCallbacks()
+        callbacks.animationId = 91
+        val animator = ValueAnimator.ofFloat(0f, 1f)
+        val calls = mutableListOf<String>()
+        callbacks.addListener(object : NullableAnimatorListenerAdapter() {
+            override fun onAnimationEnd(animator: Animator) { calls.add("ordinary-end") }
+        })
+        callbacks.addListener(object : ActualEndAnimListener() {
+            override fun onAnimationEnd(animator: Animator) { calls.add("logical-end") }
+            override fun onAnimActualEnd(animator: Animator) {
+                assertSame(Looper.getMainLooper().thread, Thread.currentThread())
+                assertEquals(91, animationId)
+                calls.add("actual-end")
+            }
+        })
+        Thread {
+            callbacks.onAnimationEnd(animator)
+            callbacks.onAnimActualEnd(animator)
+        }.apply { start(); join() }
+        assertTrue(calls.isEmpty())
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf("ordinary-end", "logical-end", "actual-end"), calls)
+    }
 }

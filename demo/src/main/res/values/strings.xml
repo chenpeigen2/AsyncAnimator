@@ -13,4 +13,5 @@
     <string name="demo9_title">Demo 9: AllApps Transition</string>
     <string name="demo10_title">Demo 10: Independent Animation Thread</string>
     <string name="demo11_title">Demo 11: View Spring on Anim Thread</string>
+    <string name="demo12_title">六轴矩形弹簧</string>
 </resources>

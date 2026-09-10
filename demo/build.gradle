@@ -39,6 +39,7 @@ android {
 }
 
 dependencies {
+    testImplementation libs.junit
     implementation project(':lib')
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
