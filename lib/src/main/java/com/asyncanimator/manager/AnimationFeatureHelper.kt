@@ -59,7 +59,7 @@ object AnimationFeatureHelper {
 
     /**
      * 登记一个独立订阅并返回可重复关闭的句柄，同一 callback 多次登记也拥有各自生命周期。
-     * 通知总是排入主线程普通消息，回调应读取最新 snapshot，而非假设对应历史更新负载。
+     * 有主Handler时通知排入主线程普通消息，无Handler降级时就地执行；回调应读取最新snapshot，而非假设对应历史更新负载。
      * 关闭句柄会取消未开始的该订阅通知；已经取走并开始执行的回调无法撤回，业务执行时不持有配置锁。
      */
     fun addRemoteUpdateListener(callback: () -> Unit): AutoCloseable {
@@ -129,18 +129,46 @@ object AnimationFeatureHelper {
      */
     fun getRadiusAnimationEnable(): Boolean = !adaptiveAnimationEnabled
 
+    /**
+     * 异步能力配置标量，负值表示尚未配置；具体启用含义由宿主解释。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var asyncEnable by SyncedVar(lock, -1)
         private set
+    /**
+     * 实时解锁相关配置标量，默认-1表示未提供，容器不连接系统解锁服务。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var rtUnlockEnable by SyncedVar(lock, -1)
         private set
+    /**
+     * 多应用阻断策略标量，默认-1，具体策略由读取它的宿主实现。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var multiAppBlockEnable by SyncedVar(lock, -1)
         private set
+    /**
+     * 图标模糊策略标量，默认-1，本属性不直接创建或更新模糊效果。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var iconBlurEnable by SyncedVar(lock, -1)
         private set
+    /**
+     * 单像素策略标量，默认-1；只由完整配置更新写入，精简更新保留现值。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var onePxEnable by SyncedVar(lock, -1)
         private set
+    /**
+     * 中断阈值，默认1；自适应策略开启时更新入口强制写1，不验证宿主其他阈值范围。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var interruptThreshold by SyncedVar(lock, 1.0f)
         private set
+    /**
+     * 宿主大小限制配置，默认-1，容器不推测其单位或合法范围。
+     * 公开读取经委托volatile发布，private setter在共享配置锁内写入；多字段一致读取请用snapshot。
+     */
     var limtSize by SyncedVar(lock, -1)
         private set
 
