@@ -170,7 +170,7 @@ internal class RectAnimationLifecycle(
         if (!active(run) || !run.driverStarted) return
         val stop = run.stop ?: return
         if (!run.stopDispatched.compareAndSet(false, true)) return
-        if (stop == Stop.CANCEL) driver!!.cancel() else driver!!.skipToEnd()
+        if (stop == Stop.CANCEL) checkNotNull(driver).cancel() else checkNotNull(driver).skipToEnd()
     }
 
     /**
@@ -195,7 +195,7 @@ internal class RectAnimationLifecycle(
 
         run.owner.execute {
             if (!active(run)) return@execute
-            driver!!.clearEndCallback()
+            checkNotNull(driver).clearEndCallback()
             onMain {
                 if (!active(run)) return@onMain
                 current = null
@@ -266,7 +266,7 @@ internal class RectAnimationLifecycle(
         if (run != null) run.owner.execute {
             if (driver is CustomRectFSpringAnim.DisposableDriver) driver.dispose()
             else {
-                driver!!.clearEndCallback()
+                checkNotNull(driver).clearEndCallback()
                 driver.cancel()
             }
         }

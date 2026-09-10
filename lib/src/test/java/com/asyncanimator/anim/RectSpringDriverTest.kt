@@ -77,20 +77,20 @@ class RectSpringDriverTest {
         assertTrue(frames.last().values.alpha > 0f)
         finish()
         assertEquals(1, ends); assertTrue(clock.callbacks.isEmpty())
-        assertRect(target, d.currentFrame!!.rect)
-        assertEquals(6f, d.currentFrame!!.values.radius, 0f)
-        assertEquals(1f, d.currentFrame!!.values.alpha, 0f)
-        assertEquals(1f, d.currentFrame!!.progress, 0f)
-        assertEquals(RectSpringValues(), d.currentFrame!!.velocities)
+        assertRect(target, checkNotNull(d.currentFrame).rect)
+        assertEquals(6f, checkNotNull(d.currentFrame).values.radius, 0f)
+        assertEquals(1f, checkNotNull(d.currentFrame).values.alpha, 0f)
+        assertEquals(1f, checkNotNull(d.currentFrame).progress, 0f)
+        assertEquals(RectSpringValues(), checkNotNull(d.currentFrame).velocities)
     }
 
     @Test fun testAllTrackingModesAndBothSizeCoordinatesEndAtCorrectGeometry() {
         for (tracking in RectSpringConfig.Tracking.values()) {
             for (type in listOf(CustomRectFSpringAnim.AnimType.OPEN_FROM_HOME, CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME)) {
                 val d = driver(RectSpringConfig(tracking = tracking), type)
-                d.start {}; step(); assertRect(start, d.currentFrame!!.rect)
-                assertEquals(type == CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME, d.currentFrame!!.sizeIsWidth)
-                finish(); assertRect(target, d.currentFrame!!.rect)
+                d.start {}; step(); assertRect(start, checkNotNull(d.currentFrame).rect)
+                assertEquals(type == CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME, checkNotNull(d.currentFrame).sizeIsWidth)
+                finish(); assertRect(target, checkNotNull(d.currentFrame).rect)
             }
         }
     }
@@ -99,20 +99,20 @@ class RectSpringDriverTest {
         val normal = driver()
         val slowX = driver(RectSpringConfig(centerX = RectSpringConfig.Spring(stiffness = 25f)))
         normal.start {}; slowX.start {}; repeat(10) { step() }
-        assertTrue(normal.currentFrame!!.values.centerX > slowX.currentFrame!!.values.centerX)
-        assertEquals(normal.currentFrame!!.values.trackedY, slowX.currentFrame!!.values.trackedY, 0.001f)
-        assertEquals(normal.currentFrame!!.values.alpha, slowX.currentFrame!!.values.alpha, 0.001f)
+        assertTrue(checkNotNull(normal.currentFrame).values.centerX > checkNotNull(slowX.currentFrame).values.centerX)
+        assertEquals(checkNotNull(normal.currentFrame).values.trackedY, checkNotNull(slowX.currentFrame).values.trackedY, 0.001f)
+        assertEquals(checkNotNull(normal.currentFrame).values.alpha, checkNotNull(slowX.currentFrame).values.alpha, 0.001f)
     }
 
     @Test fun testAlphaDelayHoldsAlphaWithoutDelayingOtherAxesAndEndWaitsForAlpha() {
         val d = driver(RectSpringConfig(alphaStartDelayMillis = 2000))
         var ends = 0
         d.start { ends++ }; repeat(50) { step() }
-        assertEquals(0f, d.currentFrame!!.values.alpha, 0f)
-        assertTrue(d.currentFrame!!.values.centerX > start.centerX())
+        assertEquals(0f, checkNotNull(d.currentFrame).values.alpha, 0f)
+        assertTrue(checkNotNull(d.currentFrame).values.centerX > start.centerX())
         assertEquals(0, ends)
         finish()
-        assertEquals(1, ends); assertEquals(1f, d.currentFrame!!.values.alpha, 0f)
+        assertEquals(1, ends); assertEquals(1f, checkNotNull(d.currentFrame).values.alpha, 0f)
     }
 
     @Test fun testMinimumSizeAndAspectBoundsPreventInvalidRectangles() {
@@ -121,40 +121,40 @@ class RectSpringDriverTest {
         d.start {}
         repeat(100) {
             step()
-            val f = d.currentFrame!!
+            val f = checkNotNull(d.currentFrame)
             assertTrue(f.rect.width() >= 79.99f)
             assertTrue(f.rect.height() > 0f)
             assertTrue(f.values.ratio in 1f..(500f / 300f))
         }
-        finish(); assertEquals(80f, d.currentFrame!!.values.size, 0f)
+        finish(); assertEquals(80f, checkNotNull(d.currentFrame).values.size, 0f)
     }
 
     @Test fun testTargetUpdateKeepsCurrentSixVelocitiesAndConvergesToNewRect() {
         val d = driver(); d.start {}; repeat(8) { step() }
-        val before = d.currentFrame!!
+        val before = checkNotNull(d.currentFrame)
         val next = RectF(80f, 130f, 200f, 430f)
         d.updateEndTargetRectF(next, 15f)
-        assertEquals(before.velocities, d.currentFrame!!.velocities)
-        assertRect(before.rect, d.currentFrame!!.rect)
-        finish(); assertRect(next, d.currentFrame!!.rect)
-        assertEquals(15f, d.currentFrame!!.values.radius, 0f)
+        assertEquals(before.velocities, checkNotNull(d.currentFrame).velocities)
+        assertRect(before.rect, checkNotNull(d.currentFrame).rect)
+        finish(); assertRect(next, checkNotNull(d.currentFrame).rect)
+        assertEquals(15f, checkNotNull(d.currentFrame).values.radius, 0f)
     }
 
     @Test fun testReverseChangesSizeCoordinateWithoutGeometryJumpAndPreservesMomentum() {
         val d = driver(); d.start {}; repeat(8) { step() }
-        val before = d.currentFrame!!
+        val before = checkNotNull(d.currentFrame)
         // Current ratio is > 1; REVERSE_TO_OPEN to ratio 0.5 selects height mode.
         val next = RectF(0f, 0f, 500f, 250f)
         d.reverseToOpen(next, 18f)
-        val after = d.currentFrame!!
+        val after = checkNotNull(d.currentFrame)
         assertTrue(before.sizeIsWidth); assertFalse(after.sizeIsWidth)
         assertRect(before.rect, after.rect)
         assertEquals(before.velocities.centerX, after.velocities.centerX, 0f)
         val expected = before.velocities.size * before.values.ratio + before.values.size * before.velocities.ratio
         assertEquals(expected, after.velocities.size, 0.002f)
         assertEquals(before.progress, after.progress, 0f)
-        finish(); assertRect(next, d.currentFrame!!.rect)
-        assertEquals(0f, d.currentFrame!!.progress, 0f)
+        finish(); assertRect(next, checkNotNull(d.currentFrame).rect)
+        assertEquals(0f, checkNotNull(d.currentFrame).progress, 0f)
     }
 
     @Test fun testNextFramePredictionMatchesNativeUnderCriticalAndOverDampedUpdates() {
@@ -163,11 +163,11 @@ class RectSpringDriverTest {
             val d = driver(RectSpringConfig(centerX = spring, trackedY = spring, size = spring,
                 ratio = spring.copy(minimumVisibleChange = 0.005f), radius = spring, alpha = spring))
             d.start {}; repeat(5) { step() }
-            val before = d.currentFrame!!
+            val before = checkNotNull(d.currentFrame)
             val predicted = d.copyNextAnimState(16)
             assertSame(before, d.currentFrame)
             step()
-            val actual = d.currentFrame!!
+            val actual = checkNotNull(d.currentFrame)
             predicted.values.array().zip(actual.values.array()).forEach { (a, b) -> assertEquals(a, b, 0.002f) }
             predicted.velocities.array().zip(actual.velocities.array()).forEach { (a, b) -> assertEquals(a, b, 0.004f) }
             d.dispose()
@@ -177,7 +177,7 @@ class RectSpringDriverTest {
     @Test fun testPredictionDoesNotStartDelayedAlphaOrMutateItsState() {
         val d = driver(RectSpringConfig(alphaStartDelayMillis = 100))
         d.start {}; step()
-        val before = d.currentFrame!!
+        val before = checkNotNull(d.currentFrame)
         assertEquals(0f, d.copyNextAnimState(200).values.alpha, 0f)
         assertSame(before, d.currentFrame)
     }
@@ -197,8 +197,8 @@ class RectSpringDriverTest {
         var ends = 0
         d.start { ends++ }; step(); d.skipToEnd()
         assertEquals(0, ends); step()
-        assertEquals(1, ends); assertRect(target, d.currentFrame!!.rect)
-        assertEquals(1f, d.currentFrame!!.values.alpha, 0f)
+        assertEquals(1, ends); assertRect(target, checkNotNull(d.currentFrame).rect)
+        assertEquals(1f, checkNotNull(d.currentFrame).values.alpha, 0f)
     }
 
     @Test fun testDisposalUnregistersNativeDurationListenersWithoutAnotherFrame() {
@@ -229,9 +229,9 @@ class RectSpringDriverTest {
         val d = driver(from = from, to = to)
         from.setEmpty(); to.setEmpty()
         d.start {}; step()
-        d.currentFrame!!.rect.setEmpty()
-        assertRect(start, d.currentFrame!!.rect)
-        finish(); assertRect(target, d.currentFrame!!.rect)
+        checkNotNull(d.currentFrame).rect.setEmpty()
+        assertRect(start, checkNotNull(d.currentFrame).rect)
+        finish(); assertRect(target, checkNotNull(d.currentFrame).rect)
     }
 
     @Test fun testInvalidGeometryParametersAndScaleFailBeforeScheduling() {
@@ -292,7 +292,7 @@ class RectSpringDriverTest {
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)); onOwner { clock.pulse() }
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(16)); onOwner { clock.pulse() }
             assertSame(thread, observed.get())
-            assertTrue(d.currentFrame!!.values.centerX > start.centerX())
+            assertTrue(checkNotNull(d.currentFrame).values.centerX > start.centerX())
             assertThrows(IllegalStateException::class.java) { d.cancel() }
         } finally {
             onOwner { d.dispose() }
@@ -307,14 +307,14 @@ class RectSpringDriverTest {
         val next = RectF(60f, 80f, 100f, 300f)
         val successor = d.createContinuation(next, 16) {}.also(drivers::add)
         d.dispose(); successor.start {}
-        assertRect(predicted.rect, successor.currentFrame!!.rect)
-        assertEquals(predicted.progress, successor.currentFrame!!.progress, 0f)
-        assertFalse(successor.currentFrame!!.sizeIsWidth)
-        assertEquals(predicted.velocities.centerX, successor.currentFrame!!.velocities.centerX, 0f)
+        assertRect(predicted.rect, checkNotNull(successor.currentFrame).rect)
+        assertEquals(predicted.progress, checkNotNull(successor.currentFrame).progress, 0f)
+        assertFalse(checkNotNull(successor.currentFrame).sizeIsWidth)
+        assertEquals(predicted.velocities.centerX, checkNotNull(successor.currentFrame).velocities.centerX, 0f)
         val expectedSizeVelocity = predicted.velocities.size * predicted.values.ratio +
             predicted.values.size * predicted.velocities.ratio
-        assertEquals(expectedSizeVelocity, successor.currentFrame!!.velocities.size, 0.002f)
-        finish(); assertRect(next, successor.currentFrame!!.rect)
+        assertEquals(expectedSizeVelocity, checkNotNull(successor.currentFrame).velocities.size, 0.002f)
+        finish(); assertRect(next, checkNotNull(successor.currentFrame).rect)
     }
 
     @Test fun testThrowingUpdateStillDetachesSpringsAndReportsPhysicalCompletion() {
@@ -354,9 +354,9 @@ class RectSpringDriverTest {
         val predicted = d.copyNextAnimState(16)
         val successor = d.createContinuation(destination, 16) {}.also(drivers::add)
         d.dispose(); successor.start {}
-        assertEquals(predicted.progress, successor.currentFrame!!.progress, 0f)
-        finish(); assertEquals(0f, successor.currentFrame!!.progress, 0f)
-        assertRect(destination, successor.currentFrame!!.rect)
+        assertEquals(predicted.progress, checkNotNull(successor.currentFrame).progress, 0f)
+        finish(); assertEquals(0f, checkNotNull(successor.currentFrame).progress, 0f)
+        assertRect(destination, checkNotNull(successor.currentFrame).rect)
     }
 
     @Test fun testPredictionIncludesFinalProgressWhenOnlyPositionChanges() {
@@ -366,10 +366,10 @@ class RectSpringDriverTest {
         while (clock.callbacks.isNotEmpty() && frames++ < 500) {
             val predicted = d.copyNextAnimState(16)
             step()
-            assertEquals(predicted.progress, d.currentFrame!!.progress, 0.0001f)
+            assertEquals(predicted.progress, checkNotNull(d.currentFrame).progress, 0.0001f)
         }
         assertTrue(clock.callbacks.isEmpty())
-        assertEquals(1f, d.currentFrame!!.progress, 0f)
+        assertEquals(1f, checkNotNull(d.currentFrame).progress, 0f)
     }
 
     @Test fun testLongFrameGapMatchesClosedFormWithoutInventedDtClamp() {
@@ -379,9 +379,9 @@ class RectSpringDriverTest {
             d.start {}; step()
             val expected = d.copyNextAnimState(250)
             step(250)
-            assertEquals(expected.values.centerX, d.currentFrame!!.values.centerX, 0.002f)
-            assertEquals(expected.velocities.centerX, d.currentFrame!!.velocities.centerX, 0.002f)
-            assertTrue(d.currentFrame!!.rect.width() > 0f)
+            assertEquals(expected.values.centerX, checkNotNull(d.currentFrame).values.centerX, 0.002f)
+            assertEquals(expected.velocities.centerX, checkNotNull(d.currentFrame).velocities.centerX, 0.002f)
+            assertTrue(checkNotNull(d.currentFrame).rect.width() > 0f)
             d.dispose()
         }
     }
@@ -391,9 +391,9 @@ class RectSpringDriverTest {
             centerX = RectSpringConfig.Spring(minimumVisibleChange = 2f)))
         d.start {}
         val runField = RectSpringDriver::class.java.getDeclaredField("current").apply { isAccessible = true }
-        val run = runField.get(d)!!
+        val run = checkNotNull(runField.get(d))
         val axesField = run.javaClass.getDeclaredField("axes").apply { isAccessible = true }
-        val axis = (axesField.get(run) as List<*>).first()!!
+        val axis = checkNotNull((axesField.get(run) as List<*>).first())
         val forceField = axis.javaClass.getDeclaredField("force").apply { isAccessible = true }
         val force = forceField.get(axis) as androidx.dynamicanimation.animation.SpringForce
         val target = force.finalPosition
@@ -409,7 +409,7 @@ class RectSpringDriverTest {
             val d = driver(onUpdate = updates::add)
             var ends = 0
             d.start { ends++ }; step(); step()
-            val before = d.currentFrame!!
+            val before = checkNotNull(d.currentFrame)
             val count = updates.size
             if (cancelFirst) { d.cancel(); d.skipToEnd() } else { d.skipToEnd(); d.cancel() }
             val predicted = d.copyNextAnimState()
@@ -436,7 +436,7 @@ class RectSpringDriverTest {
         d.start { fail("cleared callback") }
         d.clearEndCallback()
         d.skipToEnd(); step()
-        assertRect(target, d.currentFrame!!.rect)
+        assertRect(target, checkNotNull(d.currentFrame).rect)
         assertTrue(clock.callbacks.isEmpty())
         d.dispose(); d.dispose(); d.cancel(); d.skipToEnd(); d.clearEndCallback()
         assertThrows(IllegalStateException::class.java) { d.start {} }
@@ -516,8 +516,8 @@ class RectSpringDriverTest {
             d.start { ends++ }
             repeat(3) { step() }
             assertEquals(1, ends)
-            assertRect(target, d.currentFrame!!.rect)
-            assertEquals(1f, d.currentFrame!!.values.alpha, 0f)
+            assertRect(target, checkNotNull(d.currentFrame).rect)
+            assertEquals(1f, checkNotNull(d.currentFrame).values.alpha, 0f)
             assertTrue(clock.callbacks.isEmpty())
         } finally { d.dispose(); ValueAnimator.setDurationScale(previous) }
     }

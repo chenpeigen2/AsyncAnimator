@@ -236,7 +236,7 @@ class MultiAnimatorSetTest {
         })
         group.setViewStateResetRunnable { ends++ }
         group.play(true, async); group.play(CustomRectFSpringAnim(type, rect)); group.start()
-        val lateEnd = rect.done!!
+        val lateEnd = checkNotNull(rect.done)
         group.destroy(); group.destroy(); flushAsync()
         lateEnd(); flushMain()
         assertEquals(0, starts)

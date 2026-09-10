@@ -26,7 +26,7 @@ class OplusValueAnimatorTest {
         assertEquals(0.25f, source.currentFraction, 0f)
         assertSame(source.interpolator, copy.interpolator)
         assertSame(source.applicator, copy.applicator)
-        copy.applicator!!.invoke(42f)
+        checkNotNull(copy.applicator).invoke(42f)
         assertEquals(42f, lastValue)
     }
 
@@ -55,7 +55,7 @@ class OplusValueAnimatorTest {
         source.interpolator = RecordInputInterpolator(TimeInterpolator { it * it })
         source.setCurrentFraction(0.5f)
         assertEquals(4f, values.last(), 0.001f)
-        val continuation = OplusValueAnimator.generateContinuationAnim(source, 200)!!
+        val continuation = checkNotNull(OplusValueAnimator.generateContinuationAnim(source, 200))
         assertNotSame(source.param, continuation.param)
         assertEquals(200L, continuation.duration)
         values.clear()
@@ -72,7 +72,7 @@ class OplusValueAnimatorTest {
         source.setFloatValues(2f, 8f, 10f)
         source.interpolator = TimeInterpolator { it }
         source.param.currentFraction = 0.25f
-        val continuation = OplusValueAnimator.generateContinuationAnim(source, 200)!!
+        val continuation = checkNotNull(OplusValueAnimator.generateContinuationAnim(source, 200))
         assertNotSame(source.values.single(), continuation.values.single())
         // Editing the source after copying must not change the continuation's value range.
         source.setFloatValues(100f, 200f)
@@ -129,7 +129,7 @@ class OplusValueAnimatorTest {
         source.param.currentFraction = 0.25f
         val output = mutableListOf<Any?>()
         source.param.applicator = { output.add(it) }
-        val continuation = OplusValueAnimator.generateContinuationAnim(source, 200)!!
+        val continuation = checkNotNull(OplusValueAnimator.generateContinuationAnim(source, 200))
         assertNotSame(source.values.single(), continuation.values.single())
         continuation.setCurrentFraction(0.5f)
         assertEquals(50, output.last())
@@ -154,7 +154,7 @@ class OplusValueAnimatorTest {
         source.duration = 700
         source.param.currentFraction = 0.25f
         for (duration in listOf(0L, -1L)) {
-            val continuation = OplusValueAnimator.generateContinuationAnim(source, duration)!!
+            val continuation = checkNotNull(OplusValueAnimator.generateContinuationAnim(source, duration))
             assertEquals(700L, continuation.duration)
             assertEquals(700L, continuation.param.duration)
         }

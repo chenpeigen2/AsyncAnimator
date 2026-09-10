@@ -77,7 +77,7 @@ class ControllerThreadContractTest {
         c.registerTransitionFinishTimeOutListener(1000)
         var calls = 0
         assertTrue(c.delayStartActivityIfNeed(null, null, { true }) { calls++ })
-        val listener = c.transitionFinishTimeOutListener!!
+        val listener = checkNotNull(c.transitionFinishTimeOutListener)
         assertTrue(offMain { listener.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0) }
             is IllegalStateException)
         assertTrue(offMain { listener.dispose() } is IllegalStateException)

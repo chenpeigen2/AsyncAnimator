@@ -28,7 +28,7 @@ class LaunchDecisionReentrancyTest {
         val c = own(); var actions = 0
         c.registerTransitionFinishTimeOutListener(1000)
         assertFalse(c.delayStartActivityIfNeed(null, null, {
-            c.transitionFinishTimeOutListener!!.dispose(); true
+            checkNotNull(c.transitionFinishTimeOutListener).dispose(); true
         }) { actions++ })
         assertFalse(c.forbidTouch())
         advance(); assertEquals(0, actions)

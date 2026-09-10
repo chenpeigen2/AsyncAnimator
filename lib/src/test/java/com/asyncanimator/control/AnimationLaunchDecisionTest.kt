@@ -40,7 +40,7 @@ class AnimationLaunchDecisionTest {
             c.registerTransitionFinishTimeOutListener(1000)
             assertTrue(action, c.delayStartActivityIfNeed(null, Intent(action), { false }) { calls++ })
             assertEquals(0, calls)
-            c.transitionFinishTimeOutListener!!.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
+            checkNotNull(c.transitionFinishTimeOutListener).onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
             assertEquals(1, calls)
         }
     }
@@ -128,7 +128,7 @@ class AnimationLaunchDecisionTest {
         var calls = 0
         c.setAppToOverviewContinuationState(true)
         assertTrue(c.delayStartActivityIfNeed(null, null, null) { calls++ })
-        val old = c.overviewContinuationTimeOutListener!!
+        val old = checkNotNull(c.overviewContinuationTimeOutListener)
         c.setAppToOverviewContinuationState(false)
         assertNull(c.overviewContinuationTimeOutListener)
         old.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 0)
@@ -136,7 +136,7 @@ class AnimationLaunchDecisionTest {
         assertEquals(0, calls)
         // No stale continuation action can leak into another scenario's timeout.
         c.registerTransitionFinishTimeOutListener(100)
-        c.transitionFinishTimeOutListener!!.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
+        checkNotNull(c.transitionFinishTimeOutListener).onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
         assertEquals(0, calls)
     }
 
@@ -147,7 +147,7 @@ class AnimationLaunchDecisionTest {
         c.setAppToOverviewContinuationState(true)
         assertTrue(c.delayStartActivityIfNeed(null, null, { true }) { calls++ })
         c.setAppToOverviewContinuationState(false)
-        c.transitionFinishTimeOutListener!!.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
+        checkNotNull(c.transitionFinishTimeOutListener).onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 0)
         assertEquals(1, calls)
     }
 
@@ -158,9 +158,9 @@ class AnimationLaunchDecisionTest {
         c.registerSpecialSceneExitTimeOutListener(1000)
         c.setAppToOverviewContinuationState(true)
         assertTrue(c.delayStartActivityIfNeed(null, null, null) { calls++ })
-        c.overviewContinuationTimeOutListener!!.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 0)
+        checkNotNull(c.overviewContinuationTimeOutListener).onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 0)
         assertEquals(0, calls)
-        c.specialSceneExitTimeOutListener!!.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, 0)
+        checkNotNull(c.specialSceneExitTimeOutListener).onTimeOut(TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, 0)
         assertEquals(1, calls)
     }
 
@@ -169,7 +169,7 @@ class AnimationLaunchDecisionTest {
         var calls = 0
         c.setAppToOverviewContinuationState(true)
         assertTrue(c.delayStartActivityIfNeed(null, null, null) { calls++ })
-        val listener = c.overviewContinuationTimeOutListener!!
+        val listener = checkNotNull(c.overviewContinuationTimeOutListener)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
         assertEquals(1, calls)
         listener.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 100)

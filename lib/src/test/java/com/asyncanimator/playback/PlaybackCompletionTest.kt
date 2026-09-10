@@ -21,7 +21,7 @@ class PlaybackCompletionTest {
 
     // Exercise duplicate/reentrant listener events without relying on platform end()'s own guard.
     private fun completion(controller: AnimatorPlaybackController) =
-        controller.animationPlayer.listeners!!.single()
+        checkNotNull(controller.animationPlayer.listeners).single()
 
     @Test fun testForceCloseDoesNothingBeforeStartOrAfterPauseOrEnd() {
         val c = controller()
@@ -221,7 +221,7 @@ class PlaybackCompletionTest {
         c.dispatchOnEnd()
         assertFalse(pending())
         c.dispatchOnStart()
-        root.listeners!!.forEach { it.onAnimationStart(root) }
+        checkNotNull(root.listeners).forEach { it.onAnimationStart(root) }
         assertFalse(pending())
         c.dispatchOnStart()
         c.start()

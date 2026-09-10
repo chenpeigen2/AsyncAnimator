@@ -104,7 +104,7 @@ class AsyncSpringAnimTest {
         assertTrue(real.isRunning)
         assertEquals(150f, real.spring.finalPosition, 0f)
         pulse()
-        assertEquals(-80f, firstVelocity!!, 0f)
+        assertEquals(-80f, checkNotNull(firstVelocity), 0f)
         wrapper.animateToFinalPosition(-20f)
         pulse()
         assertEquals(-20f, real.spring.finalPosition, 0f)

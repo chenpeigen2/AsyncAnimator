@@ -181,7 +181,7 @@ class RectAnimationLifecycleTest {
         val worker = worker(); val driver = Driver(true); val rect = rect(driver, worker)
         val events = listen(rect); var actual = 0
         rect.start { actual++ }; shadowOf(worker.looper).idle()
-        val late = driver.done!!
+        val late = checkNotNull(driver.done)
         Handler(worker.looper).post { driver.finish() }; shadowOf(worker.looper).idle()
         rect.dispose(); rect.dispose()
         shadowOf(Looper.getMainLooper()).idle()
@@ -229,7 +229,7 @@ class RectAnimationLifecycleTest {
 
     @Test fun testDuplicateOldActualEndCannotStopNextRun() {
         val driver = Driver(); val rect = rect(driver)
-        rect.start(); val old = driver.done!!; driver.finish()
+        rect.start(); val old = checkNotNull(driver.done); driver.finish()
         rect.start(); old()
         assertTrue(rect.isRunning)
         driver.finish()
@@ -389,7 +389,7 @@ class RectAnimationLifecycleTest {
         var actualEnds = 0
         repeat(2) {
             rect.start { actualEnds++ }
-            assertEquals(2, animator.listeners!!.size)
+            assertEquals(2, checkNotNull(animator.listeners).size)
             rect.skipToEnd()
             assertEquals(listOf(nativeListener), animator.listeners)
         }

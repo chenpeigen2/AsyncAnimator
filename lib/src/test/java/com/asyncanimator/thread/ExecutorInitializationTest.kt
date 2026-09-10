@@ -42,8 +42,8 @@ class ExecutorInitializationTest {
         assertEquals(8, results.size)
         results.forEach { assertSame(executor, it) }
         assertNotSame(Looper.getMainLooper(), executor.getLooper())
-        assertEquals(AnimationControlThread.THREAD_NAME, executor.getThread()!!.name)
-        assertTrue(executor.getThread()!!.isAlive)
+        assertEquals(AnimationControlThread.THREAD_NAME, checkNotNull(executor.getThread()).name)
+        assertTrue(checkNotNull(executor.getThread()).isAlive)
         // This is the library process singleton, not a fixture-owned HandlerThread: do not quit it.
     }
 }

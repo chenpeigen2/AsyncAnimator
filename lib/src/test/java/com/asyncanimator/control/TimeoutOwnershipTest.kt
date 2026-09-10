@@ -31,7 +31,7 @@ class TimeoutOwnershipTest {
                 0 -> c.specialSceneExitTimeOutListener
                 1 -> c.transitionFinishTimeOutListener
                 else -> c.overviewContinuationTimeOutListener
-            }!!
+            } ?: error("Expected timeout listener")
             var calls = 0
             c.setBetweenTransitionEndAndFinish(true)
             assertTrue(c.delayStartActivityIfNeed(null, null, { true }) { calls++ })
@@ -49,7 +49,7 @@ class TimeoutOwnershipTest {
     @Test fun testOldDisposalCannotUnregisterReplacementFromReentrantAction() {
         val c = controller()
         c.registerTransitionFinishTimeOutListener(100)
-        val old = c.transitionFinishTimeOutListener!!
+        val old = checkNotNull(c.transitionFinishTimeOutListener)
         var calls = 0
         c.delayStartActivityIfNeed(null, null, { true }) {
             calls++
@@ -68,7 +68,7 @@ class TimeoutOwnershipTest {
     @Test fun testDisposedHandleReleasesActionsAndDoesNotBindAccessGuardToController() {
         val c = controller()
         c.registerTransitionFinishTimeOutListener(100)
-        val timer = c.transitionFinishTimeOutListener!!
+        val timer = checkNotNull(c.transitionFinishTimeOutListener)
         timer.dispose()
         for (name in listOf("pendingAction", "disposalCallback")) {
             val field = timer.javaClass.getDeclaredField(name).apply { isAccessible = true }

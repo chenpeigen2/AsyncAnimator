@@ -52,7 +52,7 @@ class TaskStateEventTest {
         c.registerTransitionFinishTimeOutListener(1500)
         var calls = 0
         assertTrue(c.delayStartActivityIfNeed(null, null, { true }) { calls++ })
-        c.transitionFinishTimeOutListener!!.dispose()
+        checkNotNull(c.transitionFinishTimeOutListener).dispose()
         c.dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH)
         DefaultAnimationController().dispatchTaskStateChange(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH)
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1501))

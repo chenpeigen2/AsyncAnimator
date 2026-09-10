@@ -58,7 +58,7 @@ class ManagerLifecycleTest {
     @Test fun testDisabledControllerCannotDeliverPreviouslyQueuedLaunch() {
         val controller = OplusAnimManager.animController as AnimationController
         controller.registerTransitionFinishTimeOutListener(1000)
-        val timer = controller.transitionFinishTimeOutListener!!
+        val timer = checkNotNull(controller.transitionFinishTimeOutListener)
         var launches = 0
         assertTrue(controller.delayStartActivityIfNeed(null, null, { true }) { launches++ })
         OplusAnimManager.interruptionEnabled = false

@@ -115,12 +115,12 @@ class AnimationControllerTest {
         val controller = AnimationController()
         var calls = 0
         controller.registerTransitionFinishTimeOutListener(100)
-        val old = controller.transitionFinishTimeOutListener!!
+        val old = checkNotNull(controller.transitionFinishTimeOutListener)
         controller.registerTransitionFinishTimeOutListener(200)
         controller.delayStartActivityIfNeed(null, null, { true }) { calls++ }
         old.onTimeOut(TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
         assertEquals(0, calls)
-        controller.transitionFinishTimeOutListener!!.onTimeOut(
+        checkNotNull(controller.transitionFinishTimeOutListener).onTimeOut(
             TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 200)
         assertEquals(1, calls)
         assertNull(controller.transitionFinishTimeOutListener)
@@ -153,10 +153,10 @@ class AnimationControllerTest {
             controller.registerTransitionFinishTimeOutListener(100)
             controller.delayStartActivityIfNeed(null, null, { true }) { calls++ }
         }
-        controller.transitionFinishTimeOutListener!!.onTimeOut(
+        checkNotNull(controller.transitionFinishTimeOutListener).onTimeOut(
             TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
         assertEquals(1, calls)
-        controller.transitionFinishTimeOutListener!!.onTimeOut(
+        checkNotNull(controller.transitionFinishTimeOutListener).onTimeOut(
             TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 100)
         assertEquals(2, calls)
         assertNull(controller.transitionFinishTimeOutListener)

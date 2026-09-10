@@ -46,8 +46,8 @@ class FeatureNotificationTest {
         assertNull(thread)
         shadowOf(Looper.getMainLooper()).idle()
         assertSame(Looper.getMainLooper().thread, thread)
-        assertEquals(2, snapshot!!.asyncEnable)
-        assertEquals(listOf("2"), snapshot!!.onePxPkgDisableList)
+        assertEquals(2, checkNotNull(snapshot).asyncEnable)
+        assertEquals(listOf("2"), checkNotNull(snapshot).onePxPkgDisableList)
         subscription.close()
     }
 

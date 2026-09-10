@@ -119,7 +119,7 @@ class AnimationControllerRegressionTest {
             assertTrue(controller.delayStartActivityIfNeed(null, null, { predicateCalls++; true }) { calls++ })
             assertEquals(0, predicateCalls)
             assertEquals(0, calls)
-            controller.specialSceneExitTimeOutListener!!.onTimeOut(
+            checkNotNull(controller.specialSceneExitTimeOutListener).onTimeOut(
                 TaskStateChangeTimeOutListener.Type.ON_LAND_SCAPE_SCENE_EXIT, 1000)
             assertEquals(1, calls)
         } finally { controller.destroy() }
@@ -132,7 +132,7 @@ class AnimationControllerRegressionTest {
             controller.registerTransitionFinishTimeOutListener(1000)
             assertTrue(controller.delayStartActivityIfNeed(null, null, { true }) { calls++ })
             assertEquals(0, calls)
-            controller.transitionFinishTimeOutListener!!.onTimeOut(
+            checkNotNull(controller.transitionFinishTimeOutListener).onTimeOut(
                 TaskStateChangeTimeOutListener.Type.ON_TRANSITION_FINISH, 1000)
             assertEquals(1, calls)
         } finally { controller.destroy() }
@@ -144,7 +144,7 @@ class AnimationControllerRegressionTest {
         try {
             controller.setAppToOverviewContinuationState(true)
             assertTrue(controller.delayStartActivityIfNeed(null, null, null) { calls++ })
-            controller.overviewContinuationTimeOutListener!!.onTimeOut(
+            checkNotNull(controller.overviewContinuationTimeOutListener).onTimeOut(
                 TaskStateChangeTimeOutListener.Type.ON_APP_TO_OVERVIEW_CONTINUATION, 1000)
             assertEquals(1, calls)
         } finally { controller.destroy() }

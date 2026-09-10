@@ -69,7 +69,7 @@ class AnimationSeqHelper(
                 true
             }
         }
-        return handler!!
+        return checkNotNull(handler)
     }
 
     /**
