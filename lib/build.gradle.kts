@@ -58,6 +58,7 @@ dependencies {
     add("kspDebug", project(":api-doc-processor"))
     add("kspRelease", project(":api-doc-processor"))
     implementation(libs.androidx.dynamicanimation)
+    implementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     // SDK 37 signature-only stubs cannot load Application/AnimatorSet in the JVM.

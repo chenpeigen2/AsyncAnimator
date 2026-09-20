@@ -148,6 +148,7 @@ CustomRectFSpringAnim          ← 窗口矩形弹簧（6 自由度：centerX/re
 4. **弹簧积分用解析解而非 RK4**（v3 文档此处有误）：`SpringForce` 三支闭式公式 + 中途改终点的半步分裂积分（`SpringHolder.updateValueAndVelocity`）。lib 的 `SpringForce` 若按此实现则与原厂行为一致。
 5. **双时钟漂移是原厂就存在的固有问题**（main app-vsync vs launcher.anim SF-vsync），OPPO 用 `SurfaceTransactionApplier` 的 `mAsyncAnimStarted` 丢事务策略压制竞态。lib 层若允许双轨，需要同等的"异步接管后丢弃迟到同步写"保护。
 
+**实现注记（协程引入）**：`control`/`seq` 包的一次性超时竞争（`TaskStateChangeTimeOutListener`）与 Recents 完成防抖（`AnimationSeqHelper`）已改用 Kotlin 协程承载（`kotlinx-coroutines-android` 1.9.0，绑定主 Looper 的 Handler 调度器），替换原 `Handler.postDelayed`/`sendEmptyMessageDelayed` 实现；帧 tick 路径（`core`/`anim`）保持回调式，协程不进入帧循环。延时回调的动作异常仍按旧 Handler 语义经主线程消息泵同步外抛（不被协程未捕获处理器吞掉）；定时器无主 Looper 时 `TaskStateChangeTimeOutListener` 退化为仅事件通道，`AnimationSeqHelper` 延迟路径保持抛 [NullPointerException]。调度器解析集中在 `lib/src/main/java/com/asyncanimator/thread/MainDispatcher.kt`。
 ## 9. 风险与疑点（取证中发现，供设计避雷）
 
 1. **跨线程共享状态无锁**：动画线程与 UI 线程共享 `mSpringHolderMap` 等状态，靠"外层手工判线程"的纪律而非同步保护；`DynamicAnimation.isCurrentThread()`（`DynamicAnimation.java:531-533`）是恒真式（`Thread.currentThread() == Looper.myLooper().getThread()`），线程检查实际失效。
