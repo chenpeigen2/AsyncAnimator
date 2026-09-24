@@ -1,5 +1,7 @@
 package com.asyncanimator.seq
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -7,6 +9,7 @@ import com.asyncanimator.api.PublicApi
  * 延迟完成入口不是空操作：它会同步执行调用方动作，但不会创建消息队列任务。
  */
 @PublicApi
+@Layer(LayerId.SEQ)
 open class DefaultAnimationSeqHelper {
 
     /**

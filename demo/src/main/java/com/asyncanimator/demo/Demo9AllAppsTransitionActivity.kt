@@ -38,7 +38,8 @@ class Demo9AllAppsTransitionActivity : DemoBaseActivity() {
     @Volatile private var asyncProgress = 0f
     @Volatile private var transitionGeneration = 0
     private var nextAnimationId = 0
-    private val launchController = AnimationController()
+    // 演示页直造控制器（不经工厂）：完成策略显式放行，保持与旧版默认读取序列窗口一致的可视行为。
+    private val launchController = AnimationController(canFinishRecent = { true })
     private var launchRegistered = false
     private val launchFactory = object : RemoteAnimationFactory {
         override fun createAnimation() = AnimatorSet() // lifecycle identity; actual animation is group

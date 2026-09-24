@@ -1,5 +1,7 @@
 package com.asyncanimator.thread
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -7,6 +9,7 @@ import com.asyncanimator.api.PublicApi
  * 子类自行决定哪些操作需要转发；本类只安排任务，不安装具体动画引擎的帧源或接管 View 写入。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 open class AsyncAnimWrapper {
 
     /**

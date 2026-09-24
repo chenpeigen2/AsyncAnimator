@@ -1,6 +1,8 @@
 package com.asyncanimator.core
 
 import android.view.Choreographer
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
 
@@ -9,6 +11,7 @@ import java.util.concurrent.atomic.AtomicLong
  * 首次请求帧时固定所属线程，之后跨线程暂停或恢复也不会迁移帧源。
  * 短临界区保护订阅和调度状态，锁外执行快照；后台回调不意味着可以安全写入 View。
  */
+@Layer(LayerId.BASIC)
 internal class ChoreographerTickScheduler : TickScheduler {
 
     private val callbacks = ConcurrentLinkedQueue<TickScheduler.FrameCallback>()

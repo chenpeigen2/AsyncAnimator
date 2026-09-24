@@ -1,6 +1,8 @@
 package com.asyncanimator.core
 
 import com.asyncanimator.BuildConfig
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -8,6 +10,7 @@ import com.asyncanimator.api.PublicApi
  * Debug 默认 INFO，Release 默认 OFF；等级通过 volatile 发布，不是持久化或远程配置系统。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 object LogUtils {
     /**
      * 关闭通过普通等级门控入口提交的诊断输出。

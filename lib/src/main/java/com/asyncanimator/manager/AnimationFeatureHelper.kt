@@ -1,5 +1,7 @@
 package com.asyncanimator.manager
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.Executors
@@ -13,6 +15,7 @@ import kotlin.reflect.KProperty
  * 不接入远程服务，不自动控制动画线程，也不自动重建管理器工厂。
  */
 @PublicApi
+@Layer(LayerId.MANAGER)
 object AnimationFeatureHelper {
 
     private val lock = Any()

@@ -1,11 +1,14 @@
 package com.asyncanimator.anim
 
 import android.animation.TimeInterpolator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 记录最近一次输入进度的插值器包装，用于后续从实际输入位置创建续行动画。
  * @param realInterpolator 实际负责曲线计算的插值器；本包装不复制或同步其内部状态。
  */
+@Layer(LayerId.ANIM)
 internal class RecordInputInterpolator(private val realInterpolator: TimeInterpolator) : TimeInterpolator {
 
     /**

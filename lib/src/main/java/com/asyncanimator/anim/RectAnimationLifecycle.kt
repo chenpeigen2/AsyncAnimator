@@ -1,6 +1,8 @@
 package com.asyncanimator.anim
 
 import android.graphics.RectF
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.Executors
 import com.asyncanimator.thread.LooperExecutor
@@ -11,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 构造只保存动画句柄、可空驱动和可选执行器；执行器按需解析，空驱动可登记信息但不能播放。
  * 几何推进归驱动所有，监听集合和逻辑标记在主线程维护，跨线程状态通过volatile/原子门发布。
  */
+@Layer(LayerId.ANIM)
 internal class RectAnimationLifecycle(
     private val animation: CustomRectFSpringAnim,
     private val driver: CustomRectFSpringAnim.Driver?,

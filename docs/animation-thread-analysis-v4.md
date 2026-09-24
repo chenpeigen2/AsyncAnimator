@@ -149,6 +149,9 @@ CustomRectFSpringAnim          ← 窗口矩形弹簧（6 自由度：centerX/re
 5. **双时钟漂移是原厂就存在的固有问题**（main app-vsync vs launcher.anim SF-vsync），OPPO 用 `SurfaceTransactionApplier` 的 `mAsyncAnimStarted` 丢事务策略压制竞态。lib 层若允许双轨，需要同等的"异步接管后丢弃迟到同步写"保护。
 
 **实现注记（协程引入）**：`control`/`seq` 包的一次性超时竞争（`TaskStateChangeTimeOutListener`）与 Recents 完成防抖（`AnimationSeqHelper`）已改用 Kotlin 协程承载（`kotlinx-coroutines-android` 1.9.0，绑定主 Looper 的 Handler 调度器），替换原 `Handler.postDelayed`/`sendEmptyMessageDelayed` 实现；帧 tick 路径（`core`/`anim`）保持回调式，协程不进入帧循环。延时回调的动作异常仍按旧 Handler 语义经主线程消息泵同步外抛（不被协程未捕获处理器吞掉）；定时器无主 Looper 时 `TaskStateChangeTimeOutListener` 退化为仅事件通道，`AnimationSeqHelper` 延迟路径保持抛 [NullPointerException]。调度器解析集中在 `lib/src/main/java/com/asyncanimator/thread/MainDispatcher.kt`。
+
+**实现注记（技术分层）**：全库按依赖方向划分为六层，`api` 包为注解载体全员豁免：L0 基础（`core`/`thread`/`com.android.launcher3` 桩）→ L1 播放原语（`playback`）→ L2 动画驱动（`anim`）→ L3 序列协调（`seq`）→ L4 转场控制（`control`）→ L5 工厂开关（`manager`）。每个顶层类型以 `@Layer(LayerId.X)`（SOURCE 保留、类目标，定义在 `api` 包）显式声明所属层；KSP 在编译期强制两条规则——源码根内顶层类漏标 `@Layer` 即编译失败、`import` 或全限定引用指向更高层即编译失败（同层互引与向下引用放行，`layering.requireComplete` 开关在 `lib/build.gradle.kts`，未登记的库内包按违规失败关闭）。为此先破除了两组历史依赖环：`ActualEndAnimListener` 从 `anim` 下移至 `playback`（`AsyncAnimCallbacks` 改为向下依赖），`AnimationSeqHelper`/`AnimationController` 的能力查询与完成策略/清理回调改为构造注入、由 `OplusAnimManager` 在接线时传入真实实现（默认值为保守中性语义）。校验实现见 `api-doc-processor` 的 `LayeringRules`，读取到 DLP 加密内容时失败关闭。
+
 ## 9. 风险与疑点（取证中发现，供设计避雷）
 
 1. **跨线程共享状态无锁**：动画线程与 UI 线程共享 `mSpringHolderMap` 等状态，靠"外层手工判线程"的纪律而非同步保护；`DynamicAnimation.isCurrentThread()`（`DynamicAnimation.java:531-533`）是恒真式（`Thread.currentThread() == Looper.myLooper().getThread()`），线程检查实际失效。

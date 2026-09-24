@@ -71,6 +71,8 @@ dependencies {
 ksp {
     // 全库公开源码声明必须显式标记，新增 API 不能静默遗漏文档。
     arg("publicApi.requireComplete", "true")
+    // 技术分层编译期强制：顶层类必须标注 @Layer，import 不得指向更高层。
+    arg("layering.requireComplete", "true")
     arg("publicApi.sourceRoot", layout.projectDirectory.dir("src/main/java").asFile.absolutePath)
 }
 

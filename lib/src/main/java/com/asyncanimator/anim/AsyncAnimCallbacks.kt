@@ -1,9 +1,12 @@
 package com.asyncanimator.anim
 
 import android.animation.Animator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.core.Trace
+import com.asyncanimator.playback.ActualEndAnimListener
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 import com.asyncanimator.thread.Executors
@@ -14,6 +17,7 @@ import com.asyncanimator.thread.Executors
  * 逻辑结束与实际结束分开派发，后者仅通知具备相应入口的监听器，不自动取消底层动画。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class AsyncAnimCallbacks {
 
     private val listenerLock = Any()

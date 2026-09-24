@@ -2,7 +2,6 @@ package com.asyncanimator.playback
 
 import android.animation.Animator
 import android.animation.ValueAnimator
-import com.asyncanimator.anim.ActualEndAnimListener
 import com.asyncanimator.anim.AsyncAnimCallbacks
 import org.junit.Assert.*
 import org.junit.Test

@@ -1,12 +1,15 @@
 package com.asyncanimator.playback
 
 import android.animation.TimeInterpolator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import kotlin.math.abs
 
 /**
  * 无状态的基础插值曲线和进度映射工具，不持有动画或目标对象。
  * 区间裁剪、输出映射与曲线反转各自保持明确的端点策略，调用方负责选择合适的单位和输入域。
  */
+@Layer(LayerId.PLAYBACK)
 internal object Interpolators {
     /**
      * 线性映射，直接返回输入；不会把越界或非有限值限制在零到一。

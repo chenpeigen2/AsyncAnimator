@@ -3,10 +3,11 @@ package com.asyncanimator.seq
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.core.Trace
-import com.asyncanimator.manager.OplusAnimManager
 
 /**
  * Recents 完成防抖窗口，单位毫秒；查询在恰好 500ms 时仍认为处于窗口内。
@@ -32,11 +33,13 @@ private const val KEY_INTERRUPT_TRANSITION_START_ACTIVITY_SEQ_ID =
  * 保存一个最新待完成动作和一个控制器序号配对，多个实例的队列/计数独立，但使用共享时间戳。
  * @param startingSurfaceSupported 查询启动表面能力；关闭时两个时间窗口都直接放行。
  * @param interruptionSupported 查询中断能力；关闭时不分配序号且时间窗口放行，不自动撤销已排队消息。
+ * 默认视为支持中断；工厂层在接线时应注入真实能力查询，本层不再向上依赖 manager。
  */
 @PublicApi
+@Layer(LayerId.SEQ)
 class AnimationSeqHelper @PublicApi constructor(
     private val startingSurfaceSupported: () -> Boolean = { true },
-    private val interruptionSupported: () -> Boolean = { OplusAnimManager.supportInterruption() }
+    private val interruptionSupported: () -> Boolean = { true }
 ) : DefaultAnimationSeqHelper() {
 
     private var seqId = 0L

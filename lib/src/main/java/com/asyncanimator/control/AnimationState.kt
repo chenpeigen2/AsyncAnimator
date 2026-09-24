@@ -1,5 +1,7 @@
 package com.asyncanimator.control
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -9,6 +11,7 @@ import com.asyncanimator.api.PublicApi
  * @property taskbarAlignmentToLauncher 参与对齐时是否朝向桌面端；未参与时应忽略此方向标记。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 enum class AnimationState(
     /** 当前状态是否让任务栏参与位置对齐。 */
     @property:PublicApi

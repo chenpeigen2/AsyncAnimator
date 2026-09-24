@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Looper
 import com.android.launcher3.LauncherAnimationRunner
 import com.asyncanimator.anim.CustomRectFSpringAnim
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -12,6 +14,7 @@ import com.asyncanimator.api.PublicApi
  * 延后启动返回false且不执行action，宿主负责即时启动；子类可以选择性覆盖能力。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 open class DefaultAnimationController {
 
     /**

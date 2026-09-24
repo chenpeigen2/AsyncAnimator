@@ -2,6 +2,8 @@ package com.asyncanimator.anim
 
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.thread.AsyncAnimWrapper
 
@@ -11,6 +13,7 @@ import com.asyncanimator.thread.AsyncAnimWrapper
  * @param supportAnimThread 为 true 时把生命周期命令转发到动画线程；仅设置此标志不能使任意 View 弹簧后台安全。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class AsyncSpringAnim @PublicApi constructor(
     private val real: SpringAnimation,
     private val supportAnimThread: Boolean

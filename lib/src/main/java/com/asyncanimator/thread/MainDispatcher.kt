@@ -2,6 +2,8 @@ package com.asyncanimator.thread
 
 import android.os.Handler
 import android.os.Looper
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.android.asCoroutineDispatcher
 
@@ -10,6 +12,7 @@ import kotlinx.coroutines.android.asCoroutineDispatcher
  * @property handler 主线程 Handler，用于需要同步穿过主线程消息泵的外抛路径
  * @property dispatcher 与 [handler] 绑定的协程调度器，delay 等延时经其排队
  */
+@Layer(LayerId.BASIC)
 internal class MainThreadScheduler(
     val handler: Handler,
     val dispatcher: CoroutineDispatcher

@@ -7,12 +7,15 @@ import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import android.animation.ObjectAnimator as PlatformObjectAnimator
 import android.util.FloatProperty
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 将属性动画、普通子动画及帧/结束回调组装为并行集合，并提供单主时钟回放入口。
  * 构造将总毫秒时长钳制为非负，创建空根集合和Holder列表，安装完成标记监听；不立即启动。
  * 配置/回放应在动画所属线程串行完成，控制器首次创建会快照Holder，因此请先组装再创建。
  */
+@Layer(LayerId.PLAYBACK)
 internal class PendingAnimation(duration: Long) : PropertySetter {
 
     private val anim = AnimatorSet()

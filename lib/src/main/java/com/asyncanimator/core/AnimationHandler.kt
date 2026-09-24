@@ -1,11 +1,15 @@
 package com.asyncanimator.core
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
+
 /**
  * 线程内的动画回调注册表与帧源桥接器。
  * 默认实例按线程隔离；注册、移除、换源和派发应由同一所属线程串行调用。
  * 帧源持续订阅，动画需主动移除回调；本类不替换平台或 AndroidX 动画内部的调度器。
  * @param scheduler 可选的初始帧源，未提供时惰性创建公开 Choreographer 调度器。
  */
+@Layer(LayerId.BASIC)
 internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     /**

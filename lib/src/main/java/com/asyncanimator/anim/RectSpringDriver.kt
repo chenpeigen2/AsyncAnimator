@@ -7,6 +7,8 @@ import androidx.dynamicanimation.animation.FloatValueHolder
 import androidx.dynamicanimation.animation.FrameCallbackScheduler
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.AnimationHandler
 import com.asyncanimator.core.TickScheduler
@@ -20,6 +22,7 @@ import kotlin.math.min
  * 仅currentFrame作为volatile不可变快照供跨线程读取，其他活动运行操作须由所属线程串行调用。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class RectSpringDriver internal constructor(
     startRect: RectF,
     targetRect: RectF,

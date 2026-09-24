@@ -1,6 +1,8 @@
 package com.asyncanimator.control
 
 import android.animation.AnimatorSet
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -8,6 +10,7 @@ import com.asyncanimator.api.PublicApi
  * 控制器只记录实例的开始和结束；工厂方法的调用时机、播放与资源释放由宿主负责。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 interface RemoteAnimationFactory {
 
     /**

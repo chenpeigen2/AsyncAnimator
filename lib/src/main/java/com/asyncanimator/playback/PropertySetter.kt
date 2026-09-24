@@ -2,11 +2,14 @@ package com.asyncanimator.playback
 
 import android.animation.TimeInterpolator
 import android.util.FloatProperty
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 统一表达浮点属性设置请求的接口，可由即时写入或动画组装实现消费。
  * 默认实现直接设置属性，不是吞掉请求；业务代码无需为了是否动画而切换属性描述方式。
  */
+@Layer(LayerId.PLAYBACK)
 internal interface PropertySetter {
 
     /**

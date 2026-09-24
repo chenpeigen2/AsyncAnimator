@@ -4,19 +4,19 @@
 
 `com.asyncanimator.api.PublicApi` 标记本库可公开访问的源码 API，编译时由 KSP 生成 Markdown。此前仅标记 `AsyncValueAnimator` 的 10 项是不完整的示例范围，现已完成整个 `lib/src/main/java` 的公开声明扫描。
 
-当前收录 **30 个源码文件、389 个声明**：47 个类型（含伴生对象）、18 个显式公开构造器、154 个函数、145 个属性和 25 个枚举项。它们不是 389 个互不相关的功能，也不是 JVM 方法数量；重载、属性与类型分别计数。
+当前收录 **31 个源码文件、399 个声明**：48 个类型（含伴生对象）、19 个显式公开构造器、155 个函数、146 个属性和 31 个枚举项。它们不是 399 个互不相关的功能，也不是 JVM 方法数量；重载、属性与类型分别计数。
 
 | 包 | 声明数 | 覆盖内容 |
 |---|---:|---|
-| `com.asyncanimator.anim` | 162 | 动画包装、监听、聚合器、矩形驱动接口、配置及帧快照 |
+| `com.asyncanimator.anim` | 160 | 动画包装、监听、聚合器、矩形驱动接口、配置及帧快照 |
 | `com.asyncanimator.control` | 124 | 控制器及默认实现、场景、状态枚举、远程工厂接口、超时监听 |
 | `com.asyncanimator.manager` | 36 | 本地配置、订阅、快照与管理器公开开关 |
 | `com.asyncanimator.thread` | 23 | 执行器、共享线程入口及公开类型 |
 | `com.asyncanimator.seq` | 21 | 序列助手、默认实现与时间戳 |
 | `com.asyncanimator.core` | 9 | `LogUtils` 与 `Trace` 类型；不包含 internal Trace 操作 |
-| `com.asyncanimator.playback` | 8 | nullable 监听接口及适配器；不包含 internal 播放内核 |
+| `com.asyncanimator.playback` | 10 | 可空监听接口、适配器与实际结束监听入口；不包含 internal 播放内核 |
 | `com.android.launcher3` | 5 | 控制器签名引用的本地目标描述符；不是平台远程动画实现 |
-| `com.asyncanimator.api` | 1 | `PublicApi` 注解自身 |
+| `com.asyncanimator.api` | 11 | `PublicApi` 注解自身及技术分层标记 `@Layer` / `LayerId` |
 
 统计包含**源码显式声明**的公开成员，即使它们是覆盖父类的方法；不展开未重写的继承成员、隐式默认构造器、数据类 `copy` / `componentN` 或 `@JvmOverloads` 额外生成的 JVM 重载。生成成员由所属类型的语言契约与 KDoc 说明，不伪造独立源码标记。
 
@@ -55,6 +55,12 @@ data class AnimationRequest @PublicApi constructor(
 
 处理器未开启完整性选项时仍支持显式选择模式和零项输出，但本库没有使用该模式，不能据此声称漏标是正常行为。
 
+## 技术分层标记
+
+`com.asyncanimator.api.Layer` / `LayerId` 标记每个顶层类型所属的技术分层（L0 基础 `core`/`thread`/launcher3 桩 → L1 `playback` → L2 `anim` → L3 `seq` → L4 `control` → L5 `manager`），注解 `SOURCE` 保留、仅类目标，收录进本文档但不保留进二进制。
+
+库的 KSP 配置同时启用 `layering.requireComplete=true`：源码根内顶层类漏标 `@Layer`、或 `import` 与全限定引用指向更高层（同层互引与向下引用放行，`api` 包全员豁免），都会编译失败。校验实现见 `api-doc-processor` 的 `LayeringRules`，读取到加密源码内容时失败关闭。分层依据与破环记录见 `docs/animation-thread-analysis-v4.md` 的实现注记。
+
 ## 编译与输出
 
 ```powershell
@@ -87,5 +93,7 @@ KSP 原始文件位于 `lib/build/generated/ksp/<variant>/resources/public-api.m
 新增 API 时更新源码、中文 KDoc 及对应测试。完整性检查负责发现未标记声明；`PublicApiDocumentationTest` 另外检查所有模块和公开顶层类型、代表性成员、构造参数属性、枚举、重载及内部实现排除，不能再仅断言“固定 10 项”。
 
 本轮完整性扩充（2026-09-10）已完成生成器 33 项、库 Debug/Release 各 501 项、Demo Debug/Release 各 6 项测试，均无失败、错误或跳过。实际编译验证了新文件/新成员/公开构造参数属性/枚举项漏标，以及已有标记删除的失败路径，补标并恢复后文档为 389 项。42 个原库实现文件经过 Kotlin PSI 语法树词法对比，排除注解、注释、导入排序和可选构造器关键字后实现一致。完整构建 127 个任务执行成功；文档与打包隔离的最终核对见 README。源码注解和文档测试不替代真机帧时序、Perfetto、系统转场或完整 Lint 验证。
+
+技术分层批次（新增 @Layer/LayerId、ActualEndAnimListener 移至 playback、构造注入破环）后：库测试 61 个测试类、517 项用例全绿（含新增注入回归与处理器分层校验用例），生成器 46 项测试通过；负向控制（anim 上探 manager 的探测文件）确认编译期拦截生效。文档为 399 项，仅通过成功构建重新生成。真机帧时序、Perfetto 与完整 Lint 仍属未验证范围。
 
 Release AAR 打包此前因离线缺少 `intellij-core` / `kotlin-compiler` 31.9.0、联网下载反复重试而未完成；没有关闭注解提取或 Lint 来绕过。本轮不将该历史阻塞状态改写为已通过。

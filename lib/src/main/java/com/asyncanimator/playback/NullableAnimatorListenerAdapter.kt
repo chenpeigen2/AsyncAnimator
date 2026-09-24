@@ -2,6 +2,8 @@ package com.asyncanimator.playback
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -9,6 +11,7 @@ import com.asyncanimator.api.PublicApi
  * 提供粘性的取消标记和供内部派发器写入的动画标识；本类不负责线程切换。
  */
 @PublicApi
+@Layer(LayerId.PLAYBACK)
 open class NullableAnimatorListenerAdapter : AnimatorListenerAdapter(), NullableAnimatorListener {
 
     /**

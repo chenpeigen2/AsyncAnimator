@@ -7,6 +7,8 @@ import android.animation.ValueAnimator
 import android.os.Looper
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.playback.NullableAnimatorListener
@@ -19,6 +21,7 @@ import com.asyncanimator.thread.Executors
  * 公开操作和聚合状态属于主线程，异步集合运行操作经onAnimThread投递；后台值消费者只能依赖明确发布的取消信号。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class MultiAnimatorSet internal constructor(
     /** 聚合器的动画场景分类，供矩形通道及诊断使用；构造后保持不变。 */
     @property:PublicApi

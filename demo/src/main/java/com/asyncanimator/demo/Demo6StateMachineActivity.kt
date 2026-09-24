@@ -44,7 +44,8 @@ class Demo6StateMachineActivity : DemoBaseActivity() {
     private lateinit var stateLabel: TextView
     private lateinit var timeoutLabel: TextView
     private lateinit var listenerLabel: TextView
-    private val controller = AnimationController()
+    // 演示页直造控制器（不经工厂）：完成策略显式放行，保持与旧版默认读取序列窗口一致的可视行为。
+    private val controller = AnimationController(canFinishRecent = { true })
     private val recentsHandle = CustomRectFSpringAnim(CustomRectFSpringAnim.AnimType.SWIPE_TO_HOME)
     private val launchFactory = object : RemoteAnimationFactory {
         override fun createAnimation() = AnimatorSet() // This demo registers lifecycle identity only.

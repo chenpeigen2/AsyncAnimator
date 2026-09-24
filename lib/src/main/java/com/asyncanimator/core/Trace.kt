@@ -1,5 +1,7 @@
 package com.asyncanimator.core
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -7,6 +9,7 @@ import com.asyncanimator.api.PublicApi
  * 不是平台 Trace 或 Perfetto 接口，不能据此推断系统绘制或屏幕呈现时序。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 object Trace {
 
     /**

@@ -2,6 +2,8 @@ package com.asyncanimator.thread
 
 import android.os.HandlerThread
 import android.os.Process
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.AnimationHandler
 import com.asyncanimator.core.ChoreographerTickScheduler
@@ -12,6 +14,7 @@ import com.asyncanimator.core.ChoreographerTickScheduler
  * 只安装本库的线程内帧源，不替换平台或 AndroidX 动画内部调度，View 操作仍须遵守主线程约束。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 class AnimationControlThread private constructor() : HandlerThread(THREAD_NAME, PRIORITY) {
 
     /**

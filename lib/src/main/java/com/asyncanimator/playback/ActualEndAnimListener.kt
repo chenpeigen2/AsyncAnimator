@@ -1,15 +1,18 @@
-package com.asyncanimator.anim
+package com.asyncanimator.playback
 
 import android.animation.Animator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
-import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 
 /**
  * 在普通动画监听器上增加实际结束通知入口，用于区分业务逻辑结束与底层驱动完成。
  * 只有派发方显式调用该入口才会收到事件；普通 onAnimationEnd 不会自动转换成实际结束。
  * 经 AsyncAnimCallbacks 派发时通知回到主线程，直接调用时仍由调用方决定线程。
+ * 本类型位于 playback 播放原语层，anim 驱动层与 playback 成功监听均依赖它，不再反向依赖 anim。
  */
 @PublicApi
+@Layer(LayerId.PLAYBACK)
 open class ActualEndAnimListener : NullableAnimatorListenerAdapter() {
 
     /**

@@ -1,6 +1,8 @@
 package com.asyncanimator.anim
 
 import androidx.dynamicanimation.animation.SpringForce
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
@@ -10,6 +12,7 @@ import kotlin.math.sqrt
  * 用于预览弹簧状态的无副作用解析计算器。
  * 求解相对目标位置的阻尼振子方程；实际播放仍由 AndroidX SpringAnimation 负责调度和结束判断。
  */
+@Layer(LayerId.ANIM)
 internal object SpringProjection {
     /**
      * 根据当前位移、速度和 SpringForce 参数，解析预测给定毫秒后的位置与速度。

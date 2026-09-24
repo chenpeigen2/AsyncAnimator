@@ -5,6 +5,8 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.Message
 import android.os.Process
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import java.util.concurrent.TimeUnit
 
@@ -14,6 +16,7 @@ import java.util.concurrent.TimeUnit
  * @param handler 目标 Handler；为 null 时三个任务入口均退化为调用线程就地执行。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 class LooperExecutor internal constructor(private val handler: Handler?) {
 
     /**

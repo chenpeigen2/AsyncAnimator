@@ -3,6 +3,8 @@ package com.asyncanimator.anim
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.graphics.RectF
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.thread.LooperExecutor
 
@@ -12,6 +14,7 @@ import com.asyncanimator.thread.LooperExecutor
  * 无驱动时仅用于控制器登记，播放必须提供真实驱动；六轴几何可使用RectSpringDriver，本类不负责远程窗口或SurfaceControl事务。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class CustomRectFSpringAnim internal constructor(
     internal var animType: AnimType,
     internal val driver: Driver?,

@@ -1,5 +1,7 @@
 package com.asyncanimator.control
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 import com.asyncanimator.thread.MainThreadScheduler
@@ -20,6 +22,7 @@ import kotlinx.coroutines.launch
  * 不校验duration的正负，调度行为委托协程延迟；释放不等待已开始的动作，异常不被静默吞掉。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 class TaskStateChangeTimeOutListener internal constructor(
     private val type: Type,
     duration: Long,

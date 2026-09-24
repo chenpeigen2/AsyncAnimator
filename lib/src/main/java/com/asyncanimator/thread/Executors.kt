@@ -2,6 +2,8 @@ package com.asyncanimator.thread
 
 import android.os.Handler
 import android.os.Looper
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -9,6 +11,7 @@ import com.asyncanimator.api.PublicApi
  * 主线程执行器初始化不启动动画线程；动画执行器只在首次访问时以同步惰性方式创建。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 object Executors {
 
     /**

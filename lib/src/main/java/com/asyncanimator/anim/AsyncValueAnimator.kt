@@ -3,6 +3,8 @@ package com.asyncanimator.anim
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.thread.Executors
@@ -15,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 只保证这些生命周期入口的调度，不使继承的所有属性方法线程安全；业务结束通知为一次性。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 class AsyncValueAnimator : ValueAnimator() {
 
     private val lifecycleLock = Any()

@@ -1,5 +1,7 @@
 package com.asyncanimator.manager
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.control.AnimationController
 import com.asyncanimator.control.DefaultAnimationController
@@ -10,9 +12,11 @@ import com.asyncanimator.seq.DefaultAnimationSeqHelper
 /**
  * 根据本地开关提供转场控制器与序列协调器的进程内工厂。
  * 首次对象初始化时创建实际实现，关闭后读取返回新的降级实例，再启用时创建新的实际实现。
+ * 负责在接线时向控制器与序列 helper 注入彼此的协作回调，使工厂层始终位于依赖图顶端。
  * 配置容器的数据变更不会自动切换或重建本工厂，类型名称与现有调用接口保持不变。
  */
 @PublicApi
+@Layer(LayerId.MANAGER)
 object OplusAnimManager {
 
     @Volatile
@@ -22,13 +26,30 @@ object OplusAnimManager {
 
     /**
      * 在单例对象首次初始化时按能力声明建立控制器和序列实例，不是每个 getter 各自惰性构造。
+     * 接线时把序列完成策略与清理回调注入控制器，把能力查询注入序列 helper，保持依赖单向向下。
      */
     init {
         if (supportInterruption()) {
-            animationControllerImpl = AnimationController()
-            animationSeqHelperImpl = AnimationSeqHelper()
+            animationControllerImpl = createAnimationController()
+            animationSeqHelperImpl = createAnimationSeqHelper()
         }
     }
+
+    /**
+     * 创建接线完成的实际控制器：完成策略与清理回调都指向当前序列 helper，读取发生在调用时而不是构造时。
+     * 初始化与开关恢复两个构造点共用本方法，避免接线代码漂移。
+     */
+    private fun createAnimationController() = AnimationController(
+        canFinishRecent = { animationSeqHelper.canFinishRecent },
+        onClearFinishRecents = { animationSeqHelper.clearFinishRecentsRunnable() }
+    )
+
+    /**
+     * 创建注入真实能力查询的实际序列 helper；能力声明来自本工厂而不是 helper 自身。
+     */
+    private fun createAnimationSeqHelper() = AnimationSeqHelper(
+        interruptionSupported = { supportInterruption() }
+    )
 
     /**
      * 返回本库声明的中断能力占位值，当前固定为 true。
@@ -76,8 +97,12 @@ object OplusAnimManager {
         set(enabled) {
             checkControllerMainThread()
             if (enabled) {
-                if (animationControllerImpl == null) animationControllerImpl = AnimationController()
-                if (animationSeqHelperImpl == null) animationSeqHelperImpl = AnimationSeqHelper()
+                if (animationControllerImpl == null) {
+                    animationControllerImpl = createAnimationController()
+                }
+                if (animationSeqHelperImpl == null) {
+                    animationSeqHelperImpl = createAnimationSeqHelper()
+                }
             } else {
                 val oldController = animationControllerImpl
                 val oldSeq = animationSeqHelperImpl

@@ -1,5 +1,7 @@
 package com.asyncanimator.control
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -11,6 +13,7 @@ import com.asyncanimator.api.PublicApi
  * @property largeDisplayInLargeMode 是否处于大屏的大显示模式，默认 false；为 true 时排除特殊退出场景。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 data class AppExitScene @PublicApi constructor(
     /** 是否使用三键导航，参与退出场景的联合条件判断。 */
     @property:PublicApi
@@ -38,6 +41,7 @@ data class AppExitScene @PublicApi constructor(
  * @property topActivityPackage 顶层 Activity 包名，仅在基础包名为 null 时作为回退值。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 data class GestureScene @PublicApi constructor(
     /** 当前手势是否发生于横屏。 */
     @property:PublicApi

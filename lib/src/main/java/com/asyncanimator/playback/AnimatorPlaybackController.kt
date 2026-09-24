@@ -5,6 +5,8 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 全局进度到子动画原始fraction的映射函数，第二参数为子时长占总时长的比例。
@@ -26,6 +28,7 @@ private val DEFAULT_PROGRESS_MAPPER: ProgressMapper = { f, g ->
  * 构造保存根动画/总毫秒时长，复制Holder列表为数组，安装主时钟更新/结束监听和根生命周期跟踪监听。
  * 调用方应提供非负总时长并在动画所属线程串行操作；根及Holder不克隆，后续新增列表项不会进入已有控制器。
  */
+@Layer(LayerId.PLAYBACK)
 internal class AnimatorPlaybackController(
     anim: Animator,
     private val duration: Long,

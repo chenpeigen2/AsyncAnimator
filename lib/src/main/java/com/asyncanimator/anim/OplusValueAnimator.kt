@@ -6,6 +6,8 @@ import android.animation.ValueAnimator
 import android.animation.PropertyValuesHolder
 import android.util.FloatProperty
 import android.view.animation.LinearInterpolator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.playback.PendingAnimation
 import com.asyncanimator.core.Trace
 import com.asyncanimator.core.LogUtils
@@ -21,6 +23,7 @@ internal typealias ValueApplicator = (value: Any?) -> Unit
  * 主构造保存参数及可空控制器，初始化浮点端点、正时长和可选插值器，并安装读取当前applicator的更新监听。
  * 有控制器时由其写fraction推进包装动画求值；本类不提供线程投递，参数及目标绑定应由动画所属线程维护。
  */
+@Layer(LayerId.ANIM)
 internal class OplusValueAnimator<T>(
     val param: AnimParam,
     private val timeController: TimeControllerObjectAnimator?

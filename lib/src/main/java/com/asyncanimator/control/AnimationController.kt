@@ -7,9 +7,10 @@ import android.os.Looper
 import android.os.SystemClock
 import com.android.launcher3.LauncherAnimationRunner
 import com.asyncanimator.anim.CustomRectFSpringAnim
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
-import com.asyncanimator.manager.OplusAnimManager
 
 private const val RELEASE_TOUCH_DELAY = 600L
 private const val APP_TO_OVERVIEW_CONTINUATION_TIME_OUT_DURATION = 100L
@@ -20,17 +21,21 @@ private const val SEARCH_INTENT_SOURCE = "drawer_search"
 
 /**
  * 主线程转场状态机，登记最近任务/打开动画，管理三个独立超时场景及延后启动决策。
- * 构造可注入平板判定、真实概览续行状态及最近任务完成策略；默认平板判定读取Context的最小宽度是否达到600dp。
+ * 构造可注入平板判定、真实概览续行状态、最近任务完成策略与完成清理回调；
+ * 默认平板判定读取Context的最小宽度是否达到600dp，完成策略默认保守不放行，完成清理默认无操作。
+ * 工厂层（manager）接线时应注入真实的序列协调查询与清理，本层不再向上依赖 manager。
  * 状态与直接回调由主线程维护，运行期查询也应在主线程；这是调度/策略控制，不代替远程窗口或几何驱动。
  * 未覆盖的基类入口仍是空实现，不能据接口名称推断已有平台集成。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 class AnimationController @PublicApi constructor(
     private val isTablet: (Any?) -> Boolean = { context ->
         (context as? Context)?.resources?.configuration?.smallestScreenWidthDp?.let { it >= 600 } ?: false
     },
     private val isOverviewContinuationRunning: (() -> Boolean)? = null,
-    private val canFinishRecent: () -> Boolean = { OplusAnimManager.animationSeqHelper.canFinishRecent }
+    private val canFinishRecent: () -> Boolean = { false },
+    private val onClearFinishRecents: () -> Unit = {}
 ) : DefaultAnimationController() {
 
     /**
@@ -277,7 +282,7 @@ class AnimationController @PublicApi constructor(
             }
         } else {
 
-            OplusAnimManager.animationSeqHelper.clearFinishRecentsRunnable()
+            onClearFinishRecents()
             armTouchGate()
             factory?.let { appLaunchAnims.add(it) }
             when (animState) {

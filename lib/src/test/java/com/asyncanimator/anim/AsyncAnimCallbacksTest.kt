@@ -5,6 +5,7 @@ import android.animation.ValueAnimator
 import android.os.Looper
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.LooperMode
+import com.asyncanimator.playback.ActualEndAnimListener
 import com.asyncanimator.playback.NullableAnimatorListener
 import com.asyncanimator.playback.NullableAnimatorListenerAdapter
 import org.junit.Assert.*

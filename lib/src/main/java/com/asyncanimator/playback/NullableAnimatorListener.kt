@@ -1,6 +1,8 @@
 package com.asyncanimator.playback
 
 import android.animation.Animator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -8,6 +10,7 @@ import com.asyncanimator.api.PublicApi
  * 类型名称不改变参数的空值约束；需要取消标记或线程转发时应使用对应适配器或派发器。
  */
 @PublicApi
+@Layer(LayerId.PLAYBACK)
 interface NullableAnimatorListener {
     /**
      * 接收指定动画的取消通知，默认不执行任何动作。

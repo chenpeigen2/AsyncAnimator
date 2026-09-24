@@ -20,7 +20,10 @@ import org.robolectric.annotation.LooperMode
 @Config(sdk = [36], manifest = Config.NONE)
 @LooperMode(LooperMode.Mode.PAUSED)
 class ControllerStateMatrixTest {
-    private val c = AnimationController(canFinishRecent = { true })
+    private val c = AnimationController(
+        canFinishRecent = { true },
+        onClearFinishRecents = { OplusAnimManager.animationSeqHelper.clearFinishRecentsRunnable() }
+    )
     private var wasEnabled = true
     private fun factory() = object : RemoteAnimationFactory {
         override fun createAnimation() = AnimatorSet()

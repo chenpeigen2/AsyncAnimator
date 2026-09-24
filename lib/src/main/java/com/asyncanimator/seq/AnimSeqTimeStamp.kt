@@ -1,6 +1,8 @@
 package com.asyncanimator.seq
 
 import android.os.SystemClock
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.LogUtils
 
@@ -10,6 +12,7 @@ import com.asyncanimator.core.LogUtils
  * 连续读取多个 gap 不构成跨字段原子快照，也不自动与其他进程同步。
  */
 @PublicApi
+@Layer(LayerId.SEQ)
 object AnimSeqTimeStamp {
 
     @Volatile

@@ -1,5 +1,7 @@
 package com.asyncanimator.control
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -7,6 +9,7 @@ import com.asyncanimator.api.PublicApi
  * 监听器接收非空的旧/新状态及可空任务上下文；实例身份和生命周期由注册方管理。
  */
 @PublicApi
+@Layer(LayerId.CONTROL)
 fun interface OnAnimStateChangeListener {
 
     /**

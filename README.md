@@ -52,7 +52,7 @@ AsyncAnimator/
 
 ## 对外 API 注解与自动文档
 
-使用 `@PublicApi` 显式标记对外声明，编译时由 KSP 收集签名及中文 KDoc。当前覆盖 **30 个源码文件、389 个公开声明**，不再限于最初的 10 项示例。全库扫描会拒绝新增公开 API 漏标，类型上的标记不自动替成员补标；误标非公开声明或缺少中文注释也会导致生成失败。
+使用 `@PublicApi` 显式标记对外声明，编译时由 KSP 收集签名及中文 KDoc。当前覆盖 **31 个源码文件、399 个公开声明**，不再限于最初的 10 项示例。全库扫描会拒绝新增公开 API 漏标，类型上的标记不自动替成员补标；误标非公开声明或缺少中文注释也会导致生成失败。同模块的 `@Layer(LayerId.X)` 标记每个顶层类型的技术分层，漏标或向上 import/全限定引用由 `layering.requireComplete` 编译期强制。
 
 ```powershell
 .\gradlew.bat :lib:generatePublicApiDocs

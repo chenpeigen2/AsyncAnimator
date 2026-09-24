@@ -3,11 +3,14 @@ package com.asyncanimator.playback
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 按不同收尾协议创建平台动画监听器的工厂。
  * 无参数结束回调、一次性布尔结果和未取消成功回调语义不同，调用方应按业务需求选用。
  */
+@Layer(LayerId.PLAYBACK)
 internal object AnimatorListeners {
 
     /**

@@ -1,5 +1,7 @@
 package com.android.launcher3
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -7,6 +9,7 @@ import com.asyncanimator.api.PublicApi
  * 保留现有包名和嵌套类型供控制器签名使用，不提供 Binder 通道、系统窗口事务或平台目标数组适配。
  */
 @PublicApi
+@Layer(LayerId.BASIC)
 abstract class LauncherAnimationRunner {
 
     /**

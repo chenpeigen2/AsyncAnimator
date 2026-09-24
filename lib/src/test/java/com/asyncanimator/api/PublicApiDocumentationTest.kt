@@ -27,7 +27,7 @@ class PublicApiDocumentationTest {
     fun testEveryPublicModuleAndTopLevelTypeIsDocumented() {
         val modules = mapOf(
             "anim" to listOf(
-                "ActualEndAnimListener", "AsyncAnimCallbacks", "AsyncSpringAnim", "AsyncValueAnimator",
+                "AsyncAnimCallbacks", "AsyncSpringAnim", "AsyncValueAnimator",
                 "CustomRectFSpringAnim", "MultiAnimatorSet", "RectSpringConfig", "RectSpringValues",
                 "RectSpringFrame", "RectSpringDriver"
             ),
@@ -38,10 +38,12 @@ class PublicApiDocumentationTest {
             ),
             "core" to listOf("LogUtils", "Trace"),
             "manager" to listOf("AnimationFeatureHelper", "OplusAnimManager"),
-            "playback" to listOf("NullableAnimatorListener", "NullableAnimatorListenerAdapter"),
+            "playback" to listOf(
+                "ActualEndAnimListener", "NullableAnimatorListener", "NullableAnimatorListenerAdapter"
+            ),
             "seq" to listOf("AnimationSeqHelper", "AnimSeqTimeStamp", "DefaultAnimationSeqHelper"),
             "thread" to listOf("AnimationControlThread", "AsyncAnimWrapper", "Executors", "LooperExecutor"),
-            "api" to listOf("PublicApi")
+            "api" to listOf("Layer", "LayerId", "PublicApi")
         )
         val names = names().toSet()
         for ((module, types) in modules) {

@@ -1,13 +1,15 @@
 package com.asyncanimator.playback
 
 import android.animation.Animator
-import com.asyncanimator.anim.ActualEndAnimListener
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 
 /**
  * 把未取消的逻辑结束转换为成功通知的监听基类，并保留实际结束入口。
  * 父类取消标记不会因再次开始自动复位，因此监听器复用需明确管理状态。
  * 成功仅表示未取消，不代表达到特定进度阈值，也不自动发出实际结束事件。
  */
+@Layer(LayerId.PLAYBACK)
 internal abstract class AnimationSuccessListener : ActualEndAnimListener() {
 
     /**

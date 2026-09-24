@@ -5,6 +5,8 @@ import com.google.devtools.ksp.symbol.*;
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 import kotlin.KotlinVersion;
 import org.junit.Test;
@@ -45,17 +47,56 @@ public class PublicApiProcessorTest {
             Map.of("publicApi.sourceRoot", ROOT.toString(), "publicApi.requireComplete", Boolean.toString(requireComplete)), new KotlinVersion(2, 0, 21), generator, logger));
     }
 
+    /** 同时覆盖分层校验开关与独立源码根，用于校验技术分层的接线行为。 */
+    private PublicApiProcessor processor(boolean requireComplete, boolean layering, Path sourceRoot) {
+        KSPLogger logger = (KSPLogger) Proxy.newProxyInstance(KSPLogger.class.getClassLoader(),
+            new Class<?>[]{KSPLogger.class}, (self, method, args) -> {
+                if (method.getName().equals("error")) errors.add((String) args[0]);
+                return null;
+            });
+        CodeGenerator generator = (CodeGenerator) Proxy.newProxyInstance(CodeGenerator.class.getClassLoader(),
+            new Class<?>[]{CodeGenerator.class}, (self, method, args) -> null);
+        return new PublicApiProcessor(new SymbolProcessorEnvironment(
+            Map.of("publicApi.sourceRoot", sourceRoot.toString(),
+                "publicApi.requireComplete", Boolean.toString(requireComplete),
+                "layering.requireComplete", Boolean.toString(layering)),
+            new KotlinVersion(2, 0, 21), generator, logger));
+    }
+
     /** 返回当前轮已解析的显式标记，并确认处理器使用注解限定名而非简单名字匹配。 */
     private Resolver resolver(KSAnnotated... symbols) {
+        return resolver(file(), symbols);
+    }
+
+    /** 使用指定源码文件替身枚举全部文件，分层违规诊断依赖真实文件路径。 */
+    private Resolver resolver(KSFile allFiles, KSAnnotated... symbols) {
         return (Resolver) Proxy.newProxyInstance(Resolver.class.getClassLoader(), new Class<?>[]{Resolver.class},
             (self, method, args) -> switch (method.getName()) {
-                case "getAllFiles" -> sequence(List.of(file()));
+                case "getAllFiles" -> sequence(List.of(allFiles));
                 case "getSymbolsWithAnnotation" -> {
                     assertEquals(PublicApiProcessor.ANNOTATION, args[0]);
                     yield sequence(List.of(symbols));
                 }
                 default -> null;
             });
+    }
+
+    /** 分层违规通过处理器诊断上报并阻止文档输出，与公开 API 漏标的接线保持一致。 */
+    @Test public void layeringViolationIsReportedAndBlocksDocumentation() throws Exception {
+        Path root = Files.createTempDirectory("layering-processor");
+        Path source = root.resolve("Playback.kt");
+        Files.writeString(source,
+            "package com.asyncanimator.playback\n\nimport com.asyncanimator.anim.AsyncValueAnimator\n");
+        KSFile file = proxy(KSFile.class, Map.of(
+            "getFilePath", source.toString(),
+            "getPackageName", name("com.asyncanimator.playback"),
+            "getDeclarations", sequence(List.of())));
+        PublicApiProcessor processor = processor(false, true, root);
+        processor.process(resolver(file));
+        processor.finish();
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0).contains("技术分层违规"));
+        assertEquals(0, writes);
     }
 
     /** 跨轮重复符号不会重复输出，重载与中文说明都保留。 */

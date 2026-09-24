@@ -1,5 +1,7 @@
 package com.asyncanimator.anim
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 
 /**
@@ -10,6 +12,7 @@ import com.asyncanimator.api.PublicApi
  * 数据类copy保留未指定字段并重新执行构造校验；配置本身不订阅帧、不修改运行中的驱动。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 data class RectSpringConfig @PublicApi constructor(
     /** 中心 X 坐标轴的不可变弹簧参数；坐标单位与输入矩形一致。 */
     @property:PublicApi
@@ -141,6 +144,7 @@ data class RectSpringConfig @PublicApi constructor(
  * copy生成新值对象，未指定分量保持不变；尺寸速度必须与当前宽/高模式配套。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 data class RectSpringValues @PublicApi constructor(
     /** 中心 X 位置或其速度分量；速度快照采用每秒单位，默认零。 */
     @property:PublicApi
@@ -181,6 +185,7 @@ data class RectSpringValues @PublicApi constructor(
  * copy保留未指定字段，嵌套值对象不可变；与可变RectF的边界通过rect属性的防御性创建隔离。
  */
 @PublicApi
+@Layer(LayerId.ANIM)
 data class RectSpringFrame @PublicApi constructor(
     /** 本帧还原后的矩形左边界；与输入矩形使用同一坐标单位。 */
     @property:PublicApi

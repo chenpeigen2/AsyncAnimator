@@ -1,9 +1,13 @@
 package com.asyncanimator.core
 
+import com.asyncanimator.api.Layer
+import com.asyncanimator.api.LayerId
+
 /**
  * 持续订阅式帧调度契约，隔离动画内核与具体时钟实现。
  * 公开 Choreographer 实现可用于运行，受控实现可用于 JVM 测试；不提供跨线程 View 写入能力。
  */
+@Layer(LayerId.BASIC)
 internal interface TickScheduler {
 
     /**
