@@ -408,6 +408,7 @@ class RectSpringDriver internal constructor(
      */
     private fun tick(run: Run) {
         check(run.isCurrentThread())
+        PerfMonitor.recordFrame(PerfMonitor.Channels.RECT_SPRING, SystemClock.uptimeMillis() * 1_000_000L)
         if (run.stop != null) {
             if (run.stop == Stop.END) {
                 run.axes.forEach {

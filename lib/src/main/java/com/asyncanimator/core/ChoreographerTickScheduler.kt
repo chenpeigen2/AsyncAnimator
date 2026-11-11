@@ -122,6 +122,7 @@ internal class ChoreographerTickScheduler : TickScheduler {
      * 业务回调不持有状态锁，允许重入和其他线程注册；逐项记录异常堆栈，不中断其余派发。
      */
     private fun tick(frameTimeNanos: Long) {
+        PerfMonitor.recordFrame(PerfMonitor.Channels.CHOREOGRAPHER_TICK, frameTimeNanos)
         frameCountAtomic.incrementAndGet()
         frameTimeNanosAtomic.set(frameTimeNanos)
 

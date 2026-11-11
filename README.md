@@ -7,7 +7,7 @@
 ## 当前状态
 
 - **39/39 份 review 已按顺序验收**：适用建议已实现并验证，其余逐项说明不采纳或保留的理由。完成的是本地建议验收，不是完整 OPPO 系统移植。
-- **68 个测试类、575 个独立用例**：库 519 + Demo 7 + API 生成器 49；其中既有 572 项有通过记录，新增的 3 项因依赖下载阻塞尚未重跑。
+- **69 个测试类、582 个独立用例**：库 526 + Demo 7 + API 生成器 49；其中既有 572 项有通过记录，新增的 10 项因依赖下载阻塞尚未重跑。
 - **12 个 Demo 页面**：区分真实库接线和 Canvas 概念演示，不把动画计算间隔当屏幕呈现 FPS。
 - **未验证范围仍保留**：设备/Perfetto、干净 SDK 环境复现及 release 压缩/签名；Lint 因缺少离线依赖未完成；本次 Release AAR 验证同样受依赖下载阻塞。
 
@@ -196,10 +196,10 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 | 范围 | 测试类 | 独立用例 | 验证结果 |
 |---|---:|---:|---|
-| lib | 61 | 519 | 已有 Debug/Release 各 517 通过；新增弹簧注销与平台 Trace 用例待重跑 |
+| lib | 62 | 526 | 已有 Debug/Release 各 517 通过；新增 9 项待重跑 |
 | demo | 2 | 7 | 既有 6 项通过；新增 Demo 10 生命周期用例待重跑 |
 | api-doc-processor | 5 | 49 | 已有 JVM 测试全部通过，0 失败/错误/跳过 |
-| 合计 | 68 | 575 | 572 项有通过记录，3 项待重跑；不按构建变体翻倍 |
+| 合计 | 69 | 582 | 572 项有通过记录，10 项待重跑；不按构建变体翻倍 |
 
 本次 Demo Debug APK 构建成功，**127/127 个 Gradle 任务执行，耗时 15 分 43 秒**；已解包确认不包含 API Markdown 或 KSP 处理器。文档生成命令另经两次执行验证，第二次复用配置缓存。API 功能验证见[说明](docs/public-api.md)，本地忽略日志为 `.gradle/api-coverage-final-build.log`，不随仓库分发。此前[逐类补测清单](docs/testing/2026-09-10-lib-class-test-plan.md)与 39 份 review 保留为独立历史证据。
 
@@ -216,7 +216,7 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 ### 逐类测试覆盖明细
 
-库当前共有 **61 个测试类、519 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
+库当前共有 **62 个测试类、526 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
 
 <details>
 <summary>展开库测试类、用例数与覆盖内容</summary>
@@ -255,6 +255,7 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 | `TaskStateEventTest` | 3 | 公开事件桥、timer 去重、dispose/no-op、Demo6 真实状态链 |
 | `ControllerThreadContractTest` | 6 | 主线程入口、callback/observer、owned timeout 与 standalone/no-op 边界 |
 | `FeatureSnapshotTest` | 6 | 不可变列表、旧快照隔离、兼容更新竞态、复制失败不留半批配置 |
+| `PerfMonitorTest` | 7 | 开关早退、通道独立、平均/最大间隔、快照只读、中途开关、重置与 dump 输出、帧源挂钩 |
 | `TraceLogTest` | 13 | 变体门控、ThreadLocal栈、实际交付与ID/type、平台后端配对/名称截断、嵌套/Error收尾及中途切换日志策略 |
 | `AsyncValueAnimatorLifecycleTest` | 11 | 最终释放、排队/重入异常清理、executor绑定、native/业务监听隔离与one-shot |
 | `ManagerBootstrapTest` | 1 | 八路冷首访共享同一 Controller/Seq 实现 |
@@ -294,11 +295,12 @@ API 生成器有 5 个测试类、49 个用例：`ApiSignaturesTest`（12 项）
 
 测试数不是行覆盖率或分支覆盖率；仓库没有配置覆盖率阈值，本轮也未运行覆盖率工具。库/Demo 的 XML 与 HTML 报告分别位于各模块的 `build/test-results/test{Debug,Release}UnitTest/` 和 `build/reports/tests/test{Debug,Release}UnitTest/`。
 
-Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 519 个用例中，不额外累计。
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 526 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 
 - **系统能力未接入**：`LauncherAnimationRunner.RemoteAnimationTarget` 只有 `taskId` 和 `Any? leash` 类型壳，没有 RemoteAnimation Binder 通道或 `SurfaceControl.Transaction` 链路。舞台中的“窗口/leash”是 Canvas 绘制对象。
+- **可选帧性能统计**：`PerfMonitor` 可开关，关闭时每帧只有一次 volatile 读取的早退成本；开启后按通道记录帧间隔统计并可 dump，不改变调度语义。
 - **平台 Trace 与本地日志分轨**：`LogUtils` 默认 Debug 开启、Release 关闭；Trace 在同线程闭合 `android.os.Trace` 区段，并保留 stderr／Demo 日志。平台区段可供 Perfetto 采集，但仓库尚未完成真机抓包验证，stderr 行本身不是 Perfetto 数据。
 - **公开适配与内部实现应区分**：`CustomRectFSpringAnim` 已有固定线程归属、逻辑/实际结束和可选重定向协议；可选 `RectSpringDriver` 已提供六轴 AndroidX 物理、几何、预测和速度接续；Animator adapter 仍是外部几何适配。未复制 OEM 隐藏物理/窗口引擎；`PendingAnimation`、`AnimatorPlaybackController`、`OplusValueAnimator` 等标记为 `internal`，不是供 `demo` 跨模块直接调用的公开 API。
 - **续行动画仍是简化实现**：`TimeControllerObjectAnimator` 的 target/property 已真实接线，续行复制独立值快照并能输出到 applicator；不等于完整的原厂速度接力协议。Demo 5 仍走舞台自己的动画，没有调用该 internal 实现，也不验证速度连续性。

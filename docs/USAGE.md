@@ -477,7 +477,21 @@ object : NullableAnimatorListenerAdapter() {
 
 Trace 的操作是 lib internal 的线程局部诊断段，同时写入 `android.os.Trace` 和 stderr；平台区段可由 Perfetto 采集，但当前尚未完成真机抓包验证。DemoBaseActivity 继续重定向 System.err 到日志区。AsyncAnimCallbacks 的段覆盖主线程实际 listener 派发，begin/end 同线程且 finally 收尾；ThreadLocal 不支持跨线程 end 关闭另一线程的 begin，平台名称按 127 字符限制截断。
 
-公开 `LogUtils` 提供 i/isLogOpen/isAlwayson/setLogLevel：默认 Debug=INFO、Release=OFF；OFF/INFO/ALWAYS 为本库本地等级，不是 OEM RUS 配置。输出携带实际线程名与分类。Trace 的 stderr 使用开始时的门控值，关日志后会闭合已经开始输出的段，但不输出新的 stderr 段；平台 Trace 不受该日志等级门控。需要更详细诊断时显式 `LogUtils.setLogLevel(LogUtils.ALWAYS)`，结束后恢复等级；昂贵字符串应先检查 isLogOpen，因为 Kotlin 字符串插值并非自动惰性执行。
+公开 `LogUtils` 提供 i/isLogOpen/isAlwayson/setLogLevel：默认 Debug=INFO、Release=OFF；OFF/INFO/ALWAYS 为本库本地等级，不是 OEM RUS 配置。输出携带实际线程名与分类。Trace 的 stderr 使用开始时的门控值，关日志后会闭合已经开始输出的段，但不输出新的 stderr 段；平台 Trace 不受该日志等级门控。
+
+### PerfMonitor — 可选帧性能统计
+
+`PerfMonitor` 是独立的诊断开关，与 `LogUtils` 等级互不干扰：
+
+```kotlin
+PerfMonitor.setEnabled(true)  // 之后三条帧路径开始记录：animation-handler / choreographer-tick / rect-spring
+// ... 运行一段时间后
+val stats = PerfMonitor.snapshot()  // Map<String, FrameStatsSnapshot>：count/avgGapNanos/maxGapNanos/lastNanos
+if (LogUtils.isLogOpen()) PerfMonitor.dump()  // 每通道一行，调用方先承担开关判断，避免无谓格式化
+PerfMonitor.reset()  // 清空通道，开关状态不变
+```
+
+关闭（默认）时 `recordFrame` 只做一次 volatile 读取后立即返回，不分配对象、不做字符串格式化，对每帧热路径的开销可忽略；开启后统计写入使用原子量，不获取帧调度锁，因此不会改变调度时序语义。统计是纯 JVM 内聚合，不接入 Perfetto；需要平台层证据时仍以 `Trace` 区段加设备抓包为准。需要更详细诊断时显式 `LogUtils.setLogLevel(LogUtils.ALWAYS)`，结束后恢复等级；昂贵字符串应先检查 isLogOpen，因为 Kotlin 字符串插值并非自动惰性执行。
 
 ---
 

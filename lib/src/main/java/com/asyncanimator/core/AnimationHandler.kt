@@ -89,6 +89,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
      * 列表清空后仅退订本实例的帧入口，不停止共享帧源中的其他订阅者。
      */
     private fun onTick(frameTimeNanos: Long) {
+        PerfMonitor.recordFrame(PerfMonitor.Channels.ANIMATION_HANDLER, frameTimeNanos)
         val frameTimeMs = frameTimeNanos / 1_000_000L
         doAnimationFrame(frameTimeMs)
         cleanUpList()
