@@ -3,8 +3,9 @@
 agp = "8.9.0"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.28"
-# 与 Kotlin 2.0.21 同期的协程版本，仅用于主线程调度场景
-kotlinxCoroutines = "1.9.0"
+# 与 Kotlin 2.0.21 元数据兼容的最新协程版本；仅用于主线程调度场景。
+# 不要升到 1.11.x：其元数据为 Kotlin 2.2 线，会使 KSP 报不兼容 Kotlin 版本。
+kotlinxCoroutines = "1.10.2"
 coreKtx = "1.13.1"
 appcompat = "1.6.1"
 material = "1.12.0"
@@ -12,7 +13,7 @@ recyclerview = "1.3.2"
 constraintlayout = "2.1.4"
 dynamicanimation = "1.1.0"
 junit = "4.13.2"
-assertj = "3.25.3"
+assertj = "3.27.3"
 robolectric = "4.16"
 robolectricAndroid = "16-robolectric-13921718"
 

@@ -9,6 +9,7 @@
 | Java / Kotlin target | 21；两个模块统一，运行 Gradle 使用完整 JDK 21 |
 | SDK / Build Tools | compileSdk 37、Build Tools 37.0.0；Demo targetSdk 37 |
 | 最低设备版本 | 两模块 minSdk 36；不是 Android 15/API 35 可安装承诺 |
+| lib 三方库 | DynamicAnimation 1.1.0（最新稳定）；kotlinx-coroutines-android 1.10.2（Kotlin 2.0 元数据线的最新点，勿升 1.11.x） |
 | 测试运行时 | Robolectric 4.16 + android-all 16-robolectric-13921718，测试选择 API 36 |
 
 这些是仓库配置和本机验证记录，不代表该 Gradle/AGP/SDK 组合已获官方兼容认证。既有 unsupported SDK 抑制、SDK XML、私有注解、Gradle deprecation 提示仍存在；不要把 warning 抑制当升级验证。
