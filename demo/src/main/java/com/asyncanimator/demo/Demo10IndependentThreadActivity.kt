@@ -196,8 +196,9 @@ class Demo10IndependentThreadActivity : DemoBaseActivity() {
         hist.clear()
         stage.banner = "launcher.anim 线程驱动窗口动画 (0→1→0 往复)"
 
-        asyncAnim = AsyncValueAnimator()
-        asyncAnim!!.apply {
+        val animator = AsyncValueAnimator()
+        asyncAnim = animator
+        animator.apply {
             executor = Executors.ANIM_CONTROL_EXECUTOR // start/帧推进 → "Launcher Animation Control"
             setFloatValues(0f, 1f)
             duration = 1200

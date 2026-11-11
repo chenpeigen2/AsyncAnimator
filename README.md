@@ -7,7 +7,7 @@
 ## 当前状态
 
 - **39/39 份 review 已按顺序验收**：适用建议已实现并验证，其余逐项说明不采纳或保留的理由。完成的是本地建议验收，不是完整 OPPO 系统移植。
-- **61 个测试类、540 个独立用例**：库 501 + Demo 6 + API 生成器 33；2026-09-10 库与 Demo 的 Debug/Release 四组及生成器测试通过。
+- **68 个测试类、573 个独立用例**：库 517 + Demo 7 + API 生成器 49；其中既有 572 项有通过记录，新增的 Demo 10 生命周期用例因依赖下载阻塞尚未重跑。
 - **12 个 Demo 页面**：区分真实库接线和 Canvas 概念演示，不把动画计算间隔当屏幕呈现 FPS。
 - **未验证范围仍保留**：设备/Perfetto、干净 SDK 环境复现及 release 压缩/签名；Lint 因缺少离线依赖未完成；本次 Release AAR 验证同样受依赖下载阻塞。
 
@@ -192,14 +192,14 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 ### 全量验证结果
 
-以下来自 2026-09-10 对外 API 文档功能接入后的完整测试重跑及 XML 核对。此前逐类补测覆盖 42 个手写源码文件、74 个命名类型；本轮已将公开源码 API 文档补全为 389 项，增加全库漏标编译检查与跨模块文档回归。接口与私有嵌套类型通过真实消费者验证，不机械要求一类对应一个 Test 文件。
+以下按当前测试源码统计，并区分已有 XML 报告与待重跑用例，不把不同日期的结果描述为同一次全量构建。库与 API 生成器的最新报告来自 2026-09-24，Demo 既有报告来自 2026-09-10。此前逐类补测覆盖 42 个手写源码文件、74 个命名类型；公开源码 API 文档、全库漏标编译检查、跨模块文档回归与六层架构校验均已接入。接口与私有嵌套类型通过真实消费者验证，不机械要求一类对应一个 Test 文件。
 
 | 范围 | 测试类 | 独立用例 | 验证结果 |
 |---|---:|---:|---|
-| lib | 56 | 501 | Debug/Release 各 501 通过，0 失败/错误/跳过 |
-| demo | 1 | 6 | 各 6 通过，0 失败/错误/跳过 |
-| api-doc-processor | 4 | 33 | JVM 测试全部通过，0 失败/错误/跳过 |
-| 合计 | 61 | 540 | 同一批用例，不按构建变体翻倍 |
+| lib | 61 | 517 | 已有 Debug/Release 各 517 通过，0 失败/错误/跳过 |
+| demo | 2 | 7 | 既有 6 项通过；新增 Demo 10 生命周期用例待重跑 |
+| api-doc-processor | 5 | 49 | 已有 JVM 测试全部通过，0 失败/错误/跳过 |
+| 合计 | 68 | 573 | 572 项有通过记录，1 项待重跑；不按构建变体翻倍 |
 
 本次 Demo Debug APK 构建成功，**127/127 个 Gradle 任务执行，耗时 15 分 43 秒**；已解包确认不包含 API Markdown 或 KSP 处理器。文档生成命令另经两次执行验证，第二次复用配置缓存。API 功能验证见[说明](docs/public-api.md)，本地忽略日志为 `.gradle/api-coverage-final-build.log`，不随仓库分发。此前[逐类补测清单](docs/testing/2026-09-10-lib-class-test-plan.md)与 39 份 review 保留为独立历史证据。
 
@@ -216,7 +216,7 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 ### 逐类测试覆盖明细
 
-库当前共有 **56 个测试类、501 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
+库当前共有 **61 个测试类、517 个用例**（同时修正此前 `MultiAnimatorSetTest` 少计 1 项的记录）：
 
 <details>
 <summary>展开库测试类、用例数与覆盖内容</summary>
@@ -267,6 +267,11 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 | `ControllerStateMatrixTest` | 13 | 全状态转移/分类、重复factory、非法scene、真实sw600边界、predicate异常及reset/destroy区别 |
 | `ControllerCompletionTest` | 7 | 完成回调重入/异常与新轮隔离、idle 清理、非法 Recents 状态诊断 |
 | `AnimationThreadBootstrapTest` | 2 | 冷启动首条任务前安装帧源、owner/优先级与 Looper 提前发布时序 |
+| `AnimationControllerInjectionTest` | 4 | 设备判定、续行状态与 Recents 完成条件的构造注入及异常边界 |
+| `ManagerWiringTest` | 3 | Manager 与 Controller/Seq 的实例接线及功能开关委派 |
+| `TaskStateChangeTimeOutListenerNoLooperTest` | 3 | 无 Looper 环境下的监听注册、超时与释放边界 |
+| `AnimationSeqHelperCapabilityTest` | 3 | 序列能力开关、无能力与恢复后的行为边界 |
+| `AnimationSeqHelperNoLooperTest` | 3 | 无 Looper 环境下的即时执行、延迟拒绝与清理 |
 
 | `AnimatorListenersTest` | 8 | 每次end与once-only、严格半程阈值、非ValueAnimator、sticky cancel、重入/异常消费 |
 | `AsyncAnimWrapperTest` | 4 | 主线程内联/worker投递、null、实际ANIM初始化/嵌套与业务异常 |
@@ -283,13 +288,13 @@ Windows 预检使用 PowerShell；macOS/Linux 的 Gradle 命令使用 `./gradlew
 
 </details>
 
-Demo 模块另有 1 个纯 JVM 测试类，`TraceLogRedirectorTest`：6 个用例，覆盖日志订阅/交错释放/其他流 owner/异常及重入；不等于 Activity 生命周期或旋转仪器测试。
+Demo 模块有 2 个测试类、7 个用例：`TraceLogRedirectorTest` 的 6 个纯 JVM 用例覆盖日志订阅/交错释放/其他流 owner/异常及重入；`Demo10IndependentThreadActivityTest` 新增 1 个 Robolectric 用例覆盖线程驱动切换、停止和销毁，因依赖下载阻塞尚未重跑。它们不等于真实设备上的旋转或系统转场仪器测试。
 
-API 生成器另有 `ApiSignaturesTest`（12 项）、`ApiMarkdownTest`（5 项）、`PublicApiProcessorTest`（9 项）、`PublicApiCoverageTest`（7 项），报告位于 `api-doc-processor/build/reports/tests/test/`。
+API 生成器有 5 个测试类、49 个用例：`ApiSignaturesTest`（12 项）、`ApiMarkdownTest`（5 项）、`PublicApiProcessorTest`（10 项）、`PublicApiCoverageTest`（7 项）、`LayeringRulesTest`（15 项），报告位于 `api-doc-processor/build/reports/tests/test/`。
 
 测试数不是行覆盖率或分支覆盖率；仓库没有配置覆盖率阈值，本轮也未运行覆盖率工具。库/Demo 的 XML 与 HTML 报告分别位于各模块的 `build/test-results/test{Debug,Release}UnitTest/` 和 `build/reports/tests/test{Debug,Release}UnitTest/`。
 
-Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 501 个用例中，不额外累计。
+Robolectric 测试不等于设备验证；手动帧钟和模拟 Looper 不验证真实 VSYNC、跨线程 View 绘制或系统转场。仓库未提供 `src/androidTest` 仪器测试。改动线程、回调或动画生命周期后，应在设备上检查重复启动/取消、离开页面后的清理、线程名与主线程加压行为。七个状态转移矩阵测试合计 84 个组合，已经包含在上述 517 个用例中，不额外累计。
 
 ## 当前边界与注意事项
 

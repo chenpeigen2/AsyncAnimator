@@ -14,6 +14,8 @@ captures/
 *.ap_
 *.dex
 *.class
+*.log
+/screen*.png
 
 # lib / demo build artifacts
 lib/build/
@@ -22,7 +24,6 @@ demo/build/
 # gradle daemon auto-generated
 gradle/gradle-daemon-jvm.properties
 .kotlin/
-.fix_*.py
 .fix_*.py
 docs/review/_marktool.py
 __pycache__/
