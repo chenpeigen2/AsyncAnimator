@@ -1,6 +1,8 @@
 package com.asyncanimator.core
 
 import android.os.Looper
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -81,8 +83,10 @@ class ChoreographerTickSchedulerTest {
         scheduler.stop()
     }
 
-    @Test fun testCallbackFailureDoesNotStopHealthySubscriberOrFollowingFrames() {
+    @Test fun testCallbackFailureIsLoggedAndDoesNotStopHealthySubscriberOrFollowingFrames() {
         val scheduler = ChoreographerTickScheduler()
+        val output = ByteArrayOutputStream()
+        val originalErr = System.err
         var failures = 0
         var healthy = 0
         lateinit var failing: TickScheduler.FrameCallback
@@ -91,6 +95,7 @@ class ChoreographerTickSchedulerTest {
             scheduler.removeFrameCallback(failing)
             throw IllegalStateException("expected consumer failure")
         }
+        System.setErr(PrintStream(output, true, Charsets.UTF_8))
         try {
             scheduler.postFrameCallback(failing)
             scheduler.postFrameCallback { healthy++ }
@@ -98,7 +103,11 @@ class ChoreographerTickSchedulerTest {
             assertEquals(1, failures)
             assertEquals(2, healthy)
             assertEquals(2L, scheduler.frameCount)
+            val diagnostic = output.toString(Charsets.UTF_8)
+            assertTrue(diagnostic.contains("ChoreographerTickScheduler: Frame callback failed"))
+            assertTrue(diagnostic.contains("expected consumer failure"))
         } finally {
+            System.setErr(originalErr)
             scheduler.stop()
             shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(10))
         }

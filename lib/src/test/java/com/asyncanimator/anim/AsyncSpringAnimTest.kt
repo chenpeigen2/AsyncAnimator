@@ -139,6 +139,17 @@ class AsyncSpringAnimTest {
         assertEquals(1, calls)
     }
 
+    @Test fun testEndListenerRegistrationCanBeClosedIdempotentlyBeforeNativeCompletion() {
+        val registration = wrapper.addEndListener { _, canceled, value, _ -> endings.add(canceled to value) }
+        wrapper.start()
+        pulse()
+        registration.close()
+        registration.close()
+        wrapper.cancel()
+        assertFalse(real.isRunning)
+        assertTrue(endings.isEmpty())
+    }
+
     @Test fun testSynchronousListenerExceptionPropagatesAfterNativeStops() {
         val failure = IllegalStateException("end listener")
         wrapper.addEndListener { _, _, _, _ -> throw failure }

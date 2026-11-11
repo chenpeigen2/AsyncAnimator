@@ -70,7 +70,12 @@ class RectSpringDriverTest {
         d.start { ends++ }
         assertEquals(1, clock.callbacks.size)
         step(); assertEquals(1, frames.size); assertRect(start, frames.single().rect)
+        assertEquals(start.width(), frames.single().values.size, 0f)
+        assertEquals(start.height() / start.width(), frames.single().values.ratio, 0f)
         step(); assertEquals(2, frames.size)
+        assertRect(start, frames.first().rect)
+        assertEquals(start.width(), frames.first().values.size, 0f)
+        assertNotSame(frames.first().values, frames.last().values)
         assertTrue(frames.last().values.centerX > start.centerX())
         assertTrue(frames.last().values.ratio < start.height() / start.width())
         assertTrue(frames.last().values.radius < 24f)

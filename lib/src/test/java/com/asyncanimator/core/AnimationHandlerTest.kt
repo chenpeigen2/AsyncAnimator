@@ -1,5 +1,7 @@
 package com.asyncanimator.core
 
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -100,21 +102,31 @@ class AnimationHandlerTest {
     }
 
     @Test
-    fun testCallbackExceptionIsIsolatedAndSelfRemovalStillCleansUp() {
+    fun testCallbackExceptionIsLoggedIsolatedAndSelfRemovalStillCleansUp() {
         val scheduler = ManualScheduler()
         val handler = AnimationHandler(scheduler)
-        var healthyCalls = 0
-        lateinit var failing: AnimationHandler.AnimationFrameCallback
-        failing = AnimationHandler.AnimationFrameCallback {
-            handler.removeCallback(failing)
-            throw IllegalStateException("expected callback failure")
+        val output = ByteArrayOutputStream()
+        val originalErr = System.err
+        System.setErr(PrintStream(output, true, Charsets.UTF_8))
+        try {
+            var healthyCalls = 0
+            lateinit var failing: AnimationHandler.AnimationFrameCallback
+            failing = AnimationHandler.AnimationFrameCallback {
+                handler.removeCallback(failing)
+                throw IllegalStateException("expected callback failure")
+            }
+            handler.addAnimationFrameCallback(failing)
+            handler.addAnimationFrameCallback { healthyCalls++; false }
+            scheduler.pulse()
+            scheduler.pulse()
+            assertEquals(2, healthyCalls)
+            assertEquals(1, handler.callbackSize)
+            val diagnostic = output.toString(Charsets.UTF_8)
+            assertTrue(diagnostic.contains("AnimationHandler: Frame callback failed"))
+            assertTrue(diagnostic.contains("expected callback failure"))
+        } finally {
+            System.setErr(originalErr)
         }
-        handler.addAnimationFrameCallback(failing)
-        handler.addAnimationFrameCallback { healthyCalls++; false }
-        scheduler.pulse()
-        scheduler.pulse()
-        assertEquals(2, healthyCalls)
-        assertEquals(1, handler.callbackSize)
     }
 
     @Test

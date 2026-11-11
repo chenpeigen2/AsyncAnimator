@@ -205,6 +205,32 @@ class TraceLogTest {
         assertTrue(text().contains("<<< [8] main-retained"))
     }
 
+    @Test fun testPlatformBackendPairsNestedSectionsOnFailureAndTruncatesLongNames() {
+        val originalBackend = Trace.backend
+        val events = mutableListOf<String>()
+        Trace.backend = object : Trace.Backend {
+            override fun beginSection(name: String) { events.add("begin:$name") }
+            override fun endSection() { events.add("end") }
+        }
+        try {
+            val failure = IllegalStateException("platform trace")
+            assertSame(failure, assertThrows(IllegalStateException::class.java) {
+                Trace.section(8, "outer") {
+                    Trace.section(32, "x".repeat(200)) { throw failure }
+                }
+            })
+            assertEquals(4, events.size)
+            assertEquals("begin:[8] outer", events[0])
+            assertTrue(events[1].startsWith("begin:[32] "))
+            assertEquals(127, events[1].removePrefix("begin:").length)
+            assertEquals(listOf("end", "end"), events.takeLast(2))
+            assertEquals(0, Trace.depth)
+        } finally {
+            Trace.clear()
+            Trace.backend = originalBackend
+        }
+    }
+
     @Test fun testSectionReturnsNullableResultAndUnwindsAnError() {
         assertNull(Trace.section<String?>(Trace.TAG_VIEW, "nullable") { null })
         val failure = AssertionError("action error")
