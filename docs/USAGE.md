@@ -109,11 +109,14 @@ Executors.ANIM_CONTROL_EXECUTOR // 绑定独立 launcher.anim 线程
 ```kotlin
 val spring = SpringAnimation(card, SpringAnimation.TRANSLATION_Y).apply { spring = SpringForce(0f) }
 val anim = AsyncSpringAnim(spring, supportAnimThread = false)
-anim.addEndListener { _, canceled, _, _ -> /* 主线程 */ }
+val endRegistration = anim.addEndListener { _, canceled, _, _ -> /* 主线程 */ }
 anim.start() // View 弹簧在主线程启动；后台路径还需单独验证
+// 页面或宿主动画结束时调用 endRegistration.close()；重复关闭无操作。
 ```
 
 `AsyncSpringAnim.cancel()` 在命令到达实际 AndroidX owner 后同步取消，保留当时数值并通知 canceled=true；跨线程投递本身不是同步操作。`skipToEnd()` 只请求终态，已过首帧后在下一物理帧结束且 canceled=false；若尚未首帧，AndroidX 会先执行一次不积分的 warm-up，再处理结束。零阻尼不能 skip，会抛 UnsupportedOperationException，但可 cancel。这里没有新建 EndReason/endImmediately API，skip 与自然结束都使用 native canceled=false。
+
+`addEndListener()` 返回独立的 `AutoCloseable` 注销句柄。关闭后不再交付尚未开始的通知，并按 wrapper 的线程策略移除底层监听；已经开始的回调无法撤回，异步关闭返回不等于移除已经执行。
 
 普通 wrapper 不聚合六轴、不安装后台 scheduler；需要一致六轴快照、下一 tick cancel/skip 协议时使用下述 RectSpringDriver。其自有 cancel 不再积分最后一步，skip 直接输出目标后清理；这些数值细节不同于 OPPO MultiDynamicAnimation 在请求结束的 tick 仍调用 SpringHolder 积分。
 
@@ -472,9 +475,9 @@ object : NullableAnimatorListenerAdapter() {
 
 ## core/Trace 与 LogUtils
 
-Trace 的操作是 lib internal 的线程局部诊断段，输出到 stderr，**不接入 android.os.Trace/Perfetto**。DemoBaseActivity 重定向 System.err 到日志区。AsyncAnimCallbacks 的段覆盖主线程实际 listener 派发，begin/end 同线程且 finally 收尾；ThreadLocal 不支持跨线程 end 关闭另一线程的 begin。
+Trace 的操作是 lib internal 的线程局部诊断段，同时写入 `android.os.Trace` 和 stderr；平台区段可由 Perfetto 采集，但当前尚未完成真机抓包验证。DemoBaseActivity 继续重定向 System.err 到日志区。AsyncAnimCallbacks 的段覆盖主线程实际 listener 派发，begin/end 同线程且 finally 收尾；ThreadLocal 不支持跨线程 end 关闭另一线程的 begin，平台名称按 127 字符限制截断。
 
-公开 `LogUtils` 提供 i/isLogOpen/isAlwayson/setLogLevel：默认 Debug=INFO、Release=OFF；OFF/INFO/ALWAYS 为本库本地等级，不是 OEM RUS 配置。输出携带实际线程名与分类。Trace 使用开始时的门控值，关日志后会闭合已经开始输出的段，但不输出新的段。需要更详细诊断时显式 `LogUtils.setLogLevel(LogUtils.ALWAYS)`，结束后恢复等级；昂贵字符串应先检查 isLogOpen，因为 Kotlin 字符串插值并非自动惰性执行。
+公开 `LogUtils` 提供 i/isLogOpen/isAlwayson/setLogLevel：默认 Debug=INFO、Release=OFF；OFF/INFO/ALWAYS 为本库本地等级，不是 OEM RUS 配置。输出携带实际线程名与分类。Trace 的 stderr 使用开始时的门控值，关日志后会闭合已经开始输出的段，但不输出新的 stderr 段；平台 Trace 不受该日志等级门控。需要更详细诊断时显式 `LogUtils.setLogLevel(LogUtils.ALWAYS)`，结束后恢复等级；昂贵字符串应先检查 isLogOpen，因为 Kotlin 字符串插值并非自动惰性执行。
 
 ---
 

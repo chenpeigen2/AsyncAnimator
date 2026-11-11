@@ -6,6 +6,7 @@ import com.asyncanimator.api.Layer
 import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.thread.AsyncAnimWrapper
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * SpringAnimation 的生命周期线程转发包装，不修改其物理求解或属性写入策略。
@@ -55,15 +56,26 @@ class AsyncSpringAnim @PublicApi constructor(
     fun setStartVelocity(velocity: Float) = dispatch { real.setStartVelocity(velocity) }
 
     /**
-     * 直接向底层注册一个转发监听器，原样传递动画实例、取消标志、值和速度。
-     * 异步模式只把结束通知送回主线程，同步模式在原派发线程直接通知；注册动作本身不做线程切换。
-     * 每次调用创建独立包装，本类未提供移除句柄，宿主应在底层生命周期结束时管理监听清理。
+     * 向底层注册一个转发监听器，并返回可重复关闭的独立注销句柄。
+     * 原样传递动画实例、取消标志、值和速度；异步模式把结束通知送回主线程，同步模式在原派发线程通知。
+     * 注册动作本身不做线程切换；句柄关闭后跳过尚未交付的通知，并按本包装的线程策略移除底层监听器。
+     * 已经开始执行的业务回调无法撤回，跨线程关闭返回不代表底层移除已经执行；每次注册须分别保存和关闭句柄。
+     * @param listener 接收原生弹簧结束事件的非空监听器。
+     * @return 幂等的注销句柄，首次 close 使监听失效并安排底层移除，后续 close 无操作。
      */
     @PublicApi
-    fun addEndListener(listener: DynamicAnimation.OnAnimationEndListener) {
-        real.addEndListener { anim, canceled, value, velocity ->
-            val notify = { listener.onAnimationEnd(anim, canceled, value, velocity) }
+    fun addEndListener(listener: DynamicAnimation.OnAnimationEndListener): AutoCloseable {
+        val closed = AtomicBoolean(false)
+        val wrapped = DynamicAnimation.OnAnimationEndListener { anim, canceled, value, velocity ->
+            if (closed.get()) return@OnAnimationEndListener
+            val notify = {
+                if (!closed.get()) listener.onAnimationEnd(anim, canceled, value, velocity)
+            }
             if (supportAnimThread) runOnMainThread { notify() } else notify()
+        }
+        real.addEndListener(wrapped)
+        return AutoCloseable {
+            if (closed.compareAndSet(false, true)) dispatch { real.removeEndListener(wrapped) }
         }
     }
 

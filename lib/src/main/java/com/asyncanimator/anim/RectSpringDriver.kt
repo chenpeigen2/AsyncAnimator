@@ -420,11 +420,13 @@ class RectSpringDriver internal constructor(
             return
         }
         val elapsed = SystemClock.uptimeMillis() - run.startedAt
-        run.axes.filter {
-            it.waiting &&
+        run.axes.forEach {
+            if (it.waiting &&
                 (elapsed >= config.alphaStartDelayMillis || ValueAnimator.getDurationScale() == 0f)
+            ) {
+                it.start()
+            }
         }
-            .forEach { it.start() }
         val work = run.queued.toList()
         run.queued.clear()
         try {
@@ -493,14 +495,16 @@ class RectSpringDriver internal constructor(
             else ((size - run.progressStart) / distance).coerceIn(0f, 1f)
         val progress = if (run.reversing) run.progressBase * (1f - fraction)
             else run.progressBase + (1f - run.progressBase) * fraction
-        return RectSpringFrame(values[0] - width / 2f, top, values[0] + width / 2f, top + height,
-            RectSpringValues.from(
-                values.copyOf().also {
-                    it[2] = size
-                    it[3] = ratio
-                }
-            ),
-            RectSpringValues.from(velocities), progress, run.widthMode)
+        return RectSpringFrame(
+            left = values[0] - width / 2f,
+            top = top,
+            right = values[0] + width / 2f,
+            bottom = top + height,
+            values = RectSpringValues(values[0], values[1], size, ratio, values[4], values[5]),
+            velocities = RectSpringValues.from(velocities),
+            progress = progress,
+            sizeIsWidth = run.widthMode
+        )
     }
 
     /**

@@ -119,14 +119,16 @@ internal class ChoreographerTickScheduler : TickScheduler {
 
     /**
      * 先发布帧计数和纳秒时间戳，再按当前队列快照逐项调用订阅者。
-     * 业务回调不持有状态锁，允许重入和其他线程注册；每项异常独立捕获，不中断其余派发。
+     * 业务回调不持有状态锁，允许重入和其他线程注册；逐项记录异常堆栈，不中断其余派发。
      */
     private fun tick(frameTimeNanos: Long) {
         frameCountAtomic.incrementAndGet()
         frameTimeNanosAtomic.set(frameTimeNanos)
 
         for (cb in callbacks.toTypedArray()) {
-            runCatching { cb.doFrame(frameTimeNanos) }
+            runCatching { cb.doFrame(frameTimeNanos) }.onFailure { error ->
+                LogUtils.emit("ChoreographerTickScheduler", "Frame callback failed: ${error.stackTraceToString()}")
+            }
         }
     }
 }

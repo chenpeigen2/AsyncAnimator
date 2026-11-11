@@ -97,7 +97,7 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
 
     /**
      * 按注册顺序更新当前列表，每次迭代重新读取长度，因此同帧追加的回调也可被执行。
-     * 跳过已移除的空槽，忽略回调返回值；逐项捕获异常，使一个回调失败不影响后续回调。
+     * 跳过已移除的空槽，忽略回调返回值；逐项记录异常堆栈，使一个回调失败不影响后续回调。
      */
     private fun doAnimationFrame(frameTimeMs: Long) {
 
@@ -105,7 +105,11 @@ internal class AnimationHandler(scheduler: TickScheduler? = null) {
         while (i < animationCallbacks.size) {
             val cb = animationCallbacks[i]
             i++
-            if (cb != null) runCatching { cb.doAnimationFrame(frameTimeMs) }
+            if (cb != null) {
+                runCatching { cb.doAnimationFrame(frameTimeMs) }.onFailure { error ->
+                    LogUtils.emit("AnimationHandler", "Frame callback failed: ${error.stackTraceToString()}")
+                }
+            }
         }
     }
 
