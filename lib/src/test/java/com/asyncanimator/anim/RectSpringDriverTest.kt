@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import com.asyncanimator.core.PerfMonitor
 import com.asyncanimator.core.TickScheduler
 import java.time.Duration
 import java.util.concurrent.CountDownLatch
@@ -544,6 +545,27 @@ class RectSpringDriverTest {
         }
         assertEquals(before, nativeListeners())
         assertTrue(clock.callbacks.isEmpty())
+    }
+
+    /**
+     * 验证 RectSpringDriver 的帧回调钩子只在 PerfMonitor 打开时写入 RECT_SPRING 通道，
+     * 关闭状态下不会产生任何统计数据。
+     */
+    @Test fun testPerfMonitorRecordsRectSpringChannelOnlyWhileEnabled() {
+        val d = driver()
+        d.start { }
+        try {
+            PerfMonitor.setEnabled(false)
+            step()
+            assertFalse(PerfMonitor.snapshot().containsKey(PerfMonitor.Channels.RECT_SPRING))
+            PerfMonitor.setEnabled(true)
+            step()
+            val stats = checkNotNull(PerfMonitor.snapshot()[PerfMonitor.Channels.RECT_SPRING])
+            assertTrue(stats.count >= 1L)
+        } finally {
+            PerfMonitor.setEnabled(false)
+            PerfMonitor.reset()
+        }
     }
 
 }

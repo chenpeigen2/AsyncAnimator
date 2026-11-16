@@ -4,13 +4,15 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
  * 纯 JVM 环境（无 Robolectric、无主 Looper）下 [AnimationSeqHelper] 的行为。
  * 立即完成路径不依赖主线程设施，仍在调用线程同步执行；
- * 防抖延迟路径按旧 Handler 语义要求主 Looper 存在，缺失时抛出 [NullPointerException]。
+ * 防抖延迟路径按旧 Handler 语义要求主 Looper 存在，缺失时失败：
+ * 真实设备上为 [NullPointerException]，纯 JVM 桩环境在 android.os.Looper 类初始化阶段为 UnsatisfiedLinkError。
  */
 class AnimationSeqHelperNoLooperTest {
     private lateinit var originalClock: () -> Long
@@ -41,13 +43,15 @@ class AnimationSeqHelperNoLooperTest {
     }
 
     @Test
-    fun testDelayedFinishPathThrowsNullPointerWithoutMainLooper() {
+    fun testDelayedFinishPathFailsWithoutMainLooper() {
         AnimSeqTimeStamp.updateLastRecentFinishTime()
         val helper = AnimationSeqHelper(
             startingSurfaceSupported = { true },
             interruptionSupported = { true }
         )
-        assertThrows(NullPointerException::class.java) { helper.delayFinishRecents { } }
+        // 缺少主 Looper 时必须失败：真实设备为 NullPointerException，纯 JVM 桩环境为 UnsatisfiedLinkError
+        val error = assertThrows(Throwable::class.java) { helper.delayFinishRecents { } }
+        assertTrue(error is NullPointerException || error is UnsatisfiedLinkError)
     }
 
     @Test

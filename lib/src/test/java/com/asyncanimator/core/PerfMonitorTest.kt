@@ -25,7 +25,8 @@ class PerfMonitorTest {
         }
         val stats = PerfMonitor.snapshot().getValue("frames")
         assertEquals(3L, stats.count)
-        assertEquals(33_000_000L / 2, stats.avgGapNanos)
+        // 相邻两帧间隔分别为 16ms 与 34ms，平均间隔为 25ms
+        assertEquals(25_000_000L, stats.avgGapNanos)
         assertEquals(34_000_000L, stats.maxGapNanos)
         assertEquals(50_000_000L, stats.lastNanos)
     }
@@ -86,23 +87,31 @@ class PerfMonitorTest {
         assertEquals(2L, PerfMonitor.snapshot().getValue("frames").count)
     }
 
+    /**
+     * 验证 AnimationHandler 的帧回调钩子只在 PerfMonitor 打开时写入统计：
+     * 关闭状态下不产生任何通道数据，打开后每一帧都记入 ANIMATION_HANDLER 通道。
+     */
     @Test fun testAnimationHandlerHookRecordsOnlyWhileEnabled() {
         val source = object : TickScheduler {
             override var frameTimeNanos = 0L
             override var frameCount = 0L
-            override fun postFrameCallback(callback: TickScheduler.FrameCallback?) { callback?.let { it.doFrame(0L) } }
-            override fun removeFrameCallback(callback: TickScheduler.FrameCallback?) {}
+            private var pending: TickScheduler.FrameCallback? = null
+            override fun postFrameCallback(callback: TickScheduler.FrameCallback?) { pending = callback }
+            override fun removeFrameCallback(callback: TickScheduler.FrameCallback?) { pending = null }
             override fun start() {}
             override fun stop() {}
+            fun doFrame(timeNanos: Long) { pending?.doFrame(timeNanos) }
         }
         val handler = AnimationHandler(source)
+        val callback = AnimationHandler.AnimationFrameCallback { true }
         PerfMonitor.setEnabled(false)
-        handler.addAnimationFrameCallback { }
+        handler.addAnimationFrameCallback(callback)
+        source.doFrame(0L)
         assertFalse(PerfMonitor.snapshot().containsKey(PerfMonitor.Channels.ANIMATION_HANDLER))
         PerfMonitor.setEnabled(true)
-        handler.addAnimationFrameCallback { }
-        handler.removeCallback({ } as AnimationHandler.AnimationFrameCallback)
+        source.doFrame(16_000_000L)
         val stats = PerfMonitor.snapshot().getValue(PerfMonitor.Channels.ANIMATION_HANDLER)
         assertEquals(1L, stats.count)
+        handler.removeCallback(callback)
     }
 }

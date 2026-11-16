@@ -11,6 +11,7 @@ import com.asyncanimator.api.Layer
 import com.asyncanimator.api.LayerId
 import com.asyncanimator.api.PublicApi
 import com.asyncanimator.core.AnimationHandler
+import com.asyncanimator.core.PerfMonitor
 import com.asyncanimator.core.TickScheduler
 import kotlin.math.max
 import kotlin.math.min

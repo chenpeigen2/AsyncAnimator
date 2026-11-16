@@ -39,9 +39,9 @@ android {
 }
 
 // 与 lib 共用同一套由 Gradle 解析的 Robolectric Android SDK，避免测试运行时再次下载。
-def robolectricSdk = configurations.create('robolectricSdk')
+def robolectricSdkConfiguration = configurations.create('robolectricSdk')
 tasks.register('prepareRobolectricSdk', Sync) {
-    from robolectricSdk
+    from robolectricSdkConfiguration
     into layout.buildDirectory.dir('robolectric-sdk')
 }
 tasks.withType(Test).configureEach {
@@ -55,7 +55,7 @@ dependencies {
     testImplementation libs.junit
     testImplementation libs.robolectric
     testRuntimeOnly libs.robolectric.android
-    robolectricSdk libs.robolectric.android
+    add('robolectricSdk', libs.robolectric.android)
     implementation project(':lib')
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
