@@ -36,6 +36,11 @@ android {
     buildFeatures {
         viewBinding true
     }
+
+    // Robolectric 需要打包应用资源，才能加载 demo 的布局、主题与矢量图标
+    testOptions {
+        unitTests.includeAndroidResources = true
+    }
 }
 
 // 与 lib 共用同一套由 Gradle 解析的 Robolectric Android SDK，避免测试运行时再次下载。
